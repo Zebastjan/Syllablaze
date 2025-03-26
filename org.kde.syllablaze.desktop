@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Syllablaze
+Comment=Record and transcribe audio using Whisper
+Version=1.0
+Exec=syllablaze
+Icon=syllablaze
+Type=Application
+Categories=Qt;KDE;Audio;AudioVideo;
+Terminal=false
+X-KDE-StartupNotify=true

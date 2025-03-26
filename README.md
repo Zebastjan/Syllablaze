@@ -1,6 +1,6 @@
-# Telly Spelly for KDE Plasma
+# Syllablaze for KDE Plasma
 
-A sleek KDE Plasma application that records audio and transcribes it in real-time using OpenAI's Whisper. Created by Guilherme da Silveira.
+A sleek KDE Plasma application that records audio and transcribes it in real-time using OpenAI's Whisper. Originally created by Guilherme da Silveira as "Telly Spelly", now enhanced for Ubuntu KDE compatibility.
 
 ## Features
 
@@ -13,10 +13,29 @@ A sleek KDE Plasma application that records audio and transcribes it in real-tim
 
 ## Installation
 
+### Prerequisites
+
+Before installing Syllablaze, ensure you have the necessary system dependencies:
+
+#### Ubuntu/Debian (including Ubuntu KDE)
+
+```bash
+sudo apt update
+sudo apt install -y python3-pip python3-dev portaudio19-dev ffmpeg
+```
+
+#### Fedora
+
+```bash
+sudo dnf install -y python3-libs python3-devel python3 portaudio-devel ffmpeg
+```
+
+### Installation Steps
+
 1. Clone the repository:
 ```bash
-git clone https://github.com/gbasilveira/telly-spelly.git
-cd telly-spelly
+git clone https://github.com/gbasilveira/syllablaze.git
+cd syllablaze
 ```
 
 2. Run the installer:
@@ -25,10 +44,19 @@ python3 install.py
 ```
 
 The installer will:
-- Install all required dependencies
+- Check for required system dependencies
+- Install all required Python packages
 - Set up the application in your user directory
 - Create desktop entries and icons
 - Configure the launcher
+
+### Ubuntu KDE Specific Notes
+
+The installer has been optimized for Ubuntu KDE with:
+- Improved system dependency checks
+- Better error handling for ALSA libraries
+- Installation verification
+- Support for Ubuntu-specific library paths
 
 ## Requirements
 
@@ -37,21 +65,11 @@ The installer will:
 - PortAudio (for audio recording)
 - CUDA-capable GPU (optional, for faster transcription)
 
-System packages (Ubuntu/Debian):
-```bash
-sudo apt install python3-pyaudio portaudio19-dev
-```
-
-System packages (Fedora):
-```bash
-sudo dnf install python3-pyaudio portaudio-devel
-```
-
 ## Usage
 
-1. Launch "Telly Spelly" from your application menu or run:
+1. Launch "Syllablaze" from your application menu or run:
 ```bash
-telly-spelly
+syllablaze
 ```
 
 2. Click the tray icon or use configured shortcuts to start/stop recording
@@ -73,6 +91,27 @@ To remove the application:
 ```bash
 python3 uninstall.py
 ```
+
+## Troubleshooting
+
+### Common Issues on Ubuntu KDE
+
+1. **Application doesn't appear in menu**
+   - Log out and log back in to refresh the application menu
+   - Verify installation with `ls -la ~/.local/share/applications/org.kde.syllablaze.desktop`
+
+2. **Audio recording issues**
+   - Ensure your microphone is properly configured in KDE System Settings
+   - Add your user to the audio group: `sudo usermod -a -G audio $USER`
+
+3. **ALSA errors**
+   - The application attempts to suppress common ALSA errors
+   - If you see ALSA errors, try installing: `sudo apt install -y libasound2-dev`
+
+4. **Slow transcription**
+   - For faster transcription, install CUDA if you have an NVIDIA GPU:
+     `sudo apt install -y nvidia-cuda-toolkit`
+   - Select a smaller model in the settings
 
 ## Technical Details
 
@@ -101,7 +140,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## Author
 
-**Guilherme da Silveira**
+**Guilherme da Silveira** (Original creator)
 
 ---
 
