@@ -1,26 +1,13 @@
 from PyQt6.QtCore import QSettings
+from constants import APP_NAME, VALID_WHISPER_MODELS, VALID_LANGUAGES, DEFAULT_WHISPER_MODEL
 
 class Settings:
-    VALID_MODELS = ['tiny', 'base', 'small', 'medium', 'large', 'turbo']
+    VALID_MODELS = VALID_WHISPER_MODELS
     # List of valid language codes for Whisper
-    VALID_LANGUAGES = {
-        'auto': 'Auto-detect',
-        'en': 'English',
-        'es': 'Spanish',
-        'fr': 'French',
-        'de': 'German',
-        'it': 'Italian',
-        'pt': 'Portuguese',
-        'nl': 'Dutch',
-        'pl': 'Polish',
-        'ja': 'Japanese',
-        'zh': 'Chinese',
-        'ru': 'Russian',
-        # Add more languages as needed
-    }
+    VALID_LANGUAGES = VALID_LANGUAGES
     
     def __init__(self):
-        self.settings = QSettings('TellySpelly', 'TellySpelly')
+        self.settings = QSettings(APP_NAME, APP_NAME)
         
     def get(self, key, default=None):
         value = self.settings.value(key, default)

@@ -1,11 +1,12 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QComboBox, 
-                            QGroupBox, QFormLayout, QProgressBar, QPushButton,
-                            QLineEdit, QMessageBox)
+                             QGroupBox, QFormLayout, QProgressBar, QPushButton,
+                             QLineEdit, QMessageBox)
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 import logging
 import keyboard
 from PyQt6.QtGui import QKeySequence
-from settings import Settings  # Add this import at the top
+from settings import Settings
+from constants import APP_NAME, DEFAULT_WHISPER_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +51,7 @@ class SettingsWindow(QWidget):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Telly Spelly Settings")
+        self.setWindowTitle(f"{APP_NAME} Settings")
         self.setWindowFlags(Qt.WindowType.WindowStaysOnTopHint)
         
         # Initialize settings
@@ -65,7 +66,7 @@ class SettingsWindow(QWidget):
         
         self.model_combo = QComboBox()
         self.model_combo.addItems(Settings.VALID_MODELS)
-        current_model = self.settings.get('model', 'base')
+        current_model = self.settings.get('model', DEFAULT_WHISPER_MODEL)
         self.model_combo.setCurrentText(current_model)
         self.model_combo.currentTextChanged.connect(self.on_model_changed)
         model_layout.addRow("Whisper Model:", self.model_combo)
@@ -209,4 +210,4 @@ class SettingsWindow(QWidget):
         except Exception as e:
             logger.error(f"Error applying shortcuts: {e}")
             QMessageBox.critical(self, "Error", 
-                "Failed to apply shortcuts. Please try different combinations.") 
+                "Failed to apply shortcuts. Please try different combinations.")

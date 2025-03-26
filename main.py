@@ -22,6 +22,7 @@ import warnings
 import ctypes
 from shortcuts import GlobalShortcuts
 from settings import Settings
+from constants import APP_NAME, DEFAULT_WHISPER_MODEL, ORG_NAME
 # from mic_debug import MicDebugWindow
 
 # Setup logging
@@ -75,7 +76,7 @@ class TrayRecorder(QSystemTrayIcon):
         # self.debug_window = MicDebugWindow()
         
         # Set tooltip
-        self.setToolTip("Syllablaze")
+        self.setToolTip(APP_NAME)
         
         # Enable activation by left click
         self.activated.connect(self.on_activate)
@@ -310,9 +311,9 @@ class TrayRecorder(QSystemTrayIcon):
             self.debug_action.setText("Hide Debug Window")
 
 def setup_application_metadata():
-    QCoreApplication.setApplicationName("Syllablaze")
+    QCoreApplication.setApplicationName(APP_NAME)
     QCoreApplication.setApplicationVersion("1.0")
-    QCoreApplication.setOrganizationName("KDE")
+    QCoreApplication.setOrganizationName(ORG_NAME)
     QCoreApplication.setOrganizationDomain("kde.org")
 
 def main():
@@ -374,7 +375,9 @@ def initialize_tray(tray, loading_window, app):
         tray.recorder = AudioRecorder()
         
         # Initialize transcriber
-        loading_window.set_status("Loading Whisper model: turbo")
+        settings = Settings()
+        model_name = settings.get('model', DEFAULT_WHISPER_MODEL)
+        loading_window.set_status(f"Loading Whisper model: {model_name}")
         loading_window.set_progress(40)
         app.processEvents()
         tray.transcriber = WhisperTranscriber()

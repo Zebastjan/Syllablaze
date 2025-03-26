@@ -4,6 +4,7 @@ import os
 import logging
 import time
 from settings import Settings
+from constants import DEFAULT_WHISPER_MODEL
 logger = logging.getLogger(__name__)
 
 class TranscriptionWorker(QThread):
@@ -81,7 +82,7 @@ class WhisperTranscriber(QObject):
     def load_model(self):
         try:
             settings = Settings()
-            model_name = settings.get('model', 'turbo')
+            model_name = settings.get('model', DEFAULT_WHISPER_MODEL)
             logger.info(f"Loading Whisper model: {model_name}")
             
             # Redirect whisper's logging to our logger
