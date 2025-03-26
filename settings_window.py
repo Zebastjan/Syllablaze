@@ -1,12 +1,13 @@
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QComboBox, 
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QComboBox,
                              QGroupBox, QFormLayout, QProgressBar, QPushButton,
-                             QLineEdit, QMessageBox)
+                             QLineEdit, QMessageBox, QApplication)
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 import logging
 import keyboard
 from PyQt6.QtGui import QKeySequence
 from settings import Settings
 from constants import APP_NAME, DEFAULT_WHISPER_MODEL
+from whisper_model_manager import WhisperModelTable
 
 logger = logging.getLogger(__name__)
 
@@ -48,28 +49,46 @@ class ShortcutEdit(QLineEdit):
 class SettingsWindow(QWidget):
     initialization_complete = pyqtSignal()
     shortcuts_changed = pyqtSignal(str, str)  # start_key, stop_key
+    
+    def showEvent(self, event):
+        """Override showEvent to ensure window is properly sized and positioned"""
+        super().showEvent(event)
+        # Center the window on the screen
+        screen = QApplication.primaryScreen().availableGeometry()
+        self.move(
+            screen.center().x() - self.width() // 2,
+            screen.center().y() - self.height() // 2
+        )
 
     def __init__(self):
         super().__init__()
         self.setWindowTitle(f"{APP_NAME} Settings")
-        self.setWindowFlags(Qt.WindowType.WindowStaysOnTopHint)
         
         # Initialize settings
         self.settings = Settings()
+        
+        # Set window to be large
+        desktop = QApplication.primaryScreen().availableGeometry()
+        self.resize(int(desktop.width() * 0.8), int(desktop.height() * 0.8))
         
         layout = QVBoxLayout()
         self.setLayout(layout)
         
         # Model settings group
-        model_group = QGroupBox("Model Settings")
-        model_layout = QFormLayout()
+        model_group = QGroupBox("Whisper Models")
+        model_layout = QVBoxLayout()
         
-        self.model_combo = QComboBox()
-        self.model_combo.addItems(Settings.VALID_MODELS)
-        current_model = self.settings.get('model', DEFAULT_WHISPER_MODEL)
-        self.model_combo.setCurrentText(current_model)
-        self.model_combo.currentTextChanged.connect(self.on_model_changed)
-        model_layout.addRow("Whisper Model:", self.model_combo)
+        # Create the model table
+        self.model_table = WhisperModelTable()
+        self.model_table.model_activated.connect(self.on_model_activated)
+        model_layout.addWidget(self.model_table)
+        
+        model_group.setLayout(model_layout)
+        layout.addWidget(model_group)
+        
+        # Language settings group
+        language_group = QGroupBox("Language Settings")
+        language_layout = QFormLayout()
         
         self.lang_combo = QComboBox()
         # Add all supported languages
@@ -81,10 +100,10 @@ class SettingsWindow(QWidget):
         if index >= 0:
             self.lang_combo.setCurrentIndex(index)
         self.lang_combo.currentIndexChanged.connect(self.on_language_changed)
-        model_layout.addRow("Language:", self.lang_combo)
+        language_layout.addRow("Language:", self.lang_combo)
         
-        model_group.setLayout(model_layout)
-        layout.addWidget(model_group)
+        language_group.setLayout(language_layout)
+        layout.addWidget(language_group)
         
         # Recording settings group
         recording_group = QGroupBox("Recording Settings")
@@ -100,15 +119,7 @@ class SettingsWindow(QWidget):
         recording_group.setLayout(recording_layout)
         layout.addWidget(recording_group)
         
-        # Loading progress
-        self.progress_group = QGroupBox("Model Loading")
-        progress_layout = QVBoxLayout()
-        self.progress_bar = QProgressBar()
-        self.progress_label = QLabel("Select a model to load")
-        progress_layout.addWidget(self.progress_label)
-        progress_layout.addWidget(self.progress_bar)
-        self.progress_group.setLayout(progress_layout)
-        layout.addWidget(self.progress_group)
+        # No longer need the progress group as it's handled in the model table
         
         # Add shortcuts group
         shortcuts_group = QGroupBox("Keyboard Shortcuts")
@@ -154,37 +165,19 @@ class SettingsWindow(QWidget):
             logger.error(f"Failed to set microphone: {e}")
             QMessageBox.warning(self, "Error", str(e))
 
-    def on_model_changed(self, model_name):
-        if model_name == self.current_model:
+    def on_model_activated(self, model_name):
+        """Handle model activation from the table"""
+        if hasattr(self, 'current_model') and model_name == self.current_model:
             return
             
         try:
             self.settings.set('model', model_name)
+            self.current_model = model_name
+            logger.info(f"Model set to: {model_name}")
+            self.initialization_complete.emit()
         except ValueError as e:
             logger.error(f"Failed to set model: {e}")
             QMessageBox.warning(self, "Error", str(e))
-            return
-
-        self.progress_label.setText(f"Loading {model_name} model...")
-        self.progress_bar.setRange(0, 0)  # Indeterminate progress
-        
-        # Load model in a separate thread to prevent UI freezing
-        QTimer.singleShot(100, lambda: self.load_model(model_name))
-
-    def load_model(self, model_name):
-        try:
-            import whisper
-            self.whisper_model = whisper.load_model(model_name)
-            self.current_model = model_name
-            self.progress_label.setText(f"Model {model_name} loaded successfully")
-            self.progress_bar.setRange(0, 100)
-            self.progress_bar.setValue(100)
-            self.initialization_complete.emit()
-        except Exception as e:
-            logger.exception("Failed to load whisper model")
-            self.progress_label.setText(f"Failed to load model: {str(e)}")
-            self.progress_bar.setRange(0, 100)
-            self.progress_bar.setValue(0)
 
     def apply_shortcuts(self):
         try:

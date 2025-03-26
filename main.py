@@ -23,6 +23,7 @@ import ctypes
 from shortcuts import GlobalShortcuts
 from settings import Settings
 from constants import APP_NAME, DEFAULT_WHISPER_MODEL, ORG_NAME
+from whisper_model_manager import get_model_info
 # from mic_debug import MicDebugWindow
 
 # Setup logging
@@ -195,7 +196,11 @@ class TrayRecorder(QSystemTrayIcon):
         if self.settings_window.isVisible():
             self.settings_window.hide()
         else:
-            self.settings_window.show()
+            # Make sure the window is maximized
+            self.settings_window.showMaximized()
+            # Bring to front and activate
+            self.settings_window.raise_()
+            self.settings_window.activateWindow()
             
     def update_shortcuts(self, start_key, stop_key):
         """Update global shortcuts"""
@@ -209,24 +214,36 @@ class TrayRecorder(QSystemTrayIcon):
             self.toggle_recording()
 
     def quit_application(self):
-        # Cleanup recorder
-        if self.recorder:
-            self.recorder.cleanup()
-            self.recorder = None
-        
-        # Close all windows
-        if self.settings_window and self.settings_window.isVisible():
-            self.settings_window.close()
+        try:
+            # Cleanup recorder
+            if self.recorder:
+                self.recorder.cleanup()
+                self.recorder = None
             
-        if self.progress_window and self.progress_window.isVisible():
-            self.progress_window.close()
-            
-        # Stop recording if active
-        if self.recording:
-            self.stop_recording()
-            
-        # Quit the application
-        QApplication.quit()
+            # Close all windows
+            if hasattr(self, 'settings_window') and self.settings_window and self.settings_window.isVisible():
+                self.settings_window.close()
+                
+            if hasattr(self, 'progress_window') and self.progress_window and self.progress_window.isVisible():
+                self.progress_window.close()
+                
+            # Stop recording if active
+            if self.recording:
+                self.stop_recording()
+                
+            # Wait for any running threads to finish
+            if hasattr(self, 'transcriber') and self.transcriber:
+                if hasattr(self.transcriber, 'worker') and self.transcriber.worker:
+                    if self.transcriber.worker.isRunning():
+                        logger.info("Waiting for transcription worker to finish...")
+                        self.transcriber.worker.wait(1000)  # Wait up to 1 second
+                        
+            # Quit the application
+            QApplication.quit()
+        except Exception as e:
+            logger.error(f"Error during application shutdown: {e}")
+            # Force quit if there was an error
+            QApplication.exit(1)
 
     def update_volume_meter(self, value):
         # Update debug window first
@@ -377,12 +394,33 @@ def initialize_tray(tray, loading_window, app):
         # Initialize transcriber
         settings = Settings()
         model_name = settings.get('model', DEFAULT_WHISPER_MODEL)
+        
+        # Check if model is downloaded
+        model_info, _ = get_model_info()
+        if model_name in model_info and not model_info[model_name]['is_downloaded']:
+            loading_window.set_status(f"Whisper model '{model_name}' is not downloaded. Using default model.")
+            loading_window.set_progress(40)
+            app.processEvents()
+            # Set model to default if current model is not downloaded
+            settings.set('model', DEFAULT_WHISPER_MODEL)
+            model_name = DEFAULT_WHISPER_MODEL
+        
         loading_window.set_status(f"Loading Whisper model: {model_name}")
-        loading_window.set_progress(40)
+        loading_window.set_progress(50)
         app.processEvents()
-        tray.transcriber = WhisperTranscriber()
-        loading_window.set_progress(80)
-        app.processEvents()
+        
+        try:
+            tray.transcriber = WhisperTranscriber()
+            loading_window.set_progress(80)
+            app.processEvents()
+        except Exception as e:
+            logger.error(f"Failed to initialize transcriber: {e}")
+            QMessageBox.critical(None, "Error",
+                f"Failed to load Whisper model: {str(e)}\n\nPlease check Settings to download the model.")
+            loading_window.set_progress(80)
+            app.processEvents()
+            # Create transcriber anyway, it will handle errors during transcription
+            tray.transcriber = WhisperTranscriber()
         
         # Connect signals
         loading_window.set_status("Setting up signal handlers...")

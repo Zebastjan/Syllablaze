@@ -5,6 +5,7 @@ import logging
 import time
 from settings import Settings
 from constants import DEFAULT_WHISPER_MODEL
+from whisper_model_manager import get_model_info
 logger = logging.getLogger(__name__)
 
 class TranscriptionWorker(QThread):
@@ -84,6 +85,14 @@ class WhisperTranscriber(QObject):
             settings = Settings()
             model_name = settings.get('model', DEFAULT_WHISPER_MODEL)
             logger.info(f"Loading Whisper model: {model_name}")
+            
+            # Check if model is downloaded
+            model_info, _ = get_model_info()
+            if model_name in model_info and not model_info[model_name]['is_downloaded']:
+                error_msg = f"Model '{model_name}' is not downloaded. Please download it in Settings."
+                logger.error(error_msg)
+                self.transcription_error.emit(error_msg)
+                raise ValueError(error_msg)
             
             # Redirect whisper's logging to our logger
             import logging as whisper_logging
