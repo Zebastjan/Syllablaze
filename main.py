@@ -335,6 +335,10 @@ def setup_application_metadata():
 
 def main():
     try:
+        # Set up signal handling for CTRL-C
+        import signal
+        signal.signal(signal.SIGINT, signal.SIG_DFL)
+        
         app = QApplication(sys.argv)
         setup_application_metadata()
         
@@ -347,7 +351,7 @@ def main():
         
         # Check if system tray is available
         if not TrayRecorder.isSystemTrayAvailable():
-            QMessageBox.critical(None, "Error", 
+            QMessageBox.critical(None, "Error",
                 "System tray is not available. Please ensure your desktop environment supports system tray icons.")
             return 1
         
@@ -373,7 +377,7 @@ def main():
         
     except Exception as e:
         logger.exception("Failed to start application")
-        QMessageBox.critical(None, "Error", 
+        QMessageBox.critical(None, "Error",
             f"Failed to start application: {str(e)}")
         return 1
 
@@ -396,12 +400,21 @@ def initialize_tray(tray, loading_window, app):
         model_name = settings.get('model', DEFAULT_WHISPER_MODEL)
         
         # Check if model is downloaded
-        model_info, _ = get_model_info()
-        if model_name in model_info and not model_info[model_name]['is_downloaded']:
-            loading_window.set_status(f"Whisper model '{model_name}' is not downloaded. Using default model.")
+        try:
+            model_info, _ = get_model_info()
+            if model_name in model_info and not model_info[model_name]['is_downloaded']:
+                loading_window.set_status(f"Whisper model '{model_name}' is not downloaded. Using default model.")
+                loading_window.set_progress(40)
+                app.processEvents()
+                # Set model to default if current model is not downloaded
+                settings.set('model', DEFAULT_WHISPER_MODEL)
+                model_name = DEFAULT_WHISPER_MODEL
+        except Exception as model_error:
+            logger.error(f"Error checking model info: {model_error}")
+            loading_window.set_status("Error checking model info. Using default model.")
             loading_window.set_progress(40)
             app.processEvents()
-            # Set model to default if current model is not downloaded
+            # Set model to default if there was an error
             settings.set('model', DEFAULT_WHISPER_MODEL)
             model_name = DEFAULT_WHISPER_MODEL
         
@@ -448,6 +461,8 @@ def initialize_tray(tray, loading_window, app):
         logger.error(f"Initialization failed: {e}")
         QMessageBox.critical(None, "Error", f"Failed to initialize application: {str(e)}")
         loading_window.close()
+        # Ensure the application can be closed with CTRL+C
+        app.quit()
 
 if __name__ == "__main__":
     sys.exit(main()) 

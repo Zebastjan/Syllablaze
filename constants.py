@@ -11,8 +11,7 @@ ORG_NAME = "KDE"
 # Default whisper model
 DEFAULT_WHISPER_MODEL = "tiny"
 
-# Valid whisper models
-VALID_WHISPER_MODELS = ['tiny', 'base', 'small', 'medium', 'large', 'turbo']
+# No model information needed - using whisper._MODELS directly
 
 # Valid language codes for Whisper
 VALID_LANGUAGES = {

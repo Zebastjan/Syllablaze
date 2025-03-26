@@ -1,8 +1,10 @@
 from PyQt6.QtCore import QSettings
-from constants import APP_NAME, VALID_WHISPER_MODELS, VALID_LANGUAGES, DEFAULT_WHISPER_MODEL
+from constants import APP_NAME, VALID_LANGUAGES, DEFAULT_WHISPER_MODEL
+import whisper
 
 class Settings:
-    VALID_MODELS = VALID_WHISPER_MODELS
+    # Get valid models from whisper._MODELS
+    VALID_MODELS = list(whisper._MODELS.keys()) if hasattr(whisper, '_MODELS') else []
     # List of valid language codes for Whisper
     VALID_LANGUAGES = VALID_LANGUAGES
     

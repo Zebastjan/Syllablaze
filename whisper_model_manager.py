@@ -20,7 +20,7 @@ import time
 import random
 from pathlib import Path
 from settings import Settings
-from constants import VALID_WHISPER_MODELS, DEFAULT_WHISPER_MODEL
+from constants import DEFAULT_WHISPER_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -28,168 +28,63 @@ def get_model_info():
     """Get comprehensive information about all Whisper models"""
     import whisper
     import os
-    import glob
     from pathlib import Path
     
     # Get the directory where Whisper stores its models
     models_dir = os.path.join(Path.home(), ".cache", "whisper")
     
-    # Also check for models in the current directory (for development setups)
-    alt_models_dir = os.path.join(os.getcwd(), "models")
-    
-    # Log all files in the whisper cache directory for debugging
-    if os.path.exists(models_dir):
-        logger.info(f"Files in whisper cache: {os.listdir(models_dir)}")
-    
-    # Model information - these are approximate values
-    model_data = {
-        'tiny': {
-            'display_name': 'Tiny',
-            'size_mb': 150,
-            'speed_qualitative': 'Very Fast',
-            'speed_quantitative': '~32x realtime',
-            'accuracy_qualitative': 'Basic',
-            'accuracy_quantitative': '~75%',
-            'ram_requirement_mb': 1000
-        },
-        'base': {
-            'display_name': 'Base',
-            'size_mb': 300,
-            'speed_qualitative': 'Fast',
-            'speed_quantitative': '~16x realtime',
-            'accuracy_qualitative': 'Good',
-            'accuracy_quantitative': '~80%',
-            'ram_requirement_mb': 1500
-        },
-        'small': {
-            'display_name': 'Small',
-            'size_mb': 500,
-            'speed_qualitative': 'Medium',
-            'speed_quantitative': '~8x realtime',
-            'accuracy_qualitative': 'Very Good',
-            'accuracy_quantitative': '~85%',
-            'ram_requirement_mb': 2500
-        },
-        'medium': {
-            'display_name': 'Medium',
-            'size_mb': 1500,
-            'speed_qualitative': 'Slow',
-            'speed_quantitative': '~4x realtime',
-            'accuracy_qualitative': 'Excellent',
-            'accuracy_quantitative': '~90%',
-            'ram_requirement_mb': 5000
-        },
-        'large': {
-            'display_name': 'Large',
-            'size_mb': 3000,
-            'speed_qualitative': 'Very Slow',
-            'speed_quantitative': '~1x realtime',
-            'accuracy_qualitative': 'Superior',
-            'accuracy_quantitative': '~95%',
-            'ram_requirement_mb': 10000
-        },
-        'turbo': {
-            'display_name': 'Turbo',
-            'size_mb': 140,
-            'speed_qualitative': 'Extremely Fast',
-            'speed_quantitative': '~64x realtime',
-            'accuracy_qualitative': 'Basic',
-            'accuracy_quantitative': '~70%',
-            'ram_requirement_mb': 1000
-        }
-    }
+    # Get list of available models from Whisper
+    available_models = []
+    if hasattr(whisper, '_MODELS'):
+        available_models = list(whisper._MODELS.keys())
+        logger.info(f"Available models in whisper._MODELS: {available_models}")
+    else:
+        logger.error("whisper._MODELS not found")
+        return {}, models_dir
     
     # Get current active model from settings
     settings = Settings()
     active_model = settings.get('model', DEFAULT_WHISPER_MODEL)
     
+    # Scan the directory for all model files
+    if os.path.exists(models_dir):
+        logger.info(f"Files in whisper cache: {os.listdir(models_dir)}")
+    else:
+        logger.warning(f"Whisper cache directory does not exist: {models_dir}")
+        os.makedirs(models_dir, exist_ok=True)
+    
+    # Create model info dictionary
     model_info = {}
-    for model_name in VALID_WHISPER_MODELS:
-        # Check if model files exist
-        is_downloaded = False
+    for model_name in available_models:
+        # Check for exact match only (model_name.pt)
+        model_path = os.path.join(models_dir, f"{model_name}.pt")
+        is_downloaded = os.path.exists(model_path)
         actual_size = 0
-        model_path = ""
         
-        # For each model, we need to check specific patterns
-        if model_name == "tiny":
-            possible_patterns = [f"{model_name}.pt"]  # Only check for tiny.pt
-        elif model_name == "large" or model_name == "turbo":
-            possible_patterns = ["large-v3-turbo.pt"]  # Check for large-v3-turbo.pt for both large and turbo
-        else:
-            # For other models, check standard patterns but they're likely not downloaded
-            possible_patterns = [
-                f"{model_name}.pt",                # Standard pattern
-                f"whisper-{model_name}.pt",        # Alternative pattern
-                f"whisper_{model_name}.pt",        # Alternative pattern
-                f"{model_name}/model.pt",          # Directory pattern
-                f"whisper-{model_name}/model.pt",  # Alternative directory pattern
-            ]
-        
-        # Check in primary models directory
-        for pattern in possible_patterns:
-            path = os.path.join(models_dir, pattern)
-            logger.debug(f"Checking for model {model_name} with pattern {pattern} at path {path}")
-            if os.path.exists(path):
-                is_downloaded = True
-                model_path = path
-                actual_size = os.path.getsize(path) / (1024 * 1024)  # Convert to MB
-                logger.info(f"Found model {model_name} at {path}")
-                break
-        
-        # If not found, check in alternative directory
-        if not is_downloaded and os.path.exists(alt_models_dir):
-            for pattern in possible_patterns:
-                path = os.path.join(alt_models_dir, pattern)
-                logger.debug(f"Checking alt dir for model {model_name} with pattern {pattern} at path {path}")
-                if os.path.exists(path):
-                    is_downloaded = True
-                    model_path = path
-                    actual_size = os.path.getsize(path) / (1024 * 1024)  # Convert to MB
-                    logger.info(f"Found model {model_name} in alt dir at {path}")
-                    break
-        
-        # Get model data
-        data = model_data.get(model_name, {})
-        
-        # If still not found, try to check if the model is already loaded in memory
-        # This is a heuristic and may not be 100% accurate
-        if not is_downloaded:
-            try:
-                # Try to get the model without downloading
-                import whisper
-                # Check if the model is in the whisper._MODELS cache
-                if hasattr(whisper, '_MODELS') and model_name in whisper._MODELS:
-                    is_downloaded = True
-                    model_path = f"<in-memory:{model_name}>"
-                    actual_size = data.get('size_mb', 0)
-            except Exception as e:
-                logger.debug(f"Error checking if model is loaded: {e}")
+        # If model file exists, get its size
+        if is_downloaded:
+            actual_size = round(os.path.getsize(model_path) / (1024 * 1024))  # Convert to MB and round to integer
+            logger.info(f"Found model {model_name} at {model_path}")
         
         # Create model info object
         model_info[model_name] = {
             'name': model_name,
-            'display_name': data.get('display_name', model_name.capitalize()),
+            'display_name': model_name.capitalize(),
             'is_downloaded': is_downloaded,
-            'size_mb': actual_size if is_downloaded else data.get('size_mb', 0),
-            'path': model_path if model_path else os.path.join(models_dir, f"{model_name}.pt"),
-            'speed_qualitative': data.get('speed_qualitative', 'Unknown'),
-            'speed_quantitative': data.get('speed_quantitative', 'Unknown'),
-            'accuracy_qualitative': data.get('accuracy_qualitative', 'Unknown'),
-            'accuracy_quantitative': data.get('accuracy_quantitative', 'Unknown'),
-            'ram_requirement_mb': data.get('ram_requirement_mb', 0),
+            'size_mb': actual_size,
+            'path': model_path,
             'is_active': model_name == active_model
         }
     
     return model_info, models_dir
 
-def confirm_download(model_name, size_mb, ram_mb):
+def confirm_download(model_name, size_mb):
     """Show confirmation dialog before downloading a model"""
     msg = QMessageBox()
     msg.setIcon(QMessageBox.Icon.Question)
     msg.setText(f"Download Whisper model '{model_name}'?")
     msg.setInformativeText(
-        f"This will download approximately {size_mb:.1f} MB of data.\n"
-        f"This model requires approximately {ram_mb} MB of RAM when in use."
+        f"This will download approximately {size_mb:.1f} MB of data."
     )
     msg.setWindowTitle("Confirm Download")
     msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
@@ -367,10 +262,9 @@ class WhisperModelTable(QWidget):
         
         # Create table
         self.table = QTableWidget()
-        self.table.setColumnCount(6)
+        self.table.setColumnCount(3)
         self.table.setHorizontalHeaderLabels([
-            "Model", "Use Model", "Size (MB)",
-            "Speed", "Accuracy", "RAM (MB)"
+            "Model", "Use Model", "Size (MB)"
         ])
         
         # Set column resize mode to stretch to fill available space
@@ -379,7 +273,7 @@ class WhisperModelTable(QWidget):
         # Make specific columns resize to content
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)  # Model name
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)  # Use Model
-        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)  # Status
+        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)  # Size
         
         self.table.horizontalHeader().setSectionsClickable(True)
         self.table.horizontalHeader().sectionClicked.connect(self.on_table_header_clicked)
@@ -407,8 +301,7 @@ class WhisperModelTable(QWidget):
         """Refresh the model list and update the table"""
         self.model_info, self.models_dir = get_model_info()
         
-        # Fix the model_info to only show actually downloaded models
-        # This is a workaround for the in-memory detection issue
+        # Log which models are actually downloaded
         actually_downloaded = []
         for name, info in self.model_info.items():
             if info['is_downloaded'] and os.path.exists(info['path']):
@@ -416,11 +309,6 @@ class WhisperModelTable(QWidget):
         
         # Log detected models for debugging
         logger.info(f"Actually downloaded models: {actually_downloaded}")
-        
-        # Update the model_info to reflect reality
-        for name, info in self.model_info.items():
-            if name not in actually_downloaded and name not in ['tiny', 'large', 'turbo']:
-                info['is_downloaded'] = False
         
         self.update_table()
         self.storage_path_label.setText(f"Models stored at: {self.models_dir}")
@@ -466,22 +354,9 @@ class WhisperModelTable(QWidget):
             self.table.setCellWidget(row, 1, use_cell)
             
             # Size
-            size_item = QTableWidgetItem(f"{info['size_mb']:.1f}")
+            size_item = QTableWidgetItem(f"{int(info['size_mb'])}")
             size_item.setData(Qt.ItemDataRole.DisplayRole, info['size_mb'])  # For sorting
             self.table.setItem(row, 2, size_item)
-            
-            # Speed
-            speed_item = QTableWidgetItem(f"{info['speed_qualitative']}\n{info['speed_quantitative']}")
-            self.table.setItem(row, 3, speed_item)
-            
-            # Accuracy
-            accuracy_item = QTableWidgetItem(f"{info['accuracy_qualitative']}\n{info['accuracy_quantitative']}")
-            self.table.setItem(row, 4, accuracy_item)
-            
-            # RAM
-            ram_item = QTableWidgetItem(f"{info['ram_requirement_mb']}")
-            ram_item.setData(Qt.ItemDataRole.DisplayRole, info['ram_requirement_mb'])  # For sorting
-            self.table.setItem(row, 5, ram_item)
     
     def on_use_model_clicked(self, model_name):
         """Set the selected model as active"""
@@ -500,7 +375,7 @@ class WhisperModelTable(QWidget):
         info = self.model_info[model_name]
         
         # Confirm download
-        if not confirm_download(model_name, info['size_mb'], info['ram_requirement_mb']):
+        if not confirm_download(model_name, info['size_mb']):
             return
             
         # Create and show download dialog
