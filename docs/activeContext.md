@@ -17,6 +17,9 @@ The current focus of the Syllablaze project is to optimize the application for U
    - System dependency checks
    - Improved error handling for ALSA
    - Installation verification
+   - Updated to use official Whisper package from PyPI instead of GitHub
+   - Fixed pkg_resources deprecation warning
+   - Changed to use pipx for installation to avoid externally-managed-environment errors
 3. **Documentation**: Created comprehensive memory bank files in the docs/ directory
 4. **Ubuntu Compatibility**: Added specific handling for Ubuntu KDE environments
 

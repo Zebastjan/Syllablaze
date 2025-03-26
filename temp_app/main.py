@@ -1,11 +1,3 @@
-# Set environment variables to suppress Jack errors before any imports
-import os
-# Tell Jack not to start if not available
-os.environ['JACK_NO_AUDIO_RESERVATION'] = '1'
-os.environ['JACK_NO_START_SERVER'] = '1'
-# Explicitly ignore Jack - we'll use ALSA or PulseAudio instead
-os.environ['AUDIODEV'] = 'null'
-
 import sys
 from PyQt6.QtWidgets import (QApplication, QMessageBox, QSystemTrayIcon, QMenu)
 from PyQt6.QtCore import Qt, QTimer, QCoreApplication
@@ -20,6 +12,7 @@ from loading_window import LoadingWindow
 from PyQt6.QtCore import pyqtSignal
 import warnings
 import ctypes
+import os
 from shortcuts import GlobalShortcuts
 from settings import Settings
 # from mic_debug import MicDebugWindow
@@ -28,11 +21,23 @@ from settings import Settings
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Log that Jack errors can be safely ignored
-logger.info("Note: Jack server errors can be safely ignored - using ALSA/PulseAudio instead")
+# Suppress ALSA error messages
+try:
+    # Load ALSA error handler
+    ERROR_HANDLER_FUNC = ctypes.CFUNCTYPE(None, ctypes.c_char_p, ctypes.c_int,
+                                        ctypes.c_char_p, ctypes.c_int,
+                                        ctypes.c_char_p)
 
-# Audio error handling is now done in recorder.py
-# This comment is kept for documentation purposes
+    def py_error_handler(filename, line, function, err, fmt):
+        pass
+
+    c_error_handler = ERROR_HANDLER_FUNC(py_error_handler)
+
+    # Set error handler
+    asound = ctypes.cdll.LoadLibrary('libasound.so.2')
+    asound.snd_lib_error_set_handler(c_error_handler)
+except:
+    warnings.warn("Failed to suppress ALSA warnings", RuntimeWarning)
 
 def check_dependencies():
     required_packages = ['whisper', 'pyaudio', 'keyboard']
@@ -75,7 +80,7 @@ class TrayRecorder(QSystemTrayIcon):
         # self.debug_window = MicDebugWindow()
         
         # Set tooltip
-        self.setToolTip("Syllablaze")
+        self.setToolTip("Telly Spelly")
         
         # Enable activation by left click
         self.activated.connect(self.on_activate)
@@ -88,11 +93,11 @@ class TrayRecorder(QSystemTrayIcon):
     def initialize(self):
         """Initialize the tray recorder after showing loading window"""
         # Set application icon
-        self.app_icon = QIcon.fromTheme("syllablaze")
+        self.app_icon = QIcon.fromTheme("telly-spelly")
         if self.app_icon.isNull():
             # Fallback to theme icons if custom icon not found
             self.app_icon = QIcon.fromTheme("media-record")
-            logger.warning("Could not load syllablaze icon, using system theme icon")
+            logger.warning("Could not load telly-spelly icon, using system theme icon")
             
         # Set the icon for both app and tray
         QApplication.instance().setWindowIcon(self.app_icon)
@@ -266,10 +271,6 @@ class TrayRecorder(QSystemTrayIcon):
     def update_processing_status(self, status):
         if self.progress_window:
             self.progress_window.set_status(status)
-            
-    def update_processing_progress(self, percent):
-        if self.progress_window:
-            self.progress_window.update_progress(percent)
     
     def handle_transcription_finished(self, text):
         if text:
@@ -310,7 +311,7 @@ class TrayRecorder(QSystemTrayIcon):
             self.debug_action.setText("Hide Debug Window")
 
 def setup_application_metadata():
-    QCoreApplication.setApplicationName("Syllablaze")
+    QCoreApplication.setApplicationName("Telly Spelly")
     QCoreApplication.setApplicationVersion("1.0")
     QCoreApplication.setOrganizationName("KDE")
     QCoreApplication.setOrganizationDomain("kde.org")
@@ -363,40 +364,32 @@ def initialize_tray(tray, loading_window, app):
     try:
         # Initialize basic tray setup
         loading_window.set_status("Initializing application...")
-        loading_window.set_progress(10)
         app.processEvents()
         tray.initialize()
         
         # Initialize recorder
         loading_window.set_status("Initializing audio system...")
-        loading_window.set_progress(25)
         app.processEvents()
         tray.recorder = AudioRecorder()
         
         # Initialize transcriber
-        loading_window.set_status("Loading Whisper model: turbo")
-        loading_window.set_progress(40)
+        loading_window.set_status("Loading Whisper model...")
         app.processEvents()
         tray.transcriber = WhisperTranscriber()
-        loading_window.set_progress(80)
-        app.processEvents()
         
         # Connect signals
         loading_window.set_status("Setting up signal handlers...")
-        loading_window.set_progress(90)
         app.processEvents()
         tray.recorder.volume_updated.connect(tray.update_volume_meter)
         tray.recorder.recording_finished.connect(tray.handle_recording_finished)
         tray.recorder.recording_error.connect(tray.handle_recording_error)
         
         tray.transcriber.transcription_progress.connect(tray.update_processing_status)
-        tray.transcriber.transcription_progress_percent.connect(tray.update_processing_progress)
         tray.transcriber.transcription_finished.connect(tray.handle_transcription_finished)
         tray.transcriber.transcription_error.connect(tray.handle_transcription_error)
         
         # Make tray visible
         loading_window.set_status("Starting application...")
-        loading_window.set_progress(100)
         app.processEvents()
         tray.setVisible(True)
         

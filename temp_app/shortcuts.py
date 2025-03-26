@@ -1,4 +1,4 @@
-from PyQt6.QtCore import QObject, pyqtSignal, Qt
+from PyQt6.QtCore import QObject, pyqtSignal
 from PyQt6.QtGui import QKeySequence, QShortcut
 from PyQt6.QtWidgets import QApplication
 import logging
@@ -59,9 +59,4 @@ class GlobalShortcuts(QObject):
         self.stop_recording_triggered.emit()
         
     def __del__(self):
-        try:
-            if hasattr(self, 'start_shortcut') and self.start_shortcut is not None:
-                self.remove_shortcuts()
-        except RuntimeError:
-            # Handle case where Qt objects have already been deleted
-            logger.debug("Qt objects already deleted during cleanup")
+        self.remove_shortcuts() 

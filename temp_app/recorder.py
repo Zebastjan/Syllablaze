@@ -1,50 +1,12 @@
-# Set environment variables to suppress Jack errors
-import os
-import sys
-os.environ['JACK_NO_AUDIO_RESERVATION'] = '1'
-os.environ['JACK_NO_START_SERVER'] = '1'
-
-# Completely disable Jack
-os.environ['DISABLE_JACK'] = '1'
-
-# Redirect stderr permanently to filter out Jack errors
-import io
-import contextlib
-import threading
-
-# Create a custom stderr filter
-class JackErrorFilter:
-    def __init__(self, real_stderr):
-        self.real_stderr = real_stderr
-        self.buffer = ""
-        
-    def write(self, text):
-        # Filter out Jack-related error messages
-        if any(msg in text for msg in [
-            "jack server",
-            "Cannot connect to server",
-            "JackShmReadWritePtr"
-        ]):
-            return
-        self.real_stderr.write(text)
-        
-    def flush(self):
-        self.real_stderr.flush()
-
-# Replace stderr with our filtered version
-sys.stderr = JackErrorFilter(sys.stderr)
-
-# Import other required modules
 import pyaudio
 import wave
 from PyQt6.QtCore import QObject, pyqtSignal
 import tempfile
+import os
 import logging
 import numpy as np
 from settings import Settings
 from scipy import signal
-import warnings
-import ctypes
 
 logger = logging.getLogger(__name__)
 
@@ -55,46 +17,7 @@ class AudioRecorder(QObject):
     
     def __init__(self):
         super().__init__()
-        
-        # Create a custom error handler for audio system errors
-        ERROR_HANDLER_FUNC = ctypes.CFUNCTYPE(None, ctypes.c_char_p, ctypes.c_int,
-                                            ctypes.c_char_p, ctypes.c_int,
-                                            ctypes.c_char_p)
-        
-        def py_error_handler(filename, line, function, err, fmt):
-            # Completely ignore all audio system errors
-            pass
-        
-        c_error_handler = ERROR_HANDLER_FUNC(py_error_handler)
-        
-        # Redirect stderr to capture Jack errors
-        original_stderr = sys.stderr
-        sys.stderr = io.StringIO()
-        
-        try:
-            # Try to load and configure ALSA error handler
-            try:
-                asound = ctypes.cdll.LoadLibrary('libasound.so.2')
-                asound.snd_lib_error_set_handler(c_error_handler)
-                logger.info("ALSA error handler configured")
-            except:
-                logger.info("ALSA error handler not available - continuing anyway")
-            
-            # Initialize PyAudio with all warnings suppressed
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                self.audio = pyaudio.PyAudio()
-                
-            logger.info("Audio system initialized successfully")
-            
-        finally:
-            # Restore stderr and check if Jack errors were reported
-            jack_errors = sys.stderr.getvalue()
-            sys.stderr = original_stderr
-            
-            if "jack server is not running" in jack_errors:
-                logger.info("Jack server not available - using alternative audio backend")
-        
+        self.audio = pyaudio.PyAudio()
         self.stream = None
         self.frames = []
         self.is_recording = False

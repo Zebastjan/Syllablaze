@@ -5,7 +5,7 @@ from PyQt6.QtGui import QIcon
 class LoadingWindow(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Loading Syllablaze")
+        self.setWindowTitle("Loading Telly Spelly")
         self.setFixedSize(400, 150)
         self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.CustomizeWindowHint)
         
@@ -16,7 +16,7 @@ class LoadingWindow(QDialog):
         icon_label = QLabel()
         icon_label.setPixmap(QIcon.fromTheme('audio-input-microphone').pixmap(64, 64))
         icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title_label = QLabel("Loading Syllablaze")
+        title_label = QLabel("Loading Telly Spelly")
         title_label.setStyleSheet("font-size: 16pt; font-weight: bold; color: #1d99f3;")
         title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
@@ -32,18 +32,8 @@ class LoadingWindow(QDialog):
         
         # Progress bar
         self.progress = QProgressBar()
-        self.progress.setRange(0, 100)  # Set range from 0 to 100 for percentage
+        self.progress.setRange(0, 0)  # Infinite progress
         layout.addWidget(self.progress)
         
     def set_status(self, message):
-        self.status_label.setText(message)
-        
-    def set_progress(self, value):
-        """Update progress bar with a percentage value (0-100)"""
-        if value < 0:
-            value = 0
-        elif value > 100:
-            value = 100
-        self.progress.setValue(value)
-        self.progress.setFormat(f"{value}%")
-        self.progress.setTextVisible(True)
+        self.status_label.setText(message) 

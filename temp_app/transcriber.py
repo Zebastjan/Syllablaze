@@ -9,7 +9,6 @@ logger = logging.getLogger(__name__)
 class TranscriptionWorker(QThread):
     finished = pyqtSignal(str)
     progress = pyqtSignal(str)
-    progress_percent = pyqtSignal(int)
     error = pyqtSignal(str)
     
     def __init__(self, model, audio_file):
@@ -23,19 +22,9 @@ class TranscriptionWorker(QThread):
                 raise FileNotFoundError(f"Audio file not found: {self.audio_file}")
                 
             self.progress.emit("Loading audio file...")
-            self.progress_percent.emit(10)
             
             # Load and transcribe
             self.progress.emit("Processing audio with Whisper...")
-            self.progress_percent.emit(30)
-            
-            # Simulate progress updates during transcription
-            def progress_callback(progress):
-                # Convert progress to percentage (30-90%)
-                percent = int(30 + progress * 60)
-                self.progress_percent.emit(percent)
-                self.progress.emit(f"Transcribing... {percent}%")
-            
             result = self.model.transcribe(
                 self.audio_file,
                 fp16=False,
@@ -47,7 +36,6 @@ class TranscriptionWorker(QThread):
                 raise ValueError("No text was transcribed")
                 
             self.progress.emit("Transcription completed!")
-            self.progress_percent.emit(100)
             logger.info(f"Transcribed text: {text[:100]}...")
             self.finished.emit(text)
             
@@ -65,7 +53,6 @@ class TranscriptionWorker(QThread):
 
 class WhisperTranscriber(QObject):
     transcription_progress = pyqtSignal(str)
-    transcription_progress_percent = pyqtSignal(int)
     transcription_finished = pyqtSignal(str)
     transcription_error = pyqtSignal(str)
     
@@ -143,12 +130,10 @@ class WhisperTranscriber(QObject):
             
         # Emit initial progress status before starting worker
         self.transcription_progress.emit("Starting transcription...")
-        self.transcription_progress_percent.emit(5)
             
         self.worker = TranscriptionWorker(self.model, audio_file)
         self.worker.finished.connect(self.transcription_finished)
         self.worker.progress.connect(self.transcription_progress)
-        self.worker.progress_percent.connect(self.transcription_progress_percent)
         self.worker.error.connect(self.transcription_error)
         self.worker.finished.connect(lambda: self._cleanup_timer.start(1000))
-        self.worker.start()
+        self.worker.start() 

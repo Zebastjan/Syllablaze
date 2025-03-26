@@ -23,7 +23,7 @@
 ### Required Tools
 
 1. **Python 3.8+**: Core runtime environment
-2. **pip**: Python package manager
+2. **pipx**: Python application installer
 3. **Git**: Version control
 4. **ffmpeg**: Audio processing dependency
 5. **PortAudio**: Audio recording library
@@ -34,13 +34,13 @@
 
 ```bash
 sudo apt update
-sudo apt install -y python3-pip python3-dev portaudio19-dev ffmpeg
+sudo apt install -y python3-pipx python3-dev portaudio19-dev ffmpeg
 ```
 
 #### Fedora
 
 ```bash
-sudo dnf install -y python3-libs python3-devel python3 portaudio-devel ffmpeg
+sudo dnf install -y python3-pipx python3-devel python3 portaudio-devel ffmpeg
 ```
 
 ### Python Dependencies
@@ -50,7 +50,7 @@ PyQt6
 numpy
 pyaudio
 scipy
-whisper (from GitHub)
+openai-whisper (from PyPI)
 ```
 
 ## Technical Constraints
@@ -93,10 +93,10 @@ whisper (from GitHub)
    - System requirements: PortAudio development files
 
 3. **Whisper**: Transcription
-   - Purpose: Converts speech to text
-   - Criticality: High (core functionality)
-   - Installation: Directly from GitHub for latest version
-   - System requirements: ffmpeg
+    - Purpose: Converts speech to text
+    - Criticality: High (core functionality)
+    - Installation: From official PyPI repository as 'openai-whisper'
+    - System requirements: ffmpeg
 
 4. **NumPy/SciPy**: Audio processing
    - Purpose: Process audio data for optimal transcription
