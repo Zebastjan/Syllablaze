@@ -65,6 +65,13 @@ Right-click tray icon → Settings to configure:
 ```bash
 python3 uninstall.py
 ```
+or
+ 
+```bash
+pipx uninstall syllablaze
+```
+
+
 
 ## Requirements
 
