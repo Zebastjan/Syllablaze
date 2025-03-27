@@ -256,8 +256,8 @@ def install_desktop_integration():
         os.makedirs(app_dir, exist_ok=True)
         os.makedirs(icon_dir, exist_ok=True)
         
-        # Copy desktop file
-        desktop_src = os.path.join(os.path.dirname(os.path.abspath(__file__)), "org.kde.syllablaze.desktop")
+        # Copy desktop file from resources directory
+        desktop_src = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resources", "org.kde.syllablaze.desktop")
         desktop_dst = os.path.join(app_dir, "org.kde.syllablaze.desktop")
         shutil.copy2(desktop_src, desktop_dst)
         
@@ -273,8 +273,8 @@ def install_desktop_integration():
         icon_app_dst = os.path.join(app_dir, "syllablaze.png")
         shutil.copy2(icon_src, icon_app_dst)
         
-        # Make run script executable
-        run_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "run-syllablaze.sh")
+        # Make run script executable (now in blaze/ directory)
+        run_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "blaze", "run-syllablaze.sh")
         os.chmod(run_script, 0o755)  # rwxr-xr-x
         
         # Update desktop database

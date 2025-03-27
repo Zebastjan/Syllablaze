@@ -17,11 +17,9 @@ Originally created by Guilherme da Silveira as "Telly Spelly".
 
 - `blaze/` - Core application code
 - `docs/` - Documentation files
-- `install.py` - Installation script
+- `install.py` - Installation script 
 - `uninstall.py` - Uninstallation script
-- `setup.py` - Package setup for installation
-- `run-syllablaze.sh` - Script to run the application
-- `org.kde.syllablaze.desktop` - Desktop entry file
+
 
 ## Installation
 
@@ -66,7 +64,7 @@ Right-click tray icon → Settings to configure:
 python3 uninstall.py
 ```
 or
- 
+
 ```bash
 pipx uninstall syllablaze
 ```
