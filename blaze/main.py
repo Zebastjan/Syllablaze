@@ -22,7 +22,7 @@ import warnings
 import ctypes
 from blaze.shortcuts import GlobalShortcuts
 from blaze.settings import Settings
-from blaze.constants import APP_NAME, APP_VERSION, DEFAULT_WHISPER_MODEL, ORG_NAME
+from blaze.constants import APP_NAME, APP_VERSION, DEFAULT_WHISPER_MODEL, ORG_NAME, VALID_LANGUAGES
 from blaze.whisper_model_manager import get_model_info
 # from blaze.mic_debug import MicDebugWindow
 
@@ -59,11 +59,27 @@ def check_dependencies():
         
     return True
 
+# Global variable to store the tray recorder instance
+tray_recorder_instance = None
+
+def get_tray_recorder():
+    """Get the global tray recorder instance"""
+    return tray_recorder_instance
+
+def update_tray_tooltip():
+    """Update the tray tooltip"""
+    if tray_recorder_instance:
+        tray_recorder_instance.update_tooltip()
+
 class TrayRecorder(QSystemTrayIcon):
     initialization_complete = pyqtSignal()
     
     def __init__(self):
         super().__init__()
+        
+        # Store the instance in the global variable
+        global tray_recorder_instance
+        tray_recorder_instance = self
         
         # Initialize basic state
         self.recording = False
@@ -211,10 +227,20 @@ class TrayRecorder(QSystemTrayIcon):
             self.settings_window.activateWindow()
             
     def update_tooltip(self, recognized_text=None):
-        """Update the tooltip with app name, version, and model information"""
+        """Update the tooltip with app name, version, model and language information"""
+        import sys
+        
         settings = Settings()
         model_name = settings.get('model', DEFAULT_WHISPER_MODEL)
-        tooltip = f"{APP_NAME} {APP_VERSION}\nmodel: {model_name}"
+        language_code = settings.get('language', 'auto')
+        
+        # Get language display name from VALID_LANGUAGES if available
+        if language_code in VALID_LANGUAGES:
+            language_display = f"Language: {VALID_LANGUAGES[language_code]}"
+        else:
+            language_display = "Language: auto-detect" if language_code == 'auto' else f"Language: {language_code}"
+        
+        tooltip = f"{APP_NAME} {APP_VERSION}\nMODEL: {model_name}\n{language_display}"
         
         # Add recognized text to tooltip if provided
         if recognized_text:
@@ -223,6 +249,10 @@ class TrayRecorder(QSystemTrayIcon):
             if len(recognized_text) > max_length:
                 recognized_text = recognized_text[:max_length] + "..."
             tooltip += f"\nRecognized: {recognized_text}"
+        
+        # Print tooltip info to console with flush
+        print(f"TOOLTIP UPDATE: MODEL={model_name}, {language_display}", flush=True)
+        sys.stdout.flush()
             
         self.setToolTip(tooltip)
     
@@ -382,11 +412,40 @@ def setup_application_metadata():
     QCoreApplication.setOrganizationName(ORG_NAME)
     QCoreApplication.setOrganizationDomain("kde.org")
 
+def check_already_running():
+    """Check if Syllablaze is already running"""
+    import psutil
+    current_pid = os.getpid()
+    count = 0
+    
+    for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+        try:
+            # Check if this is a Python process
+            if proc.info['name'] == 'python' or proc.info['name'] == 'python3':
+                # Check if it's running syllablaze
+                cmdline = proc.info['cmdline']
+                if cmdline and any('syllablaze' in cmd for cmd in cmdline):
+                    # Don't count the current process
+                    if proc.info['pid'] != current_pid:
+                        count += 1
+                        logger.info(f"Found existing Syllablaze process: PID {proc.info['pid']}")
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            pass
+    
+    return count > 0
+
 def main():
     try:
         # Set up signal handling for CTRL-C
         import signal
         signal.signal(signal.SIGINT, signal.SIG_DFL)
+        
+        # Check if already running
+        if check_already_running():
+            print("Syllablaze is already running. Only one instance is allowed.")
+            QMessageBox.warning(None, "Already Running",
+                "Syllablaze is already running. Only one instance is allowed.")
+            return 1
         
         app = QApplication(sys.argv)
         setup_application_metadata()

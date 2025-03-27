@@ -43,6 +43,10 @@ The current focus of the Syllablaze project is to optimize the application for U
    - Added ability to delete models to free up disk space
    - Added ability to set a model as active for transcription
    - Implemented storage location display with option to open in file explorer
+9. **Development Workflow**: Improved development workflow
+   - Moved dev-update.sh script to the blaze directory
+   - Updated paths in the script to work from the new location
+   - Added documentation about using the script for development
 
 ## Next Steps
 

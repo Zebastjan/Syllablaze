@@ -143,6 +143,10 @@ openai-whisper (from PyPI)
 2. **Debugging**: PyQt debugger or standard Python debugger
 3. **Testing**: Manual testing of recording and transcription
 4. **Version Control**: Git with GitHub for collaboration
+5. **Development Update Script**: `blaze/dev-update.sh` for quickly updating an installed version with development changes
+   - Purpose: Updates an installed Syllablaze with current repository files without reinstalling
+   - Usage: Run `bash ./blaze/dev-update.sh` from the project root directory
+   - Function: Copies all Python files and the run script to the installed location
 
 ## Whisper Model Management
 

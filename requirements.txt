@@ -4,3 +4,4 @@ pyaudio
 scipy
 openai-whisper
 keyboard
+psutil

@@ -253,13 +253,7 @@ class WhisperModelTable(QWidget):
     def setup_ui(self):
         layout = QVBoxLayout(self)
         
-        # Create refresh button
-        refresh_layout = QHBoxLayout()
-        self.refresh_button = QPushButton("Refresh Model List")
-        self.refresh_button.clicked.connect(self.refresh_model_list)
-        refresh_layout.addWidget(self.refresh_button)
-        refresh_layout.addStretch()
-        layout.addLayout(refresh_layout)
+        # No refresh button needed
         
         # Create table
         self.table = QTableWidget()
@@ -369,20 +363,9 @@ class WhisperModelTable(QWidget):
             # Emit signal that model was activated
             self.model_activated.emit(model_name)
             
-            # Force immediate tooltip update in main application
-            app = QApplication.instance()
-            if app:
-                # Find all tray icons and update their tooltips
-                for widget in app.topLevelWidgets():
-                    # Check if this widget is a QSystemTrayIcon
-                    if isinstance(widget, QSystemTrayIcon) and hasattr(widget, 'update_tooltip'):
-                        widget.update_tooltip()
-                    
-                    # Also search through all child widgets recursively
-                    tray_icons = widget.findChildren(QSystemTrayIcon)
-                    for tray_icon in tray_icons:
-                        if hasattr(tray_icon, 'update_tooltip'):
-                            tray_icon.update_tooltip()
+            # Import and use the update_tray_tooltip function
+            from blaze.main import update_tray_tooltip
+            update_tray_tooltip()
             
             # Update the table display
             self.update_table()
@@ -416,8 +399,6 @@ class WhisperModelTable(QWidget):
         dialog.close()
         self.refresh_model_list()
         self.model_downloaded.emit(model_name)
-        QMessageBox.information(self, "Download Complete", 
-                              f"Whisper model '{model_name}' has been downloaded successfully.")
     
     def handle_download_error(self, error, dialog):
         """Handle model download error"""
@@ -447,8 +428,6 @@ class WhisperModelTable(QWidget):
             os.remove(info['path'])
             self.refresh_model_list()
             self.model_deleted.emit(model_name)
-            QMessageBox.information(self, "Model Deleted", 
-                                  f"Whisper model '{model_name}' has been deleted successfully.")
         except Exception as e:
             QMessageBox.critical(self, "Deletion Error", 
                                f"Failed to delete model: {str(e)}")
