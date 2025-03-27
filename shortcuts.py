@@ -20,16 +20,21 @@ class GlobalShortcuts(QObject):
             # Remove any existing shortcuts
             self.remove_shortcuts()
             
-            # Create new shortcuts
-            self.start_shortcut = QShortcut(QKeySequence(start_key), QApplication.instance())
-            self.start_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
-            self.start_shortcut.activated.connect(self._on_start_triggered)
+            # Create new shortcuts if keys are provided
+            if start_key:
+                self.start_shortcut = QShortcut(QKeySequence(start_key), QApplication.instance())
+                self.start_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+                self.start_shortcut.activated.connect(self._on_start_triggered)
             
-            self.stop_shortcut = QShortcut(QKeySequence(stop_key), QApplication.instance())
-            self.stop_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
-            self.stop_shortcut.activated.connect(self._on_stop_triggered)
+            if stop_key:
+                self.stop_shortcut = QShortcut(QKeySequence(stop_key), QApplication.instance())
+                self.stop_shortcut.setContext(Qt.ShortcutContext.ApplicationShortcut)
+                self.stop_shortcut.activated.connect(self._on_stop_triggered)
             
-            logger.info(f"Global shortcuts registered - Start: {start_key}, Stop: {stop_key}")
+            # Format log message to show "not set" for empty shortcuts
+            start_display = start_key if start_key else "not set"
+            stop_display = stop_key if stop_key else "not set"
+            logger.info(f"Global shortcuts registered - Start: {start_display}, Stop: {stop_display}")
             return True
             
         except Exception as e:

@@ -398,7 +398,7 @@ def install_application():
         print(f"Warning: Could not find {desktop_file}")
     
     # Copy icon
-    icon_file = "telly-spelly.png"  # Will be renamed in a future update
+    icon_file = "syllablaze.png"
     if os.path.exists(icon_file):
         # Copy with the new name
         shutil.copy2(icon_file, icon_dir / "syllablaze.png")
@@ -563,7 +563,7 @@ if __name__ == "__main__":
                 print(f"Warning: Could not find {desktop_file}")
             
             # Copy icon
-            icon_file = "telly-spelly.png"  # Will be renamed in a future update
+            icon_file = "syllablaze.png"
             if os.path.exists(icon_file):
                 # Copy with the new name
                 shutil.copy2(icon_file, icon_dir / "syllablaze.png")

@@ -1,11 +1,12 @@
 from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel, QProgressBar
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QIcon
+from constants import APP_NAME, APP_VERSION
 
 class LoadingWindow(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Loading Syllablaze")
+        self.setWindowTitle(f"Loading {APP_NAME}")
         self.setFixedSize(400, 150)
         self.setWindowFlags(Qt.WindowType.Dialog | Qt.WindowType.CustomizeWindowHint)
         
@@ -16,12 +17,16 @@ class LoadingWindow(QDialog):
         icon_label = QLabel()
         icon_label.setPixmap(QIcon.fromTheme('audio-input-microphone').pixmap(64, 64))
         icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title_label = QLabel("Loading Syllablaze")
+        title_label = QLabel(f"Loading {APP_NAME}")
+        version_label = QLabel(f"Version {APP_VERSION}")
+        version_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        version_label.setStyleSheet("font-size: 10pt; color: #666;")
         title_label.setStyleSheet("font-size: 16pt; font-weight: bold; color: #1d99f3;")
         title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         title_layout.addWidget(icon_label)
         title_layout.addWidget(title_label)
+        title_layout.addWidget(version_label)
         layout.addLayout(title_layout)
         
         # Status message

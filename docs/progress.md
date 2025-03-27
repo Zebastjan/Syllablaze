@@ -23,31 +23,14 @@
 
 ## What's Left to Build
 
-1. **Ubuntu KDE Optimization**:
-   - Implement system dependency checks in install.py
-   - Add improved error handling for ALSA libraries
-   - Create installation verification function
-   - Test on Ubuntu KDE environments
+1. **Flatpak Version**: Create a Flatpak package for improved cross-distribution compatibility
+2. **System-wide Installation Option**: Add support for system-wide installation as an alternative to user-level installation
+3. **Advanced Error Handling**: Implement more robust error handling for different system configurations
 
-2. **Rebranding**:
-   - Update all references from "telly-spelly" to "syllablaze"
-   - Rename desktop file and update its contents
-   - Rename icon file
-   - Update uninstall script
-
-3. **Documentation**:
-   - Update README.md with new name and Ubuntu-specific instructions
-   - Complete memory bank files in docs/ directory
-
-4. **Future Enhancements**:
-   - Flatpak packaging research and implementation
-   - Additional language support
-   - Improved error handling and recovery
-   - Performance optimizations for transcription
 
 ## Current Status
 
-The application is functional but requires updates for Ubuntu KDE compatibility and rebranding from "Telly Spelly" to "Syllablaze". The core functionality works well, but there are opportunities for improvement in error handling and system integration.
+The core functionality works well, but there are opportunities for improvement in error handling and system integration.
 
 ### Installation Status
 
@@ -92,5 +75,10 @@ The application is functional but requires updates for Ubuntu KDE compatibility 
    - Solution: Add more guidance on model selection based on hardware
 
 5. **Rebranding**:
-   - References to "telly-spelly" exist throughout the codebase
-   - Solution: Systematic update of all references to "syllablaze"
+   - References to "telly-spelly" have been updated to "syllablaze" throughout the codebase
+   - Icon file has been renamed from telly-spelly.png to syllablaze.png
+   - Desktop file has been updated to use the new name
+6. **Version Management**:
+   - Added centralized version number in constants.py
+   - Added version display in tooltip when hovering on the tray icon
+   - Added version display in splash screen

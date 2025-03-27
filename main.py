@@ -22,7 +22,7 @@ import warnings
 import ctypes
 from shortcuts import GlobalShortcuts
 from settings import Settings
-from constants import APP_NAME, DEFAULT_WHISPER_MODEL, ORG_NAME
+from constants import APP_NAME, APP_VERSION, DEFAULT_WHISPER_MODEL, ORG_NAME
 from whisper_model_manager import get_model_info
 # from mic_debug import MicDebugWindow
 
@@ -77,7 +77,7 @@ class TrayRecorder(QSystemTrayIcon):
         # self.debug_window = MicDebugWindow()
         
         # Set tooltip
-        self.setToolTip(APP_NAME)
+        self.setToolTip(f"{APP_NAME} {APP_VERSION}")
         
         # Enable activation by left click
         self.activated.connect(self.on_activate)
@@ -92,9 +92,14 @@ class TrayRecorder(QSystemTrayIcon):
         # Set application icon
         self.app_icon = QIcon.fromTheme("syllablaze")
         if self.app_icon.isNull():
-            # Fallback to theme icons if custom icon not found
-            self.app_icon = QIcon.fromTheme("media-record")
-            logger.warning("Could not load syllablaze icon, using system theme icon")
+            # Try to load from local path
+            local_icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "syllablaze.png")
+            if os.path.exists(local_icon_path):
+                self.app_icon = QIcon(local_icon_path)
+            else:
+                # Fallback to theme icons if custom icon not found
+                self.app_icon = QIcon.fromTheme("media-record")
+                logger.warning("Could not load syllablaze icon, using system theme icon")
             
         # Set the icon for both app and tray
         QApplication.instance().setWindowIcon(self.app_icon)
@@ -202,10 +207,15 @@ class TrayRecorder(QSystemTrayIcon):
             self.settings_window.raise_()
             self.settings_window.activateWindow()
             
+    def update_tooltip(self):
+        """Update the tooltip with app name, version, and shortcut information"""
+        # Set a simple tooltip for now
+        self.setToolTip(f"{APP_NAME} {APP_VERSION}")
+    
     def update_shortcuts(self, start_key, stop_key):
         """Update global shortcuts"""
         if self.shortcuts.setup_shortcuts(start_key, stop_key):
-            self.showMessage("Shortcuts Updated", 
+            self.showMessage("Shortcuts Updated",
                            f"Start: {start_key}\nStop: {stop_key}",
                            self.normal_icon)
 
@@ -329,7 +339,7 @@ class TrayRecorder(QSystemTrayIcon):
 
 def setup_application_metadata():
     QCoreApplication.setApplicationName(APP_NAME)
-    QCoreApplication.setApplicationVersion("1.0")
+    QCoreApplication.setApplicationVersion(APP_VERSION)
     QCoreApplication.setOrganizationName(ORG_NAME)
     QCoreApplication.setOrganizationDomain("kde.org")
 
@@ -452,6 +462,8 @@ def initialize_tray(tray, loading_window, app):
         loading_window.set_status("Starting application...")
         loading_window.set_progress(100)
         app.processEvents()
+        
+        # Make tray visible
         tray.setVisible(True)
         
         # Signal completion

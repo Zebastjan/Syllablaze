@@ -13,21 +13,34 @@ The current focus of the Syllablaze project is to optimize the application for U
 ## Recent Changes
 
 1. **Rebranding**: Changed the application name from "Telly Spelly" to "Syllablaze"
-2. **Installation Script**: Enhanced the install.py script with:
+   - Updated all references in code
+   - Renamed icon file from telly-spelly.png to syllablaze.png
+   - Updated desktop file
+2. **Version Management**: Added centralized version number in constants.py
+   - Added version display in tooltip when hovering on the tray icon
+   - Added version display in splash screen
+   - Added version display in settings window
+3. **Version Management**: Added centralized version number in constants.py
+   - Added version display in tooltip when hovering on the tray icon
+   - Added version display in splash screen
+3. **Installation Script**: Enhanced the install.py script with:
    - System dependency checks
    - Improved error handling for ALSA
    - Installation verification
    - Updated to use official Whisper package from PyPI instead of GitHub
    - Fixed pkg_resources deprecation warning
    - Changed to use pipx for installation to avoid externally-managed-environment errors
-3. **Documentation**: Created comprehensive memory bank files in the docs/ directory
-4. **Ubuntu Compatibility**: Added specific handling for Ubuntu KDE environments
+4. **Documentation**: Created comprehensive memory bank files in the docs/ directory
+5. **Ubuntu Compatibility**: Added specific handling for Ubuntu KDE environments
 
 ## Next Steps
 
-1. **Update Desktop File**: Rename and update the desktop file from org.kde.telly_spelly.desktop to org.kde.syllablaze.desktop
-2. **Update Icon**: Rename the icon file from telly-spelly.png to syllablaze.png
-3. **Modify Uninstall Script**: Update the uninstall.py script to reflect the new application name
+1. ✅ **Update Desktop File**: Desktop file has been renamed and updated from org.kde.telly_spelly.desktop to org.kde.syllablaze.desktop
+2. ✅ **Update Icon**: Icon file has been renamed from telly-spelly.png to syllablaze.png
+3. ✅ **Modify Uninstall Script**: Uninstall.py script has been updated to reflect the new application name
+4. ✅ **Add Version Number**: Added centralized version number in constants.py and displayed it in the UI
+   - Added version display in tooltip when hovering on the tray icon
+   - Added version display in splash screen
 4. **Test Installation**: Verify the installation process works correctly on Ubuntu KDE
 5. **Update README**: Revise the README.md file with the new name and Ubuntu-specific instructions
 6. **Future Exploration**: Begin research on creating a Flatpak version

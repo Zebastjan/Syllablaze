@@ -119,8 +119,7 @@ class SettingsWindow(QWidget):
         recording_group.setLayout(recording_layout)
         layout.addWidget(recording_group)
         
-        # No longer need the progress group as it's handled in the model table
-        
+       
         # Add shortcuts group
         shortcuts_group = QGroupBox("Keyboard Shortcuts")
         shortcuts_layout = QFormLayout()
@@ -185,12 +184,12 @@ class SettingsWindow(QWidget):
             stop_key = self.stop_shortcut.text()
             
             if not start_key or not stop_key:
-                QMessageBox.warning(self, "Invalid Shortcuts", 
+                QMessageBox.warning(self, "Invalid Shortcuts",
                     "Please set both start and stop shortcuts.")
                 return
             
             if start_key == stop_key:
-                QMessageBox.warning(self, "Invalid Shortcuts", 
+                QMessageBox.warning(self, "Invalid Shortcuts",
                     "Start and stop shortcuts must be different.")
                 return
             
@@ -202,5 +201,5 @@ class SettingsWindow(QWidget):
             
         except Exception as e:
             logger.error(f"Error applying shortcuts: {e}")
-            QMessageBox.critical(self, "Error", 
+            QMessageBox.critical(self, "Error",
                 "Failed to apply shortcuts. Please try different combinations.")
