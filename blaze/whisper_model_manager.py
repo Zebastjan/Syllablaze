@@ -20,8 +20,8 @@ import logging
 import time
 import random
 from pathlib import Path
-from settings import Settings
-from constants import DEFAULT_WHISPER_MODEL
+from blaze.settings import Settings
+from blaze.constants import DEFAULT_WHISPER_MODEL
 
 logger = logging.getLogger(__name__)
 

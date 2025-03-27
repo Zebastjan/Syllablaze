@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QProgressBar,
                              QApplication, QPushButton, QHBoxLayout)
 from PyQt6.QtCore import Qt, pyqtSignal
-from volume_meter import VolumeMeter
+from blaze.volume_meter import VolumeMeter
 
 class ProgressWindow(QWidget):
     stop_clicked = pyqtSignal()  # Signal emitted when stop button is clicked

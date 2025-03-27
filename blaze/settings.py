@@ -1,5 +1,5 @@
 from PyQt6.QtCore import QSettings
-from constants import APP_NAME, VALID_LANGUAGES, DEFAULT_WHISPER_MODEL
+from blaze.constants import APP_NAME, VALID_LANGUAGES, DEFAULT_WHISPER_MODEL
 import whisper
 
 class Settings:

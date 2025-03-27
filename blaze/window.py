@@ -3,11 +3,11 @@ from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                            QProgressBar, QMessageBox, QFrame, QStackedWidget)
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QSize
 from PyQt6.QtGui import QKeySequence, QIcon
-from settings import Settings
-from volume_meter import VolumeMeter
-from mic_test import MicTestDialog
-from recorder import AudioRecorder
-from transcriber import WhisperTranscriber
+from blaze.settings import Settings
+from blaze.volume_meter import VolumeMeter
+# from blaze.mic_test import MicTestDialog  # Removed as debugging file
+from blaze.recorder import AudioRecorder
+from blaze.transcriber import WhisperTranscriber
 import numpy as np
 import logging
 

@@ -20,16 +20,18 @@ The current focus of the Syllablaze project is to optimize the application for U
    - Added version display in tooltip when hovering on the tray icon
    - Added version display in splash screen
    - Added version display in settings window
-3. **Installation Script**: Enhanced the install.py script with:
-   - System dependency checks
-   - Improved error handling for ALSA
-   - Installation verification
-   - Updated to use official Whisper package from PyPI instead of GitHub
-   - Fixed pkg_resources deprecation warning
-   - Changed to use pipx for installation to avoid externally-managed-environment errors
-4. **Documentation**: Created comprehensive memory bank files in the docs/ directory
-5. **Ubuntu Compatibility**: Added specific handling for Ubuntu KDE environments
-6. **Desktop Integration Fix**: Fixed desktop icon launching issue
+3. **Code Reorganization**: Restructured the codebase for better organization
+   - Moved all core application code to the `blaze/` directory
+   - Updated import statements to use the new package structure
+   - Created proper Python package structure with __init__.py files
+4. **Installation Method**: Updated the installation process
+   - Enhanced the setup.sh script to use pipx for installation
+   - Improved system dependency checks
+   - Simplified the installation process
+   - Updated documentation to reflect the new installation method
+5. **Documentation**: Created comprehensive memory bank files in the docs/ directory
+6. **Ubuntu Compatibility**: Added specific handling for Ubuntu KDE environments
+7. **Desktop Integration Fix**: Fixed desktop icon launching issue
    - Updated desktop file to use run-syllablaze.sh script with absolute path
    - Ensured the script is executable and properly configured
    - Updated installation script to create proper desktop integration
@@ -45,38 +47,49 @@ The current focus of the Syllablaze project is to optimize the application for U
 5. ✅ **Fix Desktop Integration**: Fixed issue with desktop icon not launching the application
    - Updated desktop file to use run-syllablaze.sh script with absolute path
    - Ensured the script is executable and properly configured
-6. **Test Installation**: Verify the installation process works correctly on Ubuntu KDE
-7. **Update README**: Revise the README.md file with the new name and Ubuntu-specific instructions
-8. **Future Exploration**: Begin research on creating a Flatpak version
+6. ✅ **Reorganize Code Structure**: Moved all core application code to the blaze/ directory
+   - Created proper Python package structure
+   - Updated import statements to use the new package structure
+7. ✅ **Update Installation Method**: Enhanced the setup.sh script to use pipx for installation
+   - Simplified the installation process
+   - Improved system dependency checks
+8. ✅ **Update README**: Revised the README.md file with the new directory structure and installation method
+9. **Test Installation**: Verify the installation process works correctly on Ubuntu KDE
+10. **Future Exploration**: Begin research on creating a Flatpak version
 
 ## Active Decisions and Considerations
 
 1. **Installation Method**:
-   - Decision: Maintain the user-level installation approach
-   - Rationale: Simplifies installation without requiring root privileges
+   - Decision: Use pipx for installation via the setup.sh script
+   - Rationale: Simplifies installation without requiring root privileges and avoids externally-managed-environment errors
    - Consideration: May explore system-wide installation in the future
 
-2. **Error Handling**:
+2. **Code Organization**:
+   - Decision: Move all core application code to the blaze/ directory
+   - Rationale: Improves code organization and maintainability
+   - Consideration: Requires updating import statements and installation scripts
+
+3. **Error Handling**:
    - Decision: Implement more robust error handling for system libraries
    - Rationale: Ubuntu KDE may have different library paths and configurations
    - Consideration: Need to balance error suppression with useful error messages
 
-3. **Dependency Management**:
+4. **Dependency Management**:
    - Decision: Check for system dependencies before installation
    - Rationale: Prevents failed installations due to missing dependencies
    - Consideration: May need to add more specific checks for different Ubuntu versions
 
-4. **Rebranding Scope**:
+5. **Rebranding Scope**:
    - Decision: Complete rebranding from "Telly Spelly" to "Syllablaze"
    - Rationale: New name better reflects the application's purpose
    - Consideration: Ensure all references are updated consistently
 
-5. **Flatpak Potential**:
+6. **Flatpak Potential**:
    - Decision: Document the potential for a Flatpak version
    - Rationale: Would improve cross-distribution compatibility
    - Consideration: Requires significant changes to the packaging approach
 
-6. **Documentation Strategy**:
+7. **Documentation Strategy**:
    - Decision: Create comprehensive memory bank files
    - Rationale: Ensures project knowledge is preserved and accessible
    - Consideration: Will need regular updates as the project evolves

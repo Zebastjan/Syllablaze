@@ -3,9 +3,9 @@ import whisper
 import os
 import logging
 import time
-from settings import Settings
-from constants import DEFAULT_WHISPER_MODEL
-from whisper_model_manager import get_model_info
+from blaze.settings import Settings
+from blaze.constants import DEFAULT_WHISPER_MODEL
+from blaze.whisper_model_manager import get_model_info
 logger = logging.getLogger(__name__)
 
 class TranscriptionWorker(QThread):

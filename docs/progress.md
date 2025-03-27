@@ -17,9 +17,10 @@
    - Notifications for transcription completion
 
 3. **Installation**:
-   - Basic installation script for user-level installation
+   - Enhanced setup.sh script for user-level installation using pipx
    - Desktop file integration with KDE
    - Icon integration
+   - Improved system dependency checks
 
 ## What's Left to Build
 

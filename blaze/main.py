@@ -11,20 +11,20 @@ from PyQt6.QtWidgets import (QApplication, QMessageBox, QSystemTrayIcon, QMenu)
 from PyQt6.QtCore import Qt, QTimer, QCoreApplication
 from PyQt6.QtGui import QIcon, QAction
 import logging
-from settings_window import SettingsWindow
-from progress_window import ProgressWindow
-from processing_window import ProcessingWindow
-from recorder import AudioRecorder
-from transcriber import WhisperTranscriber
-from loading_window import LoadingWindow
+from blaze.settings_window import SettingsWindow
+from blaze.progress_window import ProgressWindow
+from blaze.processing_window import ProcessingWindow
+from blaze.recorder import AudioRecorder
+from blaze.transcriber import WhisperTranscriber
+from blaze.loading_window import LoadingWindow
 from PyQt6.QtCore import pyqtSignal
 import warnings
 import ctypes
-from shortcuts import GlobalShortcuts
-from settings import Settings
-from constants import APP_NAME, APP_VERSION, DEFAULT_WHISPER_MODEL, ORG_NAME
-from whisper_model_manager import get_model_info
-# from mic_debug import MicDebugWindow
+from blaze.shortcuts import GlobalShortcuts
+from blaze.settings import Settings
+from blaze.constants import APP_NAME, APP_VERSION, DEFAULT_WHISPER_MODEL, ORG_NAME
+from blaze.whisper_model_manager import get_model_info
+# from blaze.mic_debug import MicDebugWindow
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)

@@ -1,15 +1,27 @@
 # Syllablaze v0.2 for KDE Plasma
 
-Real-time audio transcription app using OpenAI's Whisper. Originally created by Guilherme da Silveira as "Telly Spelly".
+Real-time audio transcription app using OpenAI's Whisper.
+
+Originally created by Guilherme da Silveira as "Telly Spelly".
 
 ## Features
 
-- 🎙️ One-click recording from system tray
-- 🔊 Live volume meter
-- ⚡ Global keyboard shortcuts
-- 🎯 Microphone selection
-- 📋 Auto clipboard copy
-- 🎨 Native KDE integration
+- One-click recording from system tray
+- Live volume meter
+- Global keyboard shortcuts
+- Microphone selection
+- Auto clipboard copy
+- Native KDE integration
+
+## Project Structure
+
+- `blaze/` - Core application code
+- `docs/` - Documentation files
+- `install.py` - Installation script
+- `uninstall.py` - Uninstallation script
+- `setup.py` - Package setup for installation
+- `run-syllablaze.sh` - Script to run the application
+- `org.kde.syllablaze.desktop` - Desktop entry file
 
 ## Installation
 
@@ -18,13 +30,15 @@ Real-time audio transcription app using OpenAI's Whisper. Originally created by 
 #### Ubuntu/Debian
 ```bash
 sudo apt update
-sudo apt install -y python3-pip python3-dev portaudio19-dev ffmpeg
+sudo apt install -y python3-pip python3-dev portaudio19-dev ffmpeg python3-pipx
 ```
 
 #### Fedora
 ```bash
-sudo dnf install -y python3-libs python3-devel python3 portaudio-devel ffmpeg
+sudo dnf install -y python3-libs python3-devel python3 portaudio-devel ffmpeg pipx
 ```
+
+The setup script will automatically install these dependencies if they are missing.
 
 ### Install
 ```bash
@@ -56,8 +70,6 @@ python3 uninstall.py
 
 - Python 3.8+
 - KDE Plasma
-- PortAudio
-- CUDA GPU (optional)
 
 ## Memory Bank Files
 

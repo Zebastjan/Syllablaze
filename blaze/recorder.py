@@ -41,7 +41,7 @@ from PyQt6.QtCore import QObject, pyqtSignal
 import tempfile
 import logging
 import numpy as np
-from settings import Settings
+from blaze.settings import Settings
 from scipy import signal
 import warnings
 import ctypes

@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel, QProgressBar
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QIcon
-from constants import APP_NAME, APP_VERSION
+from blaze.constants import APP_NAME, APP_VERSION
 
 class LoadingWindow(QDialog):
     def __init__(self, parent=None):

@@ -5,9 +5,9 @@ from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QObject
 import logging
 import keyboard
 from PyQt6.QtGui import QKeySequence
-from settings import Settings
-from constants import APP_NAME, DEFAULT_WHISPER_MODEL
-from whisper_model_manager import WhisperModelTable
+from blaze.settings import Settings
+from blaze.constants import APP_NAME, DEFAULT_WHISPER_MODEL
+from blaze.whisper_model_manager import WhisperModelTable
 
 logger = logging.getLogger(__name__)
 
