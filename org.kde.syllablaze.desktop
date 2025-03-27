@@ -1,0 +1,15 @@
+[Desktop Entry]
+Name=Syllablaze
+GenericName=Speech to Text
+Comment=Record audio and transcribe it using OpenAI's Whisper
+Exec=syllablaze
+Icon=syllablaze
+Terminal=false
+Type=Application
+Categories=Qt;KDE;Utility;AudioVideo;Audio;
+Keywords=speech;transcription;audio;recording;whisper;
+StartupNotify=true
+X-DBUS-ServiceName=org.kde.syllablaze
+X-DBUS-StartupType=Unique
+X-KDE-StartupNotify=true
+X-KDE-SubstituteUID=false

@@ -47,7 +47,7 @@ def print_stage(stage_num, total_stages, stage_name):
 def install_with_pipx(skip_whisper=False):
     """Install the application using pipx"""
     # Define total number of installation stages
-    total_stages = 5  # Dependencies check, setup creation, pipx install, verification, completion
+    total_stages = 6  # Dependencies check, setup creation, pipx install, verification, desktop integration, completion
     
     print_stage(1, total_stages, "Checking dependencies and preparing installation")
     try:
@@ -151,6 +151,27 @@ setup(
             if "Successfully installed" in line:
                 packages_installed = line.replace("Successfully installed", "").strip()
                 print(f"    Successfully installed: {packages_installed}")
+                print("    Please wait... ", end="", flush=True)
+                
+                # Start a simple spinner animation
+                import threading
+                import time
+                import itertools
+                
+                # Define the spinner animation
+                def spin():
+                    spinner = itertools.cycle(['-', '/', '|', '\\'])
+                    while not process.poll():
+                        sys.stdout.write(next(spinner))
+                        sys.stdout.flush()
+                        time.sleep(0.1)
+                        sys.stdout.write('\b')
+                        sys.stdout.flush()
+                
+                # Start the spinner in a separate thread
+                spinner_thread = threading.Thread(target=spin)
+                spinner_thread.daemon = True
+                spinner_thread.start()
                 
             # Show package installation completion
             if "installed package" in line and "syllablaze" in line:
@@ -224,6 +245,62 @@ def suppress_alsa_errors():
         warnings.warn("Failed to suppress ALSA warnings", RuntimeWarning)
         return False
 
+def install_desktop_integration():
+    """Install desktop integration files for KDE"""
+    try:
+        # Create necessary directories
+        app_dir = os.path.expanduser("~/.local/share/applications")
+        icon_dir = os.path.expanduser("~/.local/share/icons/hicolor/256x256/apps")
+        
+        # Create directories if they don't exist
+        os.makedirs(app_dir, exist_ok=True)
+        os.makedirs(icon_dir, exist_ok=True)
+        
+        # Copy desktop file
+        desktop_src = os.path.join(os.path.dirname(os.path.abspath(__file__)), "org.kde.syllablaze.desktop")
+        desktop_dst = os.path.join(app_dir, "org.kde.syllablaze.desktop")
+        shutil.copy2(desktop_src, desktop_dst)
+        
+        # Set proper permissions for desktop file
+        os.chmod(desktop_dst, 0o644)  # rw-r--r--
+        
+        # Copy icon from resources directory
+        icon_src = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resources", "syllablaze.png")
+        icon_dst = os.path.join(icon_dir, "syllablaze.png")
+        shutil.copy2(icon_src, icon_dst)
+        
+        # Also copy icon to applications directory for better compatibility
+        icon_app_dst = os.path.join(app_dir, "syllablaze.png")
+        shutil.copy2(icon_src, icon_app_dst)
+        
+        # Make run script executable
+        run_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "run-syllablaze.sh")
+        os.chmod(run_script, 0o755)  # rwxr-xr-x
+        
+        # Update desktop database
+        try:
+            subprocess.run(["update-desktop-database", app_dir], check=False)
+        except:
+            pass  # Not critical if this fails
+            
+        # Force KDE to refresh its menu cache
+        try:
+            subprocess.run(["kbuildsycoca5"], check=False)
+        except:
+            try:
+                subprocess.run(["kbuildsycoca6"], check=False)  # For newer KDE versions
+            except:
+                pass  # Not critical if this fails
+            
+        print("  [SUCCESS] Desktop integration files installed successfully")
+        print(f"    Desktop file: {desktop_dst}")
+        print(f"    Icon: {icon_dst}")
+        print("    KDE menu cache refreshed")
+        return True
+    except Exception as e:
+        print(f"  [WARNING] Failed to install desktop integration: {e}")
+        return False
+
 def verify_installation():
     """Verify that the application was installed correctly"""
     # This function is called after stage 4 is displayed in install_with_pipx
@@ -287,8 +364,15 @@ def run_installation(skip_whisper=False):
     # Verify installation (stage 4 is displayed in install_with_pipx)
     verify_installation()
     
+    # Install desktop integration
+    print_stage(5, 6, "Installing desktop integration")
+    install_desktop_integration()
+    
     # Final message
-    print("\nYou can now run the application by typing 'syllablaze' in the terminal")
+    print_stage(6, 6, "Installation completed")
+    print("\nYou can now run Syllablaze in two ways:")
+    print("  1. Type 'syllablaze' in the terminal")
+    print("  2. Find it in your application menu under 'Utilities' or 'AudioVideo'")
     return True
 
 if __name__ == "__main__":
