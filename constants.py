@@ -6,7 +6,7 @@ Constants for the Syllablaze application.
 APP_NAME = "Syllablaze"
 
 # Application version
-APP_VERSION = "1.0.0"
+APP_VERSION = "0.2"
 
 # Organization name
 ORG_NAME = "KDE"

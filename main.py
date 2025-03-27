@@ -116,6 +116,9 @@ class TrayRecorder(QSystemTrayIcon):
         if not self.shortcuts.setup_shortcuts():
             logger.warning("Failed to register global shortcuts")
             
+        # Initialize tooltip with model information
+        self.update_tooltip()
+            
     def setup_menu(self):
         menu = QMenu()
         
@@ -207,10 +210,21 @@ class TrayRecorder(QSystemTrayIcon):
             self.settings_window.raise_()
             self.settings_window.activateWindow()
             
-    def update_tooltip(self):
-        """Update the tooltip with app name, version, and shortcut information"""
-        # Set a simple tooltip for now
-        self.setToolTip(f"{APP_NAME} {APP_VERSION}")
+    def update_tooltip(self, recognized_text=None):
+        """Update the tooltip with app name, version, and model information"""
+        settings = Settings()
+        model_name = settings.get('model', DEFAULT_WHISPER_MODEL)
+        tooltip = f"{APP_NAME} {APP_VERSION}\nmodel: {model_name}"
+        
+        # Add recognized text to tooltip if provided
+        if recognized_text:
+            # Truncate text if it's too long
+            max_length = 100
+            if len(recognized_text) > max_length:
+                recognized_text = recognized_text[:max_length] + "..."
+            tooltip += f"\nRecognized: {recognized_text}"
+            
+        self.setToolTip(tooltip)
     
     def update_shortcuts(self, start_key, stop_key):
         """Update global shortcuts"""
@@ -280,12 +294,21 @@ class TrayRecorder(QSystemTrayIcon):
             if self.progress_window:
                 self.progress_window.close()
                 self.progress_window = None
-            QMessageBox.critical(None, "Error", "Transcriber not initialized")
+            
+            # Show notification instead of dialog
+            self.showMessage("Error",
+                           "Transcriber not initialized",
+                           self.normal_icon)
     
     def handle_recording_error(self, error):
         """Handle recording errors"""
         logger.error(f"TrayRecorder: Recording error: {error}")
-        QMessageBox.critical(None, "Recording Error", error)
+        
+        # Show notification instead of dialog
+        self.showMessage("Recording Error",
+                       error,
+                       self.normal_icon)
+        
         self.stop_recording()
         if self.progress_window:
             self.progress_window.close()
@@ -303,9 +326,19 @@ class TrayRecorder(QSystemTrayIcon):
         if text:
             # Copy text to clipboard
             QApplication.clipboard().setText(text)
-            self.showMessage("Transcription Complete", 
-                           "Text has been copied to clipboard",
+            
+            # Truncate text for notification if it's too long
+            display_text = text
+            if len(text) > 100:
+                display_text = text[:100] + "..."
+                
+            # Show notification with the transcribed text
+            self.showMessage("Transcription Complete",
+                           f"{display_text}",
                            self.normal_icon)
+            
+            # Update tooltip with recognized text
+            self.update_tooltip(text)
         
         # Close the progress window
         if self.progress_window:
@@ -313,7 +346,13 @@ class TrayRecorder(QSystemTrayIcon):
             self.progress_window = None
     
     def handle_transcription_error(self, error):
-        QMessageBox.critical(None, "Transcription Error", error)
+        self.showMessage("Transcription Error",
+                       error,
+                       self.normal_icon)
+        
+        # Update tooltip to indicate error
+        self.update_tooltip()
+        
         if self.progress_window:
             self.progress_window.close()
             self.progress_window = None

@@ -20,9 +20,6 @@ The current focus of the Syllablaze project is to optimize the application for U
    - Added version display in tooltip when hovering on the tray icon
    - Added version display in splash screen
    - Added version display in settings window
-3. **Version Management**: Added centralized version number in constants.py
-   - Added version display in tooltip when hovering on the tray icon
-   - Added version display in splash screen
 3. **Installation Script**: Enhanced the install.py script with:
    - System dependency checks
    - Improved error handling for ALSA
@@ -32,6 +29,10 @@ The current focus of the Syllablaze project is to optimize the application for U
    - Changed to use pipx for installation to avoid externally-managed-environment errors
 4. **Documentation**: Created comprehensive memory bank files in the docs/ directory
 5. **Ubuntu Compatibility**: Added specific handling for Ubuntu KDE environments
+6. **Desktop Integration Fix**: Fixed desktop icon launching issue
+   - Updated desktop file to use run-syllablaze.sh script with absolute path
+   - Ensured the script is executable and properly configured
+   - Updated installation script to create proper desktop integration
 
 ## Next Steps
 
@@ -41,9 +42,12 @@ The current focus of the Syllablaze project is to optimize the application for U
 4. ✅ **Add Version Number**: Added centralized version number in constants.py and displayed it in the UI
    - Added version display in tooltip when hovering on the tray icon
    - Added version display in splash screen
-4. **Test Installation**: Verify the installation process works correctly on Ubuntu KDE
-5. **Update README**: Revise the README.md file with the new name and Ubuntu-specific instructions
-6. **Future Exploration**: Begin research on creating a Flatpak version
+5. ✅ **Fix Desktop Integration**: Fixed issue with desktop icon not launching the application
+   - Updated desktop file to use run-syllablaze.sh script with absolute path
+   - Ensured the script is executable and properly configured
+6. **Test Installation**: Verify the installation process works correctly on Ubuntu KDE
+7. **Update README**: Revise the README.md file with the new name and Ubuntu-specific instructions
+8. **Future Exploration**: Begin research on creating a Flatpak version
 
 ## Active Decisions and Considerations
 

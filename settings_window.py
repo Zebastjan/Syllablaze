@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QComboBox,
                              QGroupBox, QFormLayout, QProgressBar, QPushButton,
-                             QLineEdit, QMessageBox, QApplication)
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+                             QLineEdit, QMessageBox, QApplication, QSystemTrayIcon)
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QObject
 import logging
 import keyboard
 from PyQt6.QtGui import QKeySequence
@@ -173,6 +173,30 @@ class SettingsWindow(QWidget):
             self.settings.set('model', model_name)
             self.current_model = model_name
             logger.info(f"Model set to: {model_name}")
+            
+            # Update the tooltip in the main application
+            app = QApplication.instance()
+            for widget in app.topLevelWidgets():
+                # Find the TrayRecorder instance and update its tooltip
+                if hasattr(widget, 'update_tooltip'):
+                    widget.update_tooltip()
+                # Also look for the tray icon in the application's children
+                for child in widget.findChildren(QObject):
+                    if hasattr(child, 'update_tooltip'):
+                        child.update_tooltip()
+                        
+            # Force immediate update of the system tray tooltip
+            for widget in app.topLevelWidgets():
+                # Check if this widget is a QSystemTrayIcon
+                if isinstance(widget, QSystemTrayIcon):
+                    widget.update_tooltip()
+                
+                # Also search through all child widgets recursively
+                tray_icons = widget.findChildren(QSystemTrayIcon)
+                for tray_icon in tray_icons:
+                    if hasattr(tray_icon, 'update_tooltip'):
+                        tray_icon.update_tooltip()
+                    
             self.initialization_complete.emit()
         except ValueError as e:
             logger.error(f"Failed to set model: {e}")

@@ -10,8 +10,9 @@ This module provides components for managing Whisper models, including:
 """
 
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTableWidget,
-                            QTableWidgetItem, QLabel, QPushButton, QHeaderView,
-                            QMessageBox, QDialog, QProgressBar, QSizePolicy)
+                             QTableWidgetItem, QLabel, QPushButton, QHeaderView,
+                             QMessageBox, QDialog, QProgressBar, QSizePolicy,
+                             QApplication, QSystemTrayIcon)
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
 from PyQt6.QtGui import QColor
 import os
@@ -361,10 +362,29 @@ class WhisperModelTable(QWidget):
     def on_use_model_clicked(self, model_name):
         """Set the selected model as active"""
         if model_name in self.model_info and self.model_info[model_name]['is_downloaded']:
-            self.model_activated.emit(model_name)
             # Update is_active status
             for name in self.model_info:
                 self.model_info[name]['is_active'] = (name == model_name)
+            
+            # Emit signal that model was activated
+            self.model_activated.emit(model_name)
+            
+            # Force immediate tooltip update in main application
+            app = QApplication.instance()
+            if app:
+                # Find all tray icons and update their tooltips
+                for widget in app.topLevelWidgets():
+                    # Check if this widget is a QSystemTrayIcon
+                    if isinstance(widget, QSystemTrayIcon) and hasattr(widget, 'update_tooltip'):
+                        widget.update_tooltip()
+                    
+                    # Also search through all child widgets recursively
+                    tray_icons = widget.findChildren(QSystemTrayIcon)
+                    for tray_icon in tray_icons:
+                        if hasattr(tray_icon, 'update_tooltip'):
+                            tray_icon.update_tooltip()
+            
+            # Update the table display
             self.update_table()
     
     def on_download_model_clicked(self, model_name):

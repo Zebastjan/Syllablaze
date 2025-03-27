@@ -1,8 +1,8 @@
 [Desktop Entry]
 Name=Syllablaze
 Comment=Record and transcribe audio using Whisper
-Version=1.0.0
-Exec=pipx run syllablaze
+Version=0.2
+Exec=/home/jones2/work/Syllablaze/run-syllablaze.sh
 Icon=syllablaze
 Type=Application
 Categories=Qt;KDE;Audio;AudioVideo;

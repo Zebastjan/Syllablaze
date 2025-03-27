@@ -7,6 +7,7 @@ import sys
 import subprocess
 import importlib.metadata
 import warnings
+from constants import APP_VERSION
 
 def check_system_dependencies():
     """Check if required system dependencies are installed"""
@@ -78,12 +79,12 @@ def install_requirements(debug_mode=True, timeout=300, manual_install=False, ski
         # Create a simple setup.py file for pipx
         print("\nCreating setup configuration...")
         with open(os.path.join(temp_dir, "setup.py"), "w") as f:
-            f.write("""
+            f.write(f"""
 from setuptools import setup
 
 setup(
     name="syllablaze",
-    version="0.1.0",
+    version="{APP_VERSION}",
     py_modules=["main"],
     install_requires=open("requirements.txt").read().splitlines(),
     entry_points={
@@ -210,11 +211,36 @@ setup(
                 script_path = os.path.join(os.getcwd(), "run-syllablaze.sh")
                 with open(script_path, "w") as f:
                     f.write(f"""#!/bin/bash
-source {venv_dir}/bin/activate
-python {os.path.join(os.getcwd(), "main.py")}
+
+# Get the directory where the script is located
+SCRIPT_DIR="$( cd "$( dirname "${{BASH_SOURCE[0]}}" )" && pwd )"
+
+# Activate the virtual environment
+source "$SCRIPT_DIR/venv/bin/activate"
+
+# Set environment variables to suppress Jack errors
+export JACK_NO_AUDIO_RESERVATION=1
+export JACK_NO_START_SERVER=1
+export DISABLE_JACK=1
+
+# Run the application and filter out Jack-related error messages
+python "$SCRIPT_DIR/main.py" 2> >(grep -v -E "jack server|Cannot connect to server|JackShmReadWritePtr")
 """)
                 os.chmod(script_path, 0o755)
                 print(f"✓ Created executable script: {script_path}")
+                
+                # Create a symbolic link in ~/.local/bin
+                bin_dir = os.path.join(home, ".local", "bin")
+                os.makedirs(bin_dir, exist_ok=True)
+                bin_link = os.path.join(bin_dir, "run-syllablaze.sh")
+                
+                # Remove existing link if it exists
+                if os.path.exists(bin_link):
+                    os.remove(bin_link)
+                    
+                # Create new symbolic link
+                os.symlink(script_path, bin_link)
+                print(f"✓ Created symbolic link in {bin_dir}")
                 
                 return True
             except subprocess.CalledProcessError as e:
@@ -384,8 +410,8 @@ def install_application():
         content = content.replace("Telly Spelly", "Syllablaze")
         content = content.replace("telly-spelly", "syllablaze")
         
-        # Update the Exec line to use pipx
-        content = content.replace("Exec=syllablaze", "Exec=pipx run syllablaze")
+        # Update the Exec line to use the run script with absolute path
+        content = content.replace("Exec=syllablaze", f"Exec={os.path.join(os.getcwd(), 'run-syllablaze.sh')}")
         
         # Write the updated desktop file
         new_desktop_file = "org.kde.syllablaze.desktop"
@@ -549,8 +575,8 @@ if __name__ == "__main__":
                 content = content.replace("Telly Spelly", "Syllablaze")
                 content = content.replace("telly-spelly", "syllablaze")
                 
-                # Update the Exec line to use pipx
-                content = content.replace("Exec=syllablaze", "Exec=pipx run syllablaze")
+                # Update the Exec line to use the run script with absolute path
+                content = content.replace("Exec=syllablaze", f"Exec={os.path.join(os.getcwd(), 'run-syllablaze.sh')}")
                 
                 # Write the updated desktop file
                 new_desktop_file = "org.kde.syllablaze.desktop"

@@ -1,9 +1,10 @@
 
 from setuptools import setup
+from constants import APP_VERSION
 
 setup(
     name="syllablaze",
-    version="0.1.0",
+    version=APP_VERSION,
     py_modules=["main"],
     install_requires=open("requirements.txt").read().splitlines(),
     entry_points={
