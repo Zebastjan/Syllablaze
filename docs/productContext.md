@@ -12,6 +12,7 @@ Syllablaze exists to bridge the gap between spoken word and digital text. In tod
 4. **Content Creation**: Facilitates the creation of written content through speech
 5. **Accessibility Needs**: Assists users with physical limitations that make typing difficult
 6. **Privacy Concerns**: Provides a local solution that doesn't send audio data to cloud services
+7. **Resource Management**: Helps users manage disk space and processing power through flexible model selection
 
 ## How It Should Work
 
@@ -37,6 +38,12 @@ Syllablaze exists to bridge the gap between spoken word and digital text. In tod
    - Whisper model selection (balancing speed vs. accuracy)
    - Global keyboard shortcuts
    - Interface preferences
+   - Language settings for transcription
+7. **Model Management**: Users can manage Whisper models through:
+   - A table-based interface showing all available models
+   - Visual indicators for downloaded vs. not-downloaded models
+   - Buttons to download, delete, or set models as active
+   - Information about model size and storage location
 
 ## User Experience Goals
 
@@ -48,6 +55,7 @@ Syllablaze exists to bridge the gap between spoken word and digital text. In tod
 6. **Confidence**: Users should trust that their audio is being processed correctly
 7. **Adaptability**: The application should work well in various environments and use cases
 8. **Cross-platform Consistency**: The application should provide a consistent experience across different Linux distributions, with special attention to Ubuntu KDE
+9. **Resource Awareness**: The application should help users make informed decisions about resource usage
 
 ## Target Users
 
@@ -58,3 +66,28 @@ Syllablaze exists to bridge the gap between spoken word and digital text. In tod
 5. **Accessibility Users**: For those who find typing difficult or impossible
 6. **KDE Enthusiasts**: Users who appreciate well-integrated KDE applications
 7. **Privacy-conscious Users**: Those who prefer local processing over cloud services
+8. **Resource-constrained Users**: Those with limited disk space or processing power who need flexibility in model selection
+
+## Enhanced Model Management Benefits
+
+1. **Informed Decisions**: Users can make informed decisions about which model to use based on:
+   - Disk space requirements
+   - Processing speed needs
+   - Accuracy requirements
+2. **Resource Optimization**: Users can:
+   - Delete unused models to free up disk space
+   - Choose smaller models for faster processing on less powerful hardware
+   - Select larger models for better accuracy when needed
+3. **Transparency**: Users can see:
+   - Which models are available
+   - Which models are downloaded
+   - Which model is currently active
+   - Where models are stored on disk
+4. **Control**: Users have direct control over:
+   - Which models to download
+   - Which models to keep
+   - Which model to use for transcription
+5. **Feedback**: Users receive clear feedback on:
+   - Download progress
+   - Success or failure of operations
+   - Current status of models

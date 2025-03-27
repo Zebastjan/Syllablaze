@@ -79,6 +79,12 @@ openai-whisper (from PyPI)
 6. **Desktop Environment**: Optimized for KDE Plasma
    - May work in other environments but with limited integration
 
+7. **Whisper API Limitations**: The Whisper API has certain limitations
+   - No direct method to check which models are downloaded without loading them
+   - No direct method to get download progress
+   - No direct method to delete models
+   - Workarounds implemented in the WhisperModelManager class
+
 ## Dependencies
 
 ### Direct Dependencies
@@ -137,3 +143,48 @@ openai-whisper (from PyPI)
 2. **Debugging**: PyQt debugger or standard Python debugger
 3. **Testing**: Manual testing of recording and transcription
 4. **Version Control**: Git with GitHub for collaboration
+
+## Whisper Model Management
+
+### Model Storage
+
+1. **Location**: Models are stored in `~/.cache/whisper/` directory
+2. **Format**: Models are stored as `.pt` files (PyTorch format)
+3. **Naming**: Models are named according to their size (e.g., `tiny.pt`, `base.pt`, etc.)
+
+### Model Information
+
+1. **Available Models**:
+   - tiny: ~150MB, very fast but basic accuracy
+   - base: ~300MB, fast with good accuracy
+   - small: ~500MB, medium speed with very good accuracy
+   - medium: ~1.5GB, slow with excellent accuracy
+   - large: ~3GB, very slow with superior accuracy
+
+2. **Model Detection**:
+   - The application scans the Whisper cache directory to detect downloaded models
+   - It checks for the existence of model files with the exact name pattern
+
+3. **Model Download**:
+   - Downloads are handled by the Whisper API's `load_model()` function
+   - The application simulates download progress since the API doesn't provide direct progress tracking
+   - Downloads run in a separate thread to keep the UI responsive
+
+4. **Model Deletion**:
+   - The application directly deletes model files from the cache directory
+   - It prevents deletion of the currently active model
+
+### UI Components
+
+1. **WhisperModelTable**: A custom widget that displays and manages Whisper models
+   - Shows model name, status (downloaded/not downloaded), and size
+   - Provides buttons to download, delete, or set a model as active
+   - Highlights the currently active model
+
+2. **ModelDownloadDialog**: A dialog that shows download progress
+   - Displays a progress bar, status text, and estimated time remaining
+   - Updates smoothly using a timer to simulate download progress
+
+3. **ModelDownloadThread**: A thread that handles model downloads
+   - Runs the download operation in the background
+   - Emits signals to update the UI with progress information

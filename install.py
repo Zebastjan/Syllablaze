@@ -114,8 +114,7 @@ setup(
             universal_newlines=True
         )
         
-        # Process output line by line
-        print("  Verbose installation progress:")
+        print("  Installation progress:")
         current_package = None
         pip_install_started = False
         

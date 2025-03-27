@@ -15,7 +15,7 @@ Originally created by Guilherme da Silveira as "Telly Spelly".
 
 ## Project Structure
 
-- `blaze/` - Core application code
+- `blaze/` - Core application files
 - `docs/` - Documentation files
 - `install.py` - Installation script 
 - `uninstall.py` - Uninstallation script
