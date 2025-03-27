@@ -16,6 +16,8 @@ echo "Found installed package at: $INSTALL_DIR"
 # Copy all Python files from the repository to the installed location
 echo "Copying Python files from repository to installed location..."
 cp -v ./*.py "$INSTALL_DIR/"
+cp -v ./blaze/*.py "$INSTALL_DIR/"
+echo "Copied files from blaze/ directory"
 
 # Make the script executable if it exists
 if [ -f "./run-syllablaze.sh" ]; then

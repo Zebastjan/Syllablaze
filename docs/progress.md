@@ -85,10 +85,17 @@ The core functionality works well, with significant improvements in the Whisper 
    - Updated installation script to create proper desktop integration
 
 4. **Performance**:
-   - Transcription can be slow on systems without GPU acceleration
-   - Large audio files may cause memory issues
-   - Solution: Add more guidance on model selection based on hardware
-   - The new model management interface helps users make informed decisions about model selection
+    - Transcription can be slow on systems without GPU acceleration
+    - Large audio files may cause memory issues
+    - Solution: Add more guidance on model selection based on hardware
+    - The new model management interface helps users make informed decisions about model selection
+
+5. **Multiple Instances**: ✅ FIXED
+    - ~~Application could be launched multiple times, causing resource conflicts~~
+    - ~~Process-based detection might not catch all instances in certain launch scenarios~~
+    - Solution: Implemented a robust file locking mechanism in ~/.cache/syllablaze/
+    - Added proper lock cleanup on application exit and signal handling
+    - Improved error messages when attempting to launch a second instance
 
 5. **Rebranding**: ✅ COMPLETED
    - References to "telly-spelly" have been updated to "syllablaze" throughout the codebase

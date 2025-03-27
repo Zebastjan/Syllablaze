@@ -13,40 +13,6 @@ The current focus of the Syllablaze project is to optimize the application for U
 
 ## Recent Changes
 
-1. **Rebranding**: Changed the application name from "Telly Spelly" to "Syllablaze"
-   - Updated all references in code
-   - Renamed icon file from telly-spelly.png to syllablaze.png
-   - Updated desktop file
-2. **Version Management**: Added centralized version number in constants.py
-   - Added version display in tooltip when hovering on the tray icon
-   - Added version display in splash screen
-   - Added version display in settings window
-3. **Code Reorganization**: Restructured the codebase for better organization
-   - Moved all core application code to the `blaze/` directory
-   - Updated import statements to use the new package structure
-   - Created proper Python package structure with __init__.py files
-4. **Installation Method**: Updated the installation process
-   - Enhanced the setup.sh script to use pipx for installation
-   - Improved system dependency checks
-   - Simplified the installation process
-   - Updated documentation to reflect the new installation method
-5. **Documentation**: Created comprehensive memory bank files in the docs/ directory
-6. **Ubuntu Compatibility**: Added specific handling for Ubuntu KDE environments
-7. **Desktop Integration Fix**: Fixed desktop icon launching issue
-   - Updated desktop file to use run-syllablaze.sh script with absolute path
-   - Ensured the script is executable and properly configured
-   - Updated installation script to create proper desktop integration
-8. **Whisper Model Management**: Implemented a comprehensive model management interface
-   - Created a table-based UI showing available models with detailed information
-   - Added visual indicators for downloaded vs. not-downloaded models
-   - Implemented model download functionality with progress tracking
-   - Added ability to delete models to free up disk space
-   - Added ability to set a model as active for transcription
-   - Implemented storage location display with option to open in file explorer
-9. **Development Workflow**: Improved development workflow
-   - Moved dev-update.sh script to the blaze directory
-   - Updated paths in the script to work from the new location
-   - Added documentation about using the script for development
 
 ## Next Steps
 
@@ -111,6 +77,11 @@ The current focus of the Syllablaze project is to optimize the application for U
    - Consideration: Will need regular updates as the project evolves
 
 8. **Whisper Model Management**:
-   - Decision: Implement a comprehensive model management interface
-   - Rationale: Provides better user control over model selection and disk space usage
-   - Consideration: Need to handle download progress simulation since Whisper API doesn't provide direct progress tracking
+    - Decision: Implement a comprehensive model management interface
+    - Rationale: Provides better user control over model selection and disk space usage
+    - Consideration: Need to handle download progress simulation since Whisper API doesn't provide direct progress tracking
+
+9. **Single Instance Enforcement**:
+    - Decision: Implement a robust file locking mechanism to ensure only one instance of Syllablaze can run at a time
+    - Rationale: Prevents resource conflicts and confusion from multiple instances running simultaneously
+    - Consideration: Uses a file lock in ~/.cache/syllablaze/ with proper cleanup on application exit and signal handling

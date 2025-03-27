@@ -291,6 +291,22 @@ class TrayRecorder(QSystemTrayIcon):
                     if self.transcriber.worker.isRunning():
                         logger.info("Waiting for transcription worker to finish...")
                         self.transcriber.worker.wait(1000)  # Wait up to 1 second
+            
+            # Release lock file if it exists
+            global LOCK_FILE
+            if LOCK_FILE:
+                try:
+                    import fcntl
+                    # Release the lock
+                    fcntl.flock(LOCK_FILE, fcntl.LOCK_UN)
+                    LOCK_FILE.close()
+                    # Remove the lock file
+                    if os.path.exists(LOCK_FILE_PATH):
+                        os.remove(LOCK_FILE_PATH)
+                    LOCK_FILE = None
+                    logger.info("Released application lock file")
+                except Exception as lock_error:
+                    logger.error(f"Error releasing lock file: {lock_error}")
                         
             # Quit the application
             QApplication.quit()
@@ -412,8 +428,111 @@ def setup_application_metadata():
     QCoreApplication.setOrganizationName(ORG_NAME)
     QCoreApplication.setOrganizationDomain("kde.org")
 
+# Global variable for lock file
+LOCK_FILE_PATH = os.path.expanduser("~/.cache/syllablaze/syllablaze.lock")
+LOCK_FILE = None
+
 def check_already_running():
-    """Check if Syllablaze is already running"""
+    """Check if Syllablaze is already running using a file lock mechanism"""
+    global LOCK_FILE
+    
+    # Create directory if it doesn't exist
+    lock_dir = os.path.dirname(LOCK_FILE_PATH)
+    if not os.path.exists(lock_dir):
+        try:
+            os.makedirs(lock_dir, exist_ok=True)
+        except Exception as e:
+            logger.error(f"Failed to create lock directory: {e}")
+            # Fall back to process-based check if we can't create the lock directory
+            return _check_already_running_by_process()
+    
+    try:
+        # Try to create and lock the file
+        import fcntl
+        
+        # Check if the lock file exists
+        if os.path.exists(LOCK_FILE_PATH):
+            try:
+                # Try to open the existing lock file for reading and writing
+                test_lock = open(LOCK_FILE_PATH, 'r+')
+                try:
+                    # Try to get a non-blocking exclusive lock
+                    fcntl.flock(test_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    
+                    # If we got here, the file wasn't locked
+                    # Read the PID from the file
+                    test_lock.seek(0)
+                    pid = test_lock.read().strip()
+                    
+                    # Check if the process with this PID is still running
+                    if pid and pid.isdigit():
+                        try:
+                            # If we can send signal 0 to the process, it exists
+                            os.kill(int(pid), 0)
+                            # This is strange - the file exists and the process exists,
+                            # but the file wasn't locked. This could happen if the process
+                            # crashed without cleaning up. Let's assume it's not running.
+                            logger.warning(f"Found process {pid} but lock file wasn't locked. Assuming stale lock.")
+                        except OSError:
+                            # Process doesn't exist
+                            logger.info(f"Removing stale lock file for PID {pid}")
+                    
+                    # Release the lock and close the file
+                    fcntl.flock(test_lock, fcntl.LOCK_UN)
+                    test_lock.close()
+                    
+                    # Remove the stale lock file
+                    os.remove(LOCK_FILE_PATH)
+                except IOError:
+                    # The file is locked by another process
+                    test_lock.close()
+                    logger.info("Lock file is locked by another process")
+                    return True
+            except Exception as e:
+                logger.error(f"Error checking existing lock file: {e}")
+                # If we can't read the lock file, try to remove it
+                try:
+                    os.remove(LOCK_FILE_PATH)
+                except:
+                    pass
+        
+        # Create a new lock file
+        LOCK_FILE = open(LOCK_FILE_PATH, 'w')
+        # Write PID to the file
+        LOCK_FILE.write(str(os.getpid()))
+        LOCK_FILE.flush()
+        # Log the lock file path for debugging
+        logger.info(f"INFO: Lock file created at: {os.path.abspath(LOCK_FILE_PATH)}")
+        
+        try:
+            # Try to get an exclusive lock
+            fcntl.flock(LOCK_FILE, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            logger.info(f"Acquired lock file for PID {os.getpid()}")
+            return False
+        except IOError:
+            # This shouldn't happen since we just created the file,
+            # but handle it just in case
+            logger.error("Failed to acquire lock on newly created file")
+            LOCK_FILE.close()
+            LOCK_FILE = None
+            return True
+    except IOError as e:
+        # Lock already held by another process
+        logger.info(f"Lock already held by another process: {e}")
+        if LOCK_FILE:
+            LOCK_FILE.close()
+            LOCK_FILE = None
+        return True
+    except Exception as e:
+        logger.error(f"Error in file locking mechanism: {e}")
+        # Fall back to process-based check if file locking fails
+        if LOCK_FILE:
+            LOCK_FILE.close()
+            LOCK_FILE = None
+        return _check_already_running_by_process()
+
+def _check_already_running_by_process():
+    """Fallback method to check if Syllablaze is already running by process name"""
     import psutil
     current_pid = os.getpid()
     count = 0
@@ -434,11 +553,31 @@ def check_already_running():
     
     return count > 0
 
+def cleanup_lock_file(*args):
+    """Clean up lock file when application exits"""
+    global LOCK_FILE
+    if LOCK_FILE:
+        try:
+            import fcntl
+            # Release the lock
+            fcntl.flock(LOCK_FILE, fcntl.LOCK_UN)
+            LOCK_FILE.close()
+            # Remove the lock file
+            if os.path.exists(LOCK_FILE_PATH):
+                os.remove(LOCK_FILE_PATH)
+            LOCK_FILE = None
+            logger.info("Released application lock file due to signal")
+        except Exception as e:
+            logger.error(f"Error releasing lock file during signal handling: {e}")
+    # Re-raise the signal to allow normal handling
+    sys.exit(1)
+
 def main():
     try:
-        # Set up signal handling for CTRL-C
+        # Set up signal handling for CTRL-C and other termination signals
         import signal
-        signal.signal(signal.SIGINT, signal.SIG_DFL)
+        signal.signal(signal.SIGINT, cleanup_lock_file)
+        signal.signal(signal.SIGTERM, cleanup_lock_file)
         
         # Check if already running
         if check_already_running():
