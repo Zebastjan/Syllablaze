@@ -13,6 +13,11 @@ The current focus of the Syllablaze project is to optimize the application for U
 
 ## Recent Changes
 
+1. **In-Memory Audio Processing**:
+   - Implemented direct memory-to-memory audio processing without writing to disk
+   - Enhanced privacy by eliminating temporary files
+   - Improved performance with direct 16kHz recording
+   - Updated to version 0.3
 
 ## Next Steps
 
@@ -36,8 +41,13 @@ The current focus of the Syllablaze project is to optimize the application for U
    - Implemented table-based UI for model management
    - Added download, delete, and activation functionality
    - Integrated with settings window
-10. **Test Installation**: Verify the installation process works correctly on Ubuntu KDE
-11. **Future Exploration**: Begin research on creating a Flatpak version
+10. ✅ **Implement In-Memory Audio Processing**: Enhanced privacy and performance
+   - Eliminated temporary files for better privacy and security
+   - Implemented direct memory-to-memory audio processing
+   - Optimized for 16kHz recording to reduce processing overhead
+   - Updated to version 0.3
+11. **Test Installation**: Verify the installation process works correctly on Ubuntu KDE
+12. **Future Exploration**: Begin research on creating a Flatpak version
 
 ## Active Decisions and Considerations
 
@@ -82,6 +92,11 @@ The current focus of the Syllablaze project is to optimize the application for U
     - Consideration: Need to handle download progress simulation since Whisper API doesn't provide direct progress tracking
 
 9. **Single Instance Enforcement**:
-    - Decision: Implement a robust file locking mechanism to ensure only one instance of Syllablaze can run at a time
-    - Rationale: Prevents resource conflicts and confusion from multiple instances running simultaneously
-    - Consideration: Uses a file lock in ~/.cache/syllablaze/ with proper cleanup on application exit and signal handling
+     - Decision: Implement a robust file locking mechanism to ensure only one instance of Syllablaze can run at a time
+     - Rationale: Prevents resource conflicts and confusion from multiple instances running simultaneously
+     - Consideration: Uses a file lock in ~/.cache/syllablaze/ with proper cleanup on application exit and signal handling
+
+10. **In-Memory Audio Processing**:
+     - Decision: Process audio entirely in memory without writing to temporary files
+     - Rationale: Enhances privacy, security, and performance by avoiding disk operations
+     - Consideration: Directly passes audio data as NumPy arrays between components, leveraging Whisper's ability to process in-memory data

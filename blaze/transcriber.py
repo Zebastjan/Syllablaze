@@ -15,22 +15,19 @@ class TranscriptionWorker(QThread):
     progress_percent = pyqtSignal(int)
     error = pyqtSignal(str)
     
-    def __init__(self, model, audio_file):
+    def __init__(self, model, audio_data):
         super().__init__()
         self.model = model
-        self.audio_file = audio_file
+        self.audio_data = audio_data
         self.settings = Settings()
         self.language = self.settings.get('language', 'auto')
         
     def run(self):
         try:
-            if not os.path.exists(self.audio_file):
-                raise FileNotFoundError(f"Audio file not found: {self.audio_file}")
-                
-            self.progress.emit("Loading audio file...")
+            self.progress.emit("Processing audio...")
             self.progress_percent.emit(10)
             
-            # Load and transcribe
+            # Transcribe directly from memory
             self.progress.emit("Processing audio with Whisper...")
             self.progress_percent.emit(30)
             
@@ -46,7 +43,7 @@ class TranscriptionWorker(QThread):
             logger.info(f"Transcribing with language: {lang_str}")
             
             result = self.model.transcribe(
-                self.audio_file,
+                self.audio_data,
                 fp16=False,
                 language=None if self.language == 'auto' else self.language
             )
@@ -64,13 +61,6 @@ class TranscriptionWorker(QThread):
             logger.error(f"Transcription error: {e}")
             self.error.emit(f"Transcription failed: {str(e)}")
             self.finished.emit("")
-        finally:
-            # Clean up the temporary file
-            try:
-                if os.path.exists(self.audio_file):
-                    os.remove(self.audio_file)
-            except Exception as e:
-                logger.error(f"Failed to remove temporary file: {e}")
 
 class WhisperTranscriber(QObject):
     transcription_progress = pyqtSignal(str)
@@ -200,8 +190,8 @@ class WhisperTranscriber(QObject):
                 self.worker.deleteLater()
                 self.worker = None
                 
-    def transcribe(self, audio_file):
-        """Transcribe audio file using Whisper"""
+    def transcribe(self, audio_data):
+        """Transcribe audio data directly from memory"""
         try:
             # Check if model needs to be reloaded due to settings changes
             self.reload_model_if_needed()
@@ -222,7 +212,7 @@ class WhisperTranscriber(QObject):
             
             # Run transcription with language setting
             result = self.model.transcribe(
-                audio_file,
+                audio_data,
                 fp16=False,
                 language=None if self.current_language == 'auto' else self.current_language
             )
@@ -235,18 +225,19 @@ class WhisperTranscriber(QObject):
             logger.info(f"Transcribed text: [{text}]")
             self.transcription_finished.emit(text)
             
-            # Clean up the temporary file
-            try:
-                if os.path.exists(audio_file):
-                    os.remove(audio_file)
-            except Exception as e:
-                logger.error(f"Failed to remove temporary file: {e}")
-            
         except Exception as e:
             logger.error(f"Transcription failed: {e}")
             self.transcription_error.emit(str(e))
 
-    def transcribe_file(self, audio_file):
+    def transcribe_file(self, audio_data):
+        """
+        Transcribe audio data directly from memory
+        
+        Parameters:
+        -----------
+        audio_data: np.ndarray
+            Audio data as a NumPy array, expected to be float32 in range [-1.0, 1.0]
+        """
         if self.worker and self.worker.isRunning():
             logger.warning("Transcription already in progress")
             return
@@ -272,9 +263,9 @@ class WhisperTranscriber(QObject):
         lang_str = "auto-detect" if self.current_language == 'auto' else self.current_language
         logger.info(f"Transcription worker using language: {lang_str}")
         logger.info(f"Transcription worker using model: {self.current_model_name}")
-        print(f"Transcribing file with model: {self.current_model_name}, language: {lang_str}")
+        print(f"Transcribing audio with model: {self.current_model_name}, language: {lang_str}")
         
-        self.worker = TranscriptionWorker(self.model, audio_file)
+        self.worker = TranscriptionWorker(self.model, audio_data)
         # Make sure the worker uses the current language setting
         self.worker.language = self.current_language
         self.worker.finished.connect(self.transcription_finished)

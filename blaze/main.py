@@ -315,9 +315,9 @@ class TrayRecorder(QSystemTrayIcon):
         if self.progress_window and self.recording:
             self.progress_window.update_volume(value)
     
-    def handle_recording_finished(self, audio_file):
-        """Called when recording is saved to file"""
-        logger.info("TrayRecorder: Recording finished, starting transcription")
+    def handle_recording_finished(self, audio_data):
+        """Called when recording is processed in memory"""
+        logger.info("TrayRecorder: Recording processed, starting transcription")
         
         # Ensure progress window is in processing mode
         if self.progress_window:
@@ -325,7 +325,7 @@ class TrayRecorder(QSystemTrayIcon):
             self.progress_window.set_status("Starting transcription...")
         
         if self.transcriber:
-            self.transcriber.transcribe_file(audio_file)
+            self.transcriber.transcribe_file(audio_data)
         else:
             logger.error("Transcriber not initialized")
             if self.progress_window:

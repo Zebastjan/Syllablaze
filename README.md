@@ -1,4 +1,4 @@
-# Syllablaze v0.2 for KDE Plasma
+# Syllablaze v0.3 for KDE Plasma
 
 Real-time audio transcription app using OpenAI's Whisper.
 
@@ -12,6 +12,15 @@ Originally created by Guilherme da Silveira as "Telly Spelly".
 - Microphone selection
 - Auto clipboard copy
 - Native KDE integration
+- In-memory audio processing (no temporary files)
+- Direct 16kHz recording for improved privacy and reduced file size
+
+## What's New in v0.3
+
+- **Enhanced Privacy**: Audio is now processed entirely in memory without writing to disk at any point
+- **Improved Performance**: Direct 16kHz recording reduces processing time and memory usage
+- **Better Security**: No temporary files means no risk of sensitive audio data being left on disk
+- **Reduced Resource Usage**: Streamlined audio processing pipeline for more efficient operation
 
 ## Project Structure
 

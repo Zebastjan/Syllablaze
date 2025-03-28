@@ -5,9 +5,10 @@
 1. **Core Functionality**:
    - Audio recording from system microphones
    - Real-time transcription using OpenAI's Whisper
+   - In-memory audio processing (no temporary files)
+   - Direct 16kHz recording for improved performance
    - Automatic clipboard integration for transcribed text
    - System tray integration with KDE Plasma
-   - Global keyboard shortcuts for quick recording
    - Settings management and persistence
 
 2. **User Interface**:
@@ -18,7 +19,6 @@
    - Comprehensive Whisper model management interface
 
 3. **Installation**:
-   - Enhanced setup.sh script for user-level installation using pipx
    - Desktop file integration with KDE
    - Icon integration
    - Improved system dependency checks
@@ -41,7 +41,7 @@
 
 ## Current Status
 
-The core functionality works well, with significant improvements in the Whisper model management interface. There are still opportunities for enhancement in error handling and system integration.
+The core functionality works well, with significant improvements in the Whisper model management interface and enhanced privacy through in-memory audio processing. Version 0.3 introduces direct memory-to-memory audio processing without writing to disk, improving both privacy and performance. There are still opportunities for enhancement in error handling and system integration.
 
 ### Installation Status
 
@@ -52,7 +52,8 @@ The core functionality works well, with significant improvements in the Whisper 
 
 ### Functionality Status
 
-- Audio recording works reliably
+- Audio recording works reliably with in-memory processing
+- No temporary files are created during the recording and transcription process
 - Transcription accuracy depends on the Whisper model selected
 - KDE integration works well on standard KDE Plasma
 - Clipboard integration functions as expected
@@ -112,3 +113,11 @@ The core functionality works well, with significant improvements in the Whisper 
    - Implemented table-based UI for model management
    - Added download, delete, and activation functionality
    - Integrated with settings window
+
+8. **Temporary Files**: ✅ FIXED
+   - ~~Audio was temporarily written to disk during processing~~
+   - ~~Potential privacy concern with sensitive audio data~~
+   - Solution: Implemented in-memory audio processing without writing to disk
+   - Audio data now flows directly from recorder to transcriber as NumPy arrays
+   - Enhanced privacy and security by eliminating temporary files
+   - Improved performance with direct 16kHz recording
