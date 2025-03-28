@@ -22,6 +22,19 @@ Originally created by Guilherme da Silveira as "Telly Spelly".
 - **Better Security**: No temporary files means no risk of sensitive audio data being left on disk
 - **Reduced Resource Usage**: Streamlined audio processing pipeline for more efficient operation
 
+## Screenshots
+tray icon: ![image](https://github.com/user-attachments/assets/7c1a0b3f-6606-4970-9ad9-337e88ddecfe)
+
+settings screen: ![image](https://github.com/user-attachments/assets/5ca8a113-64b5-40e7-b200-e38779cab078)
+
+click tray icon opens speech recognition: ![image](https://github.com/user-attachments/assets/5fc61e18-f911-486a-a59d-b7a6c0c555d1)
+
+notification after action: ![image](https://github.com/user-attachments/assets/4f58b335-4dd3-4db5-a73c-9f4fcd11f1d8)
+
+text automatically lands into clipboard:![image](https://github.com/user-attachments/assets/7821a6ad-614e-4e47-bcef-ce6f6e8ab027)
+
+
+
 ## Project Structure
 
 - `blaze/` - Core application files
