@@ -21,6 +21,7 @@ Originally created by Guilherme da Silveira as "Telly Spelly".
 - **Improved Performance**: Direct 16kHz recording reduces processing time and memory usage
 - **Better Security**: No temporary files means no risk of sensitive audio data being left on disk
 - **Reduced Resource Usage**: Streamlined audio processing pipeline for more efficient operation
+- **Improved Recording UI**: Enhanced recording window with app info, settings display, and larger stop button
 
 ## Project Structure
 
