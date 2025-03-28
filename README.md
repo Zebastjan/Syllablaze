@@ -23,6 +23,28 @@ Originally created by Guilherme da Silveira as "Telly Spelly".
 - **Reduced Resource Usage**: Streamlined audio processing pipeline for more efficient operation
 - **Improved Recording UI**: Enhanced recording window with app info, settings display, and larger stop button
 
+## Screenshots
+tray icon:
+
+<img src="https://github.com/user-attachments/assets/7c1a0b3f-6606-4970-9ad9-337e88ddecfe" width="300px">
+
+click on the tray icon opens speech recognition: 
+
+<img src="https://github.com/user-attachments/assets/91aa090c-d0e2-414f-bbcc-780f182d4030" width="400px">
+
+notification after action:
+
+<img src="https://github.com/user-attachments/assets/4f58b335-4dd3-4db5-a73c-9f4fcd11f1d8" width="350px">
+
+text automatically lands into clipboard:
+
+<img src="https://github.com/user-attachments/assets/7821a6ad-614e-4e47-bcef-ce6f6e8ab027" width="400px">
+
+settings screen:
+
+<img src="https://github.com/user-attachments/assets/5ca8a113-64b5-40e7-b200-e38779cab078" width="500px">
+
+
 ## Project Structure
 
 - `blaze/` - Core application files
