@@ -215,7 +215,7 @@ class TrayRecorder(QSystemTrayIcon):
         else:
             language_display = "Language: auto-detect" if language_code == 'auto' else f"Language: {language_code}"
         
-        tooltip = f"{APP_NAME} {APP_VERSION}\nMODEL: {model_name}\n{language_display}"
+        tooltip = f"{APP_NAME} {APP_VERSION}\nModel: {model_name}\n{language_display}"
         
         # Add recognized text to tooltip if provided
         if recognized_text:

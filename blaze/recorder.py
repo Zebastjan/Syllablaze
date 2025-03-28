@@ -42,6 +42,10 @@ import tempfile
 import logging
 import numpy as np
 from blaze.settings import Settings
+from blaze.constants import (
+    WHISPER_SAMPLE_RATE, SAMPLE_RATE_MODE_WHISPER,
+    SAMPLE_RATE_MODE_DEVICE, DEFAULT_SAMPLE_RATE_MODE
+)
 from scipy import signal
 import warnings
 import ctypes
@@ -104,6 +108,12 @@ class AudioRecorder(QObject):
         # Keep a reference to self to prevent premature deletion
         self._instance = self
         
+    def update_sample_rate_mode(self, mode):
+        """Update the sample rate mode setting"""
+        settings = Settings()
+        settings.set('sample_rate_mode', mode)
+        logger.info(f"Sample rate mode updated to: {mode}")
+        
     def start_recording(self):
         if self.is_recording:
             return
@@ -112,15 +122,17 @@ class AudioRecorder(QObject):
             self.frames = []
             self.is_recording = True
             
-            # Get selected mic index from settings
+            # Get settings
             settings = Settings()
             mic_index = settings.get('mic_index')
+            sample_rate_mode = settings.get('sample_rate_mode', DEFAULT_SAMPLE_RATE_MODE)
             
             try:
                 mic_index = int(mic_index) if mic_index is not None else None
             except (ValueError, TypeError):
                 mic_index = None
             
+            # Get device info
             if mic_index is not None:
                 device_info = self.audio.get_device_info_by_index(mic_index)
                 logger.info(f"Using selected input device: {device_info['name']}")
@@ -132,22 +144,65 @@ class AudioRecorder(QObject):
             # Store device info for later use
             self.current_device_info = device_info
             
-            # Get supported sample rate from device
-            sample_rate = int(device_info['defaultSampleRate'])
-            logger.info(f"Using sample rate: {sample_rate}")
-            
-            self.stream = self.audio.open(
-                format=pyaudio.paInt16,
-                channels=1,
-                rate=sample_rate,
-                input=True,
-                input_device_index=mic_index,
-                frames_per_buffer=1024,
-                stream_callback=self._callback
-            )
+            # Determine sample rate based on mode
+            if sample_rate_mode == SAMPLE_RATE_MODE_WHISPER:
+                # Try to use 16kHz (Whisper-optimized)
+                target_sample_rate = WHISPER_SAMPLE_RATE
+                logger.info(f"Using Whisper-optimized sample rate: {target_sample_rate}Hz")
+                
+                try:
+                    self.stream = self.audio.open(
+                        format=pyaudio.paInt16,
+                        channels=1,
+                        rate=target_sample_rate,
+                        input=True,
+                        input_device_index=mic_index,
+                        frames_per_buffer=1024,
+                        stream_callback=self._callback
+                    )
+                    # If successful, store the sample rate
+                    self.current_sample_rate = target_sample_rate
+                    logger.info(f"Successfully recording at {target_sample_rate}Hz")
+                    
+                except Exception as e:
+                    # If 16kHz fails, fall back to device default
+                    logger.warning(f"Failed to record at {target_sample_rate}Hz: {e}")
+                    logger.info("Falling back to device's default sample rate")
+                    
+                    default_sample_rate = int(device_info['defaultSampleRate'])
+                    logger.info(f"Using fallback sample rate: {default_sample_rate}Hz")
+                    
+                    self.stream = self.audio.open(
+                        format=pyaudio.paInt16,
+                        channels=1,
+                        rate=default_sample_rate,
+                        input=True,
+                        input_device_index=mic_index,
+                        frames_per_buffer=1024,
+                        stream_callback=self._callback
+                    )
+                    # Store the sample rate
+                    self.current_sample_rate = default_sample_rate
+                    
+            else:  # SAMPLE_RATE_MODE_DEVICE
+                # Use device's default sample rate
+                default_sample_rate = int(device_info['defaultSampleRate'])
+                logger.info(f"Using device's default sample rate: {default_sample_rate}Hz")
+                
+                self.stream = self.audio.open(
+                    format=pyaudio.paInt16,
+                    channels=1,
+                    rate=default_sample_rate,
+                    input=True,
+                    input_device_index=mic_index,
+                    frames_per_buffer=1024,
+                    stream_callback=self._callback
+                )
+                # Store the sample rate
+                self.current_sample_rate = default_sample_rate
             
             self.stream.start_stream()
-            logger.info("Recording started")
+            logger.info(f"Recording started at {self.current_sample_rate}Hz")
             
         except Exception as e:
             logger.error(f"Failed to start recording: {e}")
@@ -228,26 +283,34 @@ class AudioRecorder(QObject):
             # Convert frames to numpy array
             audio_data = np.frombuffer(b''.join(self.frames), dtype=np.int16)
             
-            if self.current_device_info is None:
-                raise ValueError("No device info available")
+            if not hasattr(self, 'current_sample_rate') or self.current_sample_rate is None:
+                logger.warning("No sample rate information available, assuming device default")
+                if self.current_device_info is not None:
+                    original_rate = int(self.current_device_info['defaultSampleRate'])
+                else:
+                    # If no device info is available, we have to use a reasonable default
+                    # Get the default input device's sample rate
+                    original_rate = int(self.audio.get_default_input_device_info()['defaultSampleRate'])
+            else:
+                original_rate = self.current_sample_rate
                 
-            # Get original sample rate from stored device info
-            original_rate = int(self.current_device_info['defaultSampleRate'])
-            
             # Resample to 16000Hz if needed
-            if original_rate != 16000:
+            if original_rate != WHISPER_SAMPLE_RATE:
+                logger.info(f"Resampling audio from {original_rate}Hz to {WHISPER_SAMPLE_RATE}Hz")
                 # Calculate resampling ratio
-                ratio = 16000 / original_rate
+                ratio = WHISPER_SAMPLE_RATE / original_rate
                 output_length = int(len(audio_data) * ratio)
                 
                 # Resample audio
                 audio_data = signal.resample(audio_data, output_length)
+            else:
+                logger.info(f"No resampling needed, audio already at {WHISPER_SAMPLE_RATE}Hz")
             
             # Save to WAV file
             wf = wave.open(filename, 'wb')
             wf.setnchannels(1)
             wf.setsampwidth(self.audio.get_sample_size(pyaudio.paInt16))
-            wf.setframerate(16000)  # Always save at 16000Hz for Whisper
+            wf.setframerate(WHISPER_SAMPLE_RATE)  # Always save at 16000Hz for Whisper
             wf.writeframes(audio_data.astype(np.int16).tobytes())
             wf.close()
             

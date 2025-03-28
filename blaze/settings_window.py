@@ -6,7 +6,10 @@ from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QObject, QUrl
 from PyQt6.QtGui import QDesktopServices
 import logging
 from blaze.settings import Settings
-from blaze.constants import APP_NAME, APP_VERSION, DEFAULT_WHISPER_MODEL, GITHUB_REPO_URL
+from blaze.constants import (
+    APP_NAME, APP_VERSION, DEFAULT_WHISPER_MODEL, GITHUB_REPO_URL,
+    SAMPLE_RATE_MODE_WHISPER, SAMPLE_RATE_MODE_DEVICE, DEFAULT_SAMPLE_RATE_MODE
+)
 from blaze.whisper_model_manager import WhisperModelTable
 
 logger = logging.getLogger(__name__)
@@ -88,6 +91,18 @@ class SettingsWindow(QWidget):
         self.device_combo.currentIndexChanged.connect(self.on_device_changed)
         recording_layout.addRow("Input Device:", self.device_combo)
         
+        # Add sample rate mode option
+        self.sample_rate_combo = QComboBox()
+        self.sample_rate_combo.setMaximumWidth(300)
+        self.sample_rate_combo.addItem("16kHz - best for Whisper", SAMPLE_RATE_MODE_WHISPER)
+        self.sample_rate_combo.addItem("Default for device", SAMPLE_RATE_MODE_DEVICE)
+        current_mode = self.settings.get('sample_rate_mode', DEFAULT_SAMPLE_RATE_MODE)
+        index = self.sample_rate_combo.findData(current_mode)
+        if index >= 0:
+            self.sample_rate_combo.setCurrentIndex(index)
+        self.sample_rate_combo.currentIndexChanged.connect(self.on_sample_rate_mode_changed)
+        recording_layout.addRow("Sample Rate:", self.sample_rate_combo)
+        
         recording_group.setLayout(recording_layout)
         # Set size policy to make this group not expand
         recording_group.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
@@ -150,6 +165,25 @@ class SettingsWindow(QWidget):
             self.settings.set('mic_index', index)
         except ValueError as e:
             logger.error(f"Failed to set microphone: {e}")
+            QMessageBox.warning(self, "Error", str(e))
+            
+    def on_sample_rate_mode_changed(self, index):
+        try:
+            mode = self.sample_rate_combo.currentData()
+            self.settings.set('sample_rate_mode', mode)
+            
+            # Update any active recorder instances
+            app = QApplication.instance()
+            for widget in app.topLevelWidgets():
+                if hasattr(widget, 'recorder') and widget.recorder:
+                    # Signal the recorder to update its sample rate mode
+                    # This will apply on the next recording
+                    if hasattr(widget.recorder, 'update_sample_rate_mode'):
+                        widget.recorder.update_sample_rate_mode(mode)
+            
+            logger.info(f"Sample rate mode changed to: {mode}")
+        except ValueError as e:
+            logger.error(f"Failed to set sample rate mode: {e}")
             QMessageBox.warning(self, "Error", str(e))
 
     def on_model_activated(self, model_name):
