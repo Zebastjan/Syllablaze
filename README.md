@@ -26,6 +26,7 @@ Originally created by Guilherme da Silveira as "Telly Spelly".
 tray icon:
 ![image](https://github.com/user-attachments/assets/7c1a0b3f-6606-4970-9ad9-337e88ddecfe)
 
+<img src="https://github.com/user-attachments/assets/7c1a0b3f-6606-4970-9ad9-337e88ddecfe" width="100px">
 click on the tray icon opens speech recognition: 
 ![image](https://github.com/user-attachments/assets/91aa090c-d0e2-414f-bbcc-780f182d4030)
 
