@@ -262,34 +262,43 @@ class WhisperModelTable(QWidget):
             "Model", "Use Model", "Size (MB)"
         ])
         
-        # Set column resize mode to stretch to fill available space
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        # Make all columns resize to content for better auto-fitting
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         
-        # Make specific columns resize to content
-        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)  # Model name
-        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)  # Use Model
-        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)  # Size
+        # Set the first column (Model name) to stretch to fill remaining space
+        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         
         self.table.horizontalHeader().setSectionsClickable(True)
         self.table.horizontalHeader().sectionClicked.connect(self.on_table_header_clicked)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         
-        # Set row height to be comfortable
-        self.table.verticalHeader().setDefaultSectionSize(60)
+        # Set row height to be closer to text size for more compact display
+        self.table.verticalHeader().setDefaultSectionSize(30)
         
-        # Make the table take up most of the available space
+        # Make the table take up all available space
         self.table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         
         layout.addWidget(self.table)
         
-        # Create storage path display
-        storage_layout = QHBoxLayout()
+        # Create storage path display with label on one line and button on the next
+        storage_layout = QVBoxLayout()
+        
+        # Path label
         self.storage_path_label = QLabel()
         storage_layout.addWidget(self.storage_path_label)
-        self.open_storage_button = QPushButton("Open")
+        
+        # Button in its own layout to control width
+        button_layout = QHBoxLayout()
+        self.open_storage_button = QPushButton("Open Directory")
+        # Set a fixed width for the button to make it not too wide
+        self.open_storage_button.setFixedWidth(120)
         self.open_storage_button.clicked.connect(self.on_open_storage_clicked)
-        storage_layout.addWidget(self.open_storage_button)
+        button_layout.addWidget(self.open_storage_button)
+        button_layout.addStretch()  # Push button to the left
+        
+        storage_layout.addLayout(button_layout)
         layout.addLayout(storage_layout)
     
     def refresh_model_list(self):
@@ -327,7 +336,7 @@ class WhisperModelTable(QWidget):
             # Use model button, active indicator, or download button
             use_cell = QWidget()
             use_layout = QHBoxLayout(use_cell)
-            use_layout.setContentsMargins(3, 3, 3, 3)
+            use_layout.setContentsMargins(2, 0, 2, 0)  # Reduce vertical margins to make rows more compact
             
             if info['is_downloaded']:
                 if info['is_active']:

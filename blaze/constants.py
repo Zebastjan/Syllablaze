@@ -11,6 +11,9 @@ APP_VERSION = "0.2"
 # Organization name
 ORG_NAME = "KDE"
 
+# GitHub repository URL
+GITHUB_REPO_URL = "https://github.com/PabloVitasso/Syllablaze"
+
 # Default whisper model
 DEFAULT_WHISPER_MODEL = "tiny"
 

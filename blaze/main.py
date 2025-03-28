@@ -1,12 +1,6 @@
-# Set environment variables to suppress Jack errors before any imports
 import os
-# Tell Jack not to start if not available
-os.environ['JACK_NO_AUDIO_RESERVATION'] = '1'
-os.environ['JACK_NO_START_SERVER'] = '1'
-# Explicitly ignore Jack - we'll use ALSA or PulseAudio instead
-os.environ['AUDIODEV'] = 'null'
-
 import sys
+import signal
 from PyQt6.QtWidgets import (QApplication, QMessageBox, QSystemTrayIcon, QMenu)
 from PyQt6.QtCore import Qt, QTimer, QCoreApplication
 from PyQt6.QtGui import QIcon, QAction
@@ -20,7 +14,6 @@ from blaze.loading_window import LoadingWindow
 from PyQt6.QtCore import pyqtSignal
 import warnings
 import ctypes
-from blaze.shortcuts import GlobalShortcuts
 from blaze.settings import Settings
 from blaze.constants import APP_NAME, APP_VERSION, DEFAULT_WHISPER_MODEL, ORG_NAME, VALID_LANGUAGES
 from blaze.whisper_model_manager import get_model_info
@@ -29,9 +22,6 @@ from blaze.whisper_model_manager import get_model_info
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# Log that Jack errors can be safely ignored
-logger.info("Note: Jack server errors can be safely ignored - using ALSA/PulseAudio instead")
 
 # Audio error handling is now done in recorder.py
 # This comment is kept for documentation purposes
@@ -97,11 +87,6 @@ class TrayRecorder(QSystemTrayIcon):
         
         # Enable activation by left click
         self.activated.connect(self.on_activate)
-        
-        # Add shortcuts handler
-        self.shortcuts = GlobalShortcuts()
-        self.shortcuts.start_recording_triggered.connect(self.start_recording)
-        self.shortcuts.stop_recording_triggered.connect(self.stop_recording)
 
     def initialize(self):
         """Initialize the tray recorder after showing loading window"""
@@ -127,10 +112,6 @@ class TrayRecorder(QSystemTrayIcon):
         
         # Create menu
         self.setup_menu()
-        
-        # Setup global shortcuts
-        if not self.shortcuts.setup_shortcuts():
-            logger.warning("Failed to register global shortcuts")
             
         # Initialize tooltip with model information
         self.update_tooltip()
@@ -147,12 +128,7 @@ class TrayRecorder(QSystemTrayIcon):
         self.settings_action = QAction("Settings", menu)
         self.settings_action.triggered.connect(self.toggle_settings)
         menu.addAction(self.settings_action)
-        
-        # Add debug window action
-        # self.debug_action = QAction("Show Debug Window", menu)
-        # self.debug_action.triggered.connect(self.toggle_debug_window)
-        # menu.addAction(self.debug_action)
-        
+
         # Add separator before quit
         menu.addSeparator()
         
@@ -215,13 +191,12 @@ class TrayRecorder(QSystemTrayIcon):
     def toggle_settings(self):
         if not self.settings_window:
             self.settings_window = SettingsWindow()
-            self.settings_window.shortcuts_changed.connect(self.update_shortcuts)
         
         if self.settings_window.isVisible():
             self.settings_window.hide()
         else:
-            # Make sure the window is maximized
-            self.settings_window.showMaximized()
+            # Show the window (not maximized)
+            self.settings_window.show()
             # Bring to front and activate
             self.settings_window.raise_()
             self.settings_window.activateWindow()
@@ -256,41 +231,54 @@ class TrayRecorder(QSystemTrayIcon):
             
         self.setToolTip(tooltip)
     
-    def update_shortcuts(self, start_key, stop_key):
-        """Update global shortcuts"""
-        if self.shortcuts.setup_shortcuts(start_key, stop_key):
-            self.showMessage("Shortcuts Updated",
-                           f"Start: {start_key}\nStop: {stop_key}",
-                           self.normal_icon)
+    # Removed update_shortcuts method as part of keyboard shortcut functionality removal
 
     def on_activate(self, reason):
         if reason == QSystemTrayIcon.ActivationReason.Trigger:  # Left click
             self.toggle_recording()
 
     def quit_application(self):
+        import os
         try:
             # Cleanup recorder
             if self.recorder:
-                self.recorder.cleanup()
+                try:
+                    self.recorder.cleanup()
+                except Exception as rec_error:
+                    logger.error(f"Error cleaning up recorder: {rec_error}")
                 self.recorder = None
             
             # Close all windows
-            if hasattr(self, 'settings_window') and self.settings_window and self.settings_window.isVisible():
-                self.settings_window.close()
+            if hasattr(self, 'settings_window') and self.settings_window:
+                try:
+                    if self.settings_window.isVisible():
+                        self.settings_window.close()
+                except Exception as win_error:
+                    logger.error(f"Error closing settings window: {win_error}")
                 
-            if hasattr(self, 'progress_window') and self.progress_window and self.progress_window.isVisible():
-                self.progress_window.close()
+            if hasattr(self, 'progress_window') and self.progress_window:
+                try:
+                    if self.progress_window.isVisible():
+                        self.progress_window.close()
+                except Exception as win_error:
+                    logger.error(f"Error closing progress window: {win_error}")
                 
             # Stop recording if active
             if self.recording:
-                self.stop_recording()
-                
+                try:
+                    self.stop_recording()
+                except Exception as rec_error:
+                    logger.error(f"Error stopping recording: {rec_error}")
+            
             # Wait for any running threads to finish
             if hasattr(self, 'transcriber') and self.transcriber:
-                if hasattr(self.transcriber, 'worker') and self.transcriber.worker:
-                    if self.transcriber.worker.isRunning():
-                        logger.info("Waiting for transcription worker to finish...")
-                        self.transcriber.worker.wait(1000)  # Wait up to 1 second
+                try:
+                    if hasattr(self.transcriber, 'worker') and self.transcriber.worker:
+                        if self.transcriber.worker.isRunning():
+                            logger.info("Waiting for transcription worker to finish...")
+                            self.transcriber.worker.wait(5000)  # Wait up to 5 seconds
+                except Exception as thread_error:
+                    logger.error(f"Error waiting for transcription worker: {thread_error}")
             
             # Release lock file if it exists
             global LOCK_FILE
@@ -307,13 +295,16 @@ class TrayRecorder(QSystemTrayIcon):
                     logger.info("Released application lock file")
                 except Exception as lock_error:
                     logger.error(f"Error releasing lock file: {lock_error}")
-                        
-            # Quit the application
-            QApplication.quit()
+            
+            logger.info("Application shutdown complete, exiting...")
+            
+            # Explicitly quit the application
+            QApplication.instance().quit()
+                
         except Exception as e:
             logger.error(f"Error during application shutdown: {e}")
-            # Force quit if there was an error
-            QApplication.exit(1)
+            # Force exit if there was an error
+            # Remove forced exit on error
 
     def update_volume_meter(self, value):
         # Update debug window first
@@ -403,15 +394,13 @@ class TrayRecorder(QSystemTrayIcon):
             self.progress_window.close()
             self.progress_window = None
 
-    def start_recording(self):
-        """Start a new recording"""
-        if not self.recording:
-            self.toggle_recording()
-            
     def stop_recording(self):
-        """Stop current recording"""
-        if self.recording:
-            self.toggle_recording()
+        """Handle stopping the recording and starting processing"""
+        if not self.recording:
+            return
+        
+        logger.info("TrayRecorder: Stopping recording")
+        self.toggle_recording()  # This is now safe since toggle_recording handles everything
 
     def toggle_debug_window(self):
         """Toggle debug window visibility"""
@@ -432,10 +421,30 @@ def setup_application_metadata():
 LOCK_FILE_PATH = os.path.expanduser("~/.cache/syllablaze/syllablaze.lock")
 LOCK_FILE = None
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 def check_already_running():
     """Check if Syllablaze is already running using a file lock mechanism"""
     global LOCK_FILE
     
+    
+
+
     # Create directory if it doesn't exist
     lock_dir = os.path.dirname(LOCK_FILE_PATH)
     if not os.path.exists(lock_dir):
@@ -553,7 +562,7 @@ def _check_already_running_by_process():
     
     return count > 0
 
-def cleanup_lock_file(*args):
+def cleanup_lock_file():
     """Clean up lock file when application exits"""
     global LOCK_FILE
     if LOCK_FILE:
@@ -566,26 +575,28 @@ def cleanup_lock_file(*args):
             if os.path.exists(LOCK_FILE_PATH):
                 os.remove(LOCK_FILE_PATH)
             LOCK_FILE = None
-            logger.info("Released application lock file due to signal")
+            logger.info("Released application lock file at exit")
         except Exception as e:
-            logger.error(f"Error releasing lock file during signal handling: {e}")
-    # Re-raise the signal to allow normal handling
-    sys.exit(1)
+            logger.error(f"Error releasing lock file: {e}")
+
+# Suppress GTK module error messages
+os.environ['GTK_MODULES'] = ''
 
 def main():
+    import sys
+    
+    # We won't use signal handlers since they don't seem to work with Qt
+    # Instead, we'll use a more direct approach
+    
     try:
-        # Set up signal handling for CTRL-C and other termination signals
-        import signal
-        signal.signal(signal.SIGINT, cleanup_lock_file)
-        signal.signal(signal.SIGTERM, cleanup_lock_file)
         
         # Check if already running
         if check_already_running():
             print("Syllablaze is already running. Only one instance is allowed.")
-            QMessageBox.warning(None, "Already Running",
-                "Syllablaze is already running. Only one instance is allowed.")
+            # Exit gracefully without trying to show a QMessageBox
             return 1
-        
+            
+        # Initialize QApplication after checking for another instance
         app = QApplication(sys.argv)
         setup_application_metadata()
         
@@ -620,7 +631,19 @@ def main():
         # Initialize tray in background
         QTimer.singleShot(100, lambda: initialize_tray(tray, loading_window, app))
         
-        return app.exec()
+        # Instead of using app.exec(), we'll use a custom event loop
+        # that allows us to check for keyboard interrupts
+        try:
+            # Start the Qt event loop
+            exit_code = app.exec()
+            # Clean up before exiting
+            cleanup_lock_file()
+            return exit_code
+        except KeyboardInterrupt:
+            # This will catch Ctrl+C
+            print("\nReceived Ctrl+C, exiting...")
+            cleanup_lock_file()
+            return 0
         
     except Exception as e:
         logger.exception("Failed to start application")
