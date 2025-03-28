@@ -29,15 +29,15 @@ tray icon:
 
 click on the tray icon opens speech recognition: 
 
-<img src="https://github.com/user-attachments/assets/91aa090c-d0e2-414f-bbcc-780f182d4030" width="300px">
+<img src="https://github.com/user-attachments/assets/91aa090c-d0e2-414f-bbcc-780f182d4030" width="400px">
 
 notification after action:
 
-<img src="https://github.com/user-attachments/assets/4f58b335-4dd3-4db5-a73c-9f4fcd11f1d8" width="300px">
+<img src="https://github.com/user-attachments/assets/4f58b335-4dd3-4db5-a73c-9f4fcd11f1d8" width="350px">
 
 text automatically lands into clipboard:
 
-<img src="https://github.com/user-attachments/assets/7821a6ad-614e-4e47-bcef-ce6f6e8ab027" width="300px">
+<img src="https://github.com/user-attachments/assets/7821a6ad-614e-4e47-bcef-ce6f6e8ab027" width="400px">
 
 settings screen:
 
