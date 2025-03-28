@@ -19,6 +19,12 @@ The current focus of the Syllablaze project is to optimize the application for U
    - Improved performance with direct 16kHz recording
    - Updated to version 0.3
 
+2. **Recording UI Improvements**:
+   - Added app name and version display to recording window
+   - Added settings information panel showing current model and language
+   - Made stop recording button twice as large for better usability
+   - Improved overall layout and visual hierarchy
+
 ## Next Steps
 
 1. ✅ **Update Desktop File**: Desktop file has been renamed and updated from org.kde.telly_spelly.desktop to org.kde.syllablaze.desktop
@@ -46,8 +52,14 @@ The current focus of the Syllablaze project is to optimize the application for U
    - Implemented direct memory-to-memory audio processing
    - Optimized for 16kHz recording to reduce processing overhead
    - Updated to version 0.3
-11. **Test Installation**: Verify the installation process works correctly on Ubuntu KDE
-12. **Future Exploration**: Begin research on creating a Flatpak version
+
+11. ✅ **Improve Recording UI**: Enhanced user experience
+   - Added app name and version display to recording window
+   - Added settings information panel showing current model and language
+   - Made stop recording button twice as large for better usability
+   - Improved overall layout and visual hierarchy
+12. **Test Installation**: Verify the installation process works correctly on Ubuntu KDE
+13. **Future Exploration**: Begin research on creating a Flatpak version
 
 ## Active Decisions and Considerations
 

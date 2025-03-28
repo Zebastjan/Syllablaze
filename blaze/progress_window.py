@@ -1,7 +1,10 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QProgressBar,
-                             QApplication, QPushButton, QHBoxLayout)
+                             QApplication, QPushButton, QHBoxLayout, QFrame)
 from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QFont
 from blaze.volume_meter import VolumeMeter
+from blaze.constants import APP_NAME, APP_VERSION
+from blaze.settings import Settings
 
 class ProgressWindow(QWidget):
     stop_clicked = pyqtSignal()  # Signal emitted when stop button is clicked
@@ -16,9 +19,43 @@ class ProgressWindow(QWidget):
         # Prevent closing while processing
         self.processing = False
         
+        # Get settings
+        self.settings = Settings()
+        
         # Create main layout
         layout = QVBoxLayout()
         self.setLayout(layout)
+        
+        # Add app name and version
+        app_title = QLabel(f"{APP_NAME} v{APP_VERSION}")
+        app_title_font = QFont()
+        app_title_font.setBold(True)
+        app_title_font.setPointSize(12)
+        app_title.setFont(app_title_font)
+        app_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(app_title)
+        
+        # Add settings info
+        settings_frame = QFrame()
+        settings_frame.setFrameShape(QFrame.Shape.StyledPanel)
+        settings_frame.setFrameShadow(QFrame.Shadow.Sunken)
+        settings_layout = QVBoxLayout(settings_frame)
+        
+        # Get current settings
+        model_name = self.settings.get('model', 'tiny')
+        language = self.settings.get('language', 'auto')
+        if language == 'auto':
+            language_display = 'Auto-detect'
+        else:
+            from blaze.constants import VALID_LANGUAGES
+            language_display = VALID_LANGUAGES.get(language, language)
+        
+        # Add settings labels
+        settings_layout.addWidget(QLabel(f"Model: {model_name}"))
+        settings_layout.addWidget(QLabel(f"Language: {language_display}"))
+        settings_layout.addWidget(QLabel("Processing: In-memory (no temp files)"))
+        
+        layout.addWidget(settings_frame)
         
         # Add status label
         self.status_label = QLabel("Recording...")
@@ -37,13 +74,18 @@ class ProgressWindow(QWidget):
         self.progress_bar.hide()
         layout.addWidget(self.progress_bar)
         
-        # Add stop button
+        # Add stop button with double height
         self.stop_button = QPushButton("Stop Recording")
+        self.stop_button.setMinimumHeight(60)  # Make button twice as tall
+        stop_button_font = QFont()
+        stop_button_font.setBold(True)
+        stop_button_font.setPointSize(11)
+        self.stop_button.setFont(stop_button_font)
         self.stop_button.clicked.connect(self.stop_clicked.emit)
         layout.addWidget(self.stop_button)
         
         # Set window size
-        self.setFixedSize(350, 180)
+        self.setFixedSize(400, 320)  # Increased size to accommodate new elements
         
         # Center the window
         screen = QApplication.primaryScreen().geometry()
@@ -72,7 +114,7 @@ class ProgressWindow(QWidget):
         self.progress_bar.show()
         self.progress_bar.setValue(0)
         self.status_label.setText("Processing audio with Whisper...")
-        self.setFixedHeight(120)
+        self.setFixedHeight(220)  # Adjusted for new layout
     
     def set_recording_mode(self):
         """Switch back to recording mode"""
@@ -81,7 +123,7 @@ class ProgressWindow(QWidget):
         self.progress_bar.hide()
         self.stop_button.show()
         self.status_label.setText("Recording...")
-        self.setFixedHeight(180)
+        self.setFixedHeight(320)  # Adjusted for new layout
         
     def update_progress(self, percent):
         """Update the progress bar with a percentage value"""

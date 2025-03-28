@@ -10,12 +10,13 @@
    - Automatic clipboard integration for transcribed text
    - System tray integration with KDE Plasma
    - Settings management and persistence
-
 2. **User Interface**:
    - System tray icon with context menu
-   - Progress window with volume meter
+   - Enhanced recording window with app info and settings display
+   - Improved stop button for better usability
    - Settings window for configuration
    - Notifications for transcription completion
+   - Comprehensive Whisper model management interface
    - Comprehensive Whisper model management interface
 
 3. **Installation**:
@@ -121,3 +122,12 @@ The core functionality works well, with significant improvements in the Whisper 
    - Audio data now flows directly from recorder to transcriber as NumPy arrays
    - Enhanced privacy and security by eliminating temporary files
    - Improved performance with direct 16kHz recording
+
+9. **Recording UI**: ✅ IMPROVED
+   - ~~Limited information displayed during recording~~
+   - ~~Small stop button could be difficult to click~~
+   - ~~No indication of current settings during recording~~
+   - Solution: Redesigned recording window with app name and version
+   - Added settings information panel showing current model and language
+   - Made stop recording button twice as large for better usability
+   - Improved overall layout and visual hierarchy
