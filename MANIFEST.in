@@ -1,0 +1,4 @@
+include README.md
+include requirements.txt
+recursive-include blaze/ui *.py
+recursive-include blaze/utils *.py

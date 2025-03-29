@@ -1,5 +1,6 @@
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QProgressBar, QApplication
 from PyQt6.QtCore import Qt, pyqtSignal
+from blaze.utils import center_window
 
 class ProcessingWindow(QWidget):
     def __init__(self):
@@ -24,11 +25,7 @@ class ProcessingWindow(QWidget):
         self.setFixedSize(300, 100)
         
         # Center the window
-        screen = QApplication.primaryScreen().geometry()
-        self.move(
-            screen.center().x() - self.width() // 2,
-            screen.center().y() - self.height() // 2
-        )
+        center_window(self)
     
     def set_status(self, text):
         self.status_label.setText(text) 

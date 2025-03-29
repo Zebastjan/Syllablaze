@@ -2,6 +2,7 @@ from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel, QProgressBar
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QIcon
 from blaze.constants import APP_NAME, APP_VERSION
+from blaze.utils import center_window
 
 class LoadingWindow(QDialog):
     def __init__(self, parent=None):
@@ -39,6 +40,9 @@ class LoadingWindow(QDialog):
         self.progress = QProgressBar()
         self.progress.setRange(0, 100)  # Set range from 0 to 100 for percentage
         layout.addWidget(self.progress)
+        
+        # Center the window on screen
+        center_window(self)
         
     def set_status(self, message):
         self.status_label.setText(message)

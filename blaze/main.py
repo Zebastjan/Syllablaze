@@ -239,6 +239,7 @@ class TrayRecorder(QSystemTrayIcon):
 
     def quit_application(self):
         import os
+        import sys
         try:
             # Cleanup recorder
             if self.recorder:
@@ -300,11 +301,14 @@ class TrayRecorder(QSystemTrayIcon):
             
             # Explicitly quit the application
             QApplication.instance().quit()
+            
+            # Force exit after a short delay to ensure cleanup
+            QTimer.singleShot(500, lambda: sys.exit(0))
                 
         except Exception as e:
             logger.error(f"Error during application shutdown: {e}")
             # Force exit if there was an error
-            # Remove forced exit on error
+            sys.exit(1)
 
     def update_volume_meter(self, value):
         # Update debug window first
@@ -377,10 +381,26 @@ class TrayRecorder(QSystemTrayIcon):
             # Update tooltip with recognized text
             self.update_tooltip(text)
         
-        # Close the progress window
+        # Force close the progress window
         if self.progress_window:
-            self.progress_window.close()
-            self.progress_window = None
+            logger.info("Force closing progress window after transcription")
+            try:
+                # Try multiple approaches to ensure the window closes
+                self.progress_window.hide()
+                self.progress_window.close()
+                self.progress_window.deleteLater()
+                
+                # Set processing to false to allow closing
+                self.progress_window.processing = False
+                
+                # Force an immediate process of events
+                QApplication.processEvents()
+                
+                self.progress_window = None
+            except Exception as e:
+                logger.error(f"Error closing progress window: {e}")
+        else:
+            logger.warning("Progress window not found when trying to close after transcription")
     
     def handle_transcription_error(self, error):
         self.showMessage("Transcription Error",
@@ -390,9 +410,26 @@ class TrayRecorder(QSystemTrayIcon):
         # Update tooltip to indicate error
         self.update_tooltip()
         
+        # Force close the progress window
         if self.progress_window:
-            self.progress_window.close()
-            self.progress_window = None
+            logger.info("Force closing progress window after transcription error")
+            try:
+                # Try multiple approaches to ensure the window closes
+                self.progress_window.hide()
+                self.progress_window.close()
+                self.progress_window.deleteLater()
+                
+                # Set processing to false to allow closing
+                self.progress_window.processing = False
+                
+                # Force an immediate process of events
+                QApplication.processEvents()
+                
+                self.progress_window = None
+            except Exception as e:
+                logger.error(f"Error closing progress window: {e}")
+        else:
+            logger.warning("Progress window not found when trying to close after transcription error")
 
     def stop_recording(self):
         """Handle stopping the recording and starting processing"""

@@ -5,6 +5,8 @@ from PyQt6.QtGui import QFont
 from blaze.volume_meter import VolumeMeter
 from blaze.constants import APP_NAME, APP_VERSION
 from blaze.settings import Settings
+from blaze.utils import center_window
+from blaze.ui.state_manager import RecordingState, ProcessingState
 
 class ProgressWindow(QWidget):
     stop_clicked = pyqtSignal()  # Signal emitted when stop button is clicked
@@ -88,44 +90,46 @@ class ProgressWindow(QWidget):
         self.setFixedSize(400, 320)  # Increased size to accommodate new elements
         
         # Center the window
-        screen = QApplication.primaryScreen().geometry()
-        self.move(
-            screen.center().x() - self.width() // 2,
-            screen.center().y() - self.height() // 2
-        )
+        center_window(self)
+        
+        # Initialize states
+        self.recording_state = RecordingState(self)
+        self.processing_state = ProcessingState(self)
+        self.current_state = None
+        
+        # Start in recording mode
+        self.set_recording_mode()
     
     def closeEvent(self, event):
-        if self.processing:
-            event.ignore()
-        else:
-            super().closeEvent(event)
+        # Always allow closing when called programmatically
+        # This ensures the window can be closed from the main.py handlers
+        super().closeEvent(event)
     
     def set_status(self, text):
-        self.status_label.setText(text)
+        """Update status text"""
+        if self.current_state:
+            self.current_state.update(status=text)
     
     def update_volume(self, value):
-        self.volume_meter.set_value(value)
+        """Update the volume meter"""
+        if self.current_state:
+            self.current_state.update(volume=value)
     
     def set_processing_mode(self):
         """Switch UI to processing mode"""
-        self.processing = True
-        self.volume_meter.hide()
-        self.stop_button.hide()
-        self.progress_bar.show()
-        self.progress_bar.setValue(0)
-        self.status_label.setText("Processing audio with Whisper...")
-        self.setFixedHeight(220)  # Adjusted for new layout
+        if self.current_state:
+            self.current_state.exit()
+        self.current_state = self.processing_state
+        self.current_state.enter()
     
     def set_recording_mode(self):
         """Switch back to recording mode"""
-        self.processing = False
-        self.volume_meter.show()
-        self.progress_bar.hide()
-        self.stop_button.show()
-        self.status_label.setText("Recording...")
-        self.setFixedHeight(320)  # Adjusted for new layout
+        if self.current_state:
+            self.current_state.exit()
+        self.current_state = self.recording_state
+        self.current_state.enter()
         
     def update_progress(self, percent):
         """Update the progress bar with a percentage value"""
-        if self.processing and self.progress_bar.isVisible():
-            self.progress_bar.setValue(percent)
+        if self.current_state:
+            self.current_state.update(progress=percent)

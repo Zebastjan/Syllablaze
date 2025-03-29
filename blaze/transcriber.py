@@ -6,7 +6,7 @@ import logging
 import time
 from blaze.settings import Settings
 from blaze.constants import DEFAULT_WHISPER_MODEL
-from blaze.whisper_model_manager import get_model_info
+from blaze.utils.whisper_model_manager import WhisperModelManager
 logger = logging.getLogger(__name__)
 
 class TranscriptionWorker(QThread):
@@ -79,32 +79,19 @@ class WhisperTranscriber(QObject):
         self._cleanup_timer.setSingleShot(True)
         self.settings = Settings()
         self.current_language = self.settings.get('language', 'auto')
+        self.model_manager = WhisperModelManager(self.settings)
         self.load_model()
         
     def load_model(self):
         """Load the Whisper model based on current settings"""
         try:
             model_name = self.settings.get('model', DEFAULT_WHISPER_MODEL)
-            logger.info(f"Loading Whisper model: {model_name}")
-            
-            # Check if model is downloaded
-            model_info, _ = get_model_info()
-            if model_name in model_info and not model_info[model_name]['is_downloaded']:
-                error_msg = f"Model '{model_name}' is not downloaded. Please download it in Settings."
-                logger.error(error_msg)
-                self.transcription_error.emit(error_msg)
-                raise ValueError(error_msg)
-            
-            # Redirect whisper's logging to our logger
-            import logging as whisper_logging
-            whisper_logging.getLogger("whisper").setLevel(logging.WARNING)
             
             # Store the current model name for reference
             self.current_model_name = model_name
             
-            # Load the model
-            self.model = whisper.load_model(model_name)
-            logger.info(f"Model '{model_name}' loaded successfully")
+            # Load the model using the model manager
+            self.model = self.model_manager.load_model(model_name)
             
             # Update and log the current language setting
             self.current_language = self.settings.get('language', 'auto')
@@ -117,6 +104,7 @@ class WhisperTranscriber(QObject):
         except Exception as e:
             logger.error(f"Failed to load Whisper model: {e}")
             print(f"Error loading model: {e}")
+            self.transcription_error.emit(f"Failed to load Whisper model: {e}")
             raise
             
     def reload_model_if_needed(self):
@@ -190,24 +178,35 @@ class WhisperTranscriber(QObject):
                 self.worker.deleteLater()
                 self.worker = None
                 
+    def _prepare_for_transcription(self):
+        """Prepare for transcription by checking model and language settings"""
+        # Check if model needs to be reloaded due to settings changes
+        model_reloaded = self.reload_model_if_needed()
+        
+        # Check if language has changed
+        current_language = self.settings.get('language', 'auto')
+        language_changed = False
+        if current_language != self.current_language:
+            logger.info(f"Language changed from {self.current_language} to {current_language}, updating...")
+            self.current_language = current_language
+            language_changed = True
+        
+        # Log the language being used for transcription
+        lang_str = "auto-detect" if self.current_language == 'auto' else self.current_language
+        logger.info(f"Transcription using language: {lang_str}")
+        logger.info(f"Transcription using model: {self.current_model_name}")
+        
+        return model_reloaded, language_changed, lang_str
+
     def transcribe(self, audio_data):
         """Transcribe audio data directly from memory"""
         try:
-            # Check if model needs to be reloaded due to settings changes
-            self.reload_model_if_needed()
-            
-            # Check if language has changed
-            current_language = self.settings.get('language', 'auto')
-            if current_language != self.current_language:
-                self.current_language = current_language
+            # Prepare for transcription
+            _, _, lang_str = self._prepare_for_transcription()
             
             # Emit progress update
             self.transcription_progress.emit("Processing audio...")
             
-            # Log the language being used for transcription
-            lang_str = "auto-detect" if self.current_language == 'auto' else self.current_language
-            logger.info(f"Transcribing with language: {lang_str}")
-            logger.info(f"Using model: {self.current_model_name}")
             print(f"Transcribing with model: {self.current_model_name}, language: {lang_str}")
             
             # Run transcription with language setting
@@ -242,27 +241,21 @@ class WhisperTranscriber(QObject):
             logger.warning("Transcription already in progress")
             return
         
-        # Check if model needs to be reloaded due to settings changes
-        model_reloaded = self.reload_model_if_needed()
+        # Prepare for transcription
+        model_reloaded, language_changed, lang_str = self._prepare_for_transcription()
+        
+        # Log changes if any occurred
         if model_reloaded:
             logger.info("Model was reloaded due to settings change before transcription")
             print(f"Model reloaded to: {self.current_model_name}")
             
-        # Check if language has changed
-        current_language = self.settings.get('language', 'auto')
-        if current_language != self.current_language:
-            logger.info(f"Language changed from {self.current_language} to {current_language}, updating...")
-            self.current_language = current_language
-            print(f"Language changed to: {current_language}")
-            
+        if language_changed:
+            print(f"Language changed to: {self.current_language}")
+        
         # Emit initial progress status before starting worker
         self.transcription_progress.emit("Starting transcription...")
         self.transcription_progress_percent.emit(5)
-            
-        # Log the language being used for transcription
-        lang_str = "auto-detect" if self.current_language == 'auto' else self.current_language
-        logger.info(f"Transcription worker using language: {lang_str}")
-        logger.info(f"Transcription worker using model: {self.current_model_name}")
+        
         print(f"Transcribing audio with model: {self.current_model_name}, language: {lang_str}")
         
         self.worker = TranscriptionWorker(self.model, audio_data)

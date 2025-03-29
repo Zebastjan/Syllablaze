@@ -19,6 +19,15 @@ cp -v ./*.py "$INSTALL_DIR/"
 cp -v ./blaze/*.py "$INSTALL_DIR/"
 echo "Copied files from blaze/ directory"
 
+# Create subdirectories if they don't exist
+mkdir -p "$INSTALL_DIR/ui"
+mkdir -p "$INSTALL_DIR/utils"
+
+# Copy files from subdirectories
+cp -v ./blaze/ui/*.py "$INSTALL_DIR/ui/"
+cp -v ./blaze/utils/*.py "$INSTALL_DIR/utils/"
+echo "Copied files from blaze/ui/ and blaze/utils/ directories"
+
 # Make the script executable if it exists
 if [ -f "./run-syllablaze.sh" ]; then
     echo "Updating run script..."
