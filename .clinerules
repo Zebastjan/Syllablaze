@@ -62,8 +62,10 @@ flowchart TD
 
 📌general rules for .txt or .md files: 
 
-1️⃣Summarize existing texts to the same file while preserving technical accuracy. Remove redundancy.
-2️⃣Replace short words with single character emojis
+1️⃣Summarize existing texts to the same file while preserving technical accuracy. 
+1️⃣ Remove redundancy.
+3️⃣ use words that use smallest number of tokens while having the same meaning
+
 
 
 📌 FINAL RULES:
