@@ -323,10 +323,13 @@ class ApplicationTrayIcon(QSystemTrayIcon):
         if self.progress_window:
             self.progress_window.set_processing_mode()
             self.progress_window.set_status("Starting transcription...")
+        else:
+            logger.error("Progress window not available when recording completed")
         
         try:
             if not self.transcriber:
                 raise RuntimeError("Transcriber not initialized")
+            logger.info(f"Transcriber ready: {self.transcriber}")
             
             if not hasattr(self.transcriber, 'model') or not self.transcriber.model:
                 raise RuntimeError("Whisper model not loaded")
@@ -385,7 +388,7 @@ class ApplicationTrayIcon(QSystemTrayIcon):
         
         # Force close the progress window
         if self.progress_window:
-            logger.info("Force closing progress window after transcription")
+            logger.info("Closing progress window after transcription")
             try:
                 # Try multiple approaches to ensure the window closes
                 self.progress_window.hide()
@@ -414,7 +417,7 @@ class ApplicationTrayIcon(QSystemTrayIcon):
         
         # Force close the progress window
         if self.progress_window:
-            logger.info("Force closing progress window after transcription error")
+            logger.info("Closing progress window after transcription error")
             try:
                 # Try multiple approaches to ensure the window closes
                 self.progress_window.hide()
