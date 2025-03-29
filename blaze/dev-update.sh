@@ -3,6 +3,11 @@
 # Script to update installed Syllablaze with current repository files
 # This is for development purposes only
 
+# Define files and directories to process
+PY_FILES=("./*.py" "./blaze/*.py")
+SUB_DIRS=("ui" "utils")
+RUN_SCRIPT="./run-syllablaze.sh"
+
 # Find the installed package directory
 INSTALL_DIR=$(find ~/.local/share/pipx/venvs/syllablaze/lib/python* -type d -name "blaze" 2>/dev/null)
 
@@ -13,26 +18,75 @@ fi
 
 echo "Found installed package at: $INSTALL_DIR"
 
+# Function to run checks on a file
+run_checks() {
+    local file=$1
+    local errors=0
+    
+    echo "Checking $file..."
+    
+    # Check Python imports
+    if ! python -c "import $(basename "$file" .py)" 2>/dev/null; then
+        echo "  [ERROR] Import check failed for $file"
+        errors=$((errors+1))
+    fi
+    
+    # Run ruff check
+    if ! ruff check "$file"; then
+        echo "  [ERROR] Ruff check failed for $file"
+        errors=$((errors+1))
+    fi
+    
+    return $errors
+}
+
+# Run checks on all files
+TOTAL_ERRORS=0
+for pattern in "${PY_FILES[@]}"; do
+    for file in $pattern; do
+        if [ -f "$file" ]; then
+            run_checks "$file"
+            TOTAL_ERRORS=$((TOTAL_ERRORS + $?))
+        fi
+    done
+done
+
+for dir in "${SUB_DIRS[@]}"; do
+    for file in "./blaze/$dir"/*.py; do
+        if [ -f "$file" ]; then
+            run_checks "$file"
+            TOTAL_ERRORS=$((TOTAL_ERRORS + $?))
+        fi
+    done
+done
+
+# Only proceed if no errors found
+if [ $TOTAL_ERRORS -gt 0 ]; then
+    echo "Found $TOTAL_ERRORS errors - not copying files"
+    exit 1
+fi
+
 # Copy all Python files from the repository to the installed location
 echo "Copying Python files from repository to installed location..."
-cp -v ./*.py "$INSTALL_DIR/"
-cp -v ./blaze/*.py "$INSTALL_DIR/"
-echo "Copied files from blaze/ directory"
+for pattern in "${PY_FILES[@]}"; do
+    cp -v $pattern "$INSTALL_DIR/"
+done
 
 # Create subdirectories if they don't exist
-mkdir -p "$INSTALL_DIR/ui"
-mkdir -p "$INSTALL_DIR/utils"
+for dir in "${SUB_DIRS[@]}"; do
+    mkdir -p "$INSTALL_DIR/$dir"
+done
 
 # Copy files from subdirectories
-cp -v ./blaze/ui/*.py "$INSTALL_DIR/ui/"
-cp -v ./blaze/utils/*.py "$INSTALL_DIR/utils/"
-echo "Copied files from blaze/ui/ and blaze/utils/ directories"
+for dir in "${SUB_DIRS[@]}"; do
+    cp -v "./blaze/$dir"/*.py "$INSTALL_DIR/$dir/"
+done
 
 # Make the script executable if it exists
-if [ -f "./run-syllablaze.sh" ]; then
+if [ -f "$RUN_SCRIPT" ]; then
     echo "Updating run script..."
-    cp -v ./run-syllablaze.sh "$INSTALL_DIR/"
-    chmod +x "$INSTALL_DIR/run-syllablaze.sh"
+    cp -v "$RUN_SCRIPT" "$INSTALL_DIR/"
+    chmod +x "$INSTALL_DIR/$(basename "$RUN_SCRIPT")"
 fi
 
 echo "Update complete!"
