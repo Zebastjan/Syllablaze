@@ -78,10 +78,7 @@ class ApplicationTrayIcon(QSystemTrayIcon):
         self.processing_window = None
         self.recorder = None
         self.transcriber = None
-        
-        # Create debug window but don't show it
-        # self.debug_window = MicDebugWindow()
-        
+
         # Set tooltip
         self.setToolTip(f"{APP_NAME} {APP_VERSION}")
         
@@ -672,91 +669,111 @@ def main():
             f"Failed to start application: {str(e)}")
         return 1
 
-def initialize_tray(tray, loading_window, app):
+def _initialize_tray_basic(tray, loading_window, app, progress):
+    """Initialize basic tray components"""
+    loading_window.set_status("Initializing application...")
+    loading_window.set_progress(progress)
+    app.processEvents()
+    tray.initialize()
+
+def _initialize_audio_recorder(tray, loading_window, app, progress):
+    """Initialize audio recording system"""
+    loading_window.set_status("Initializing audio system...")
+    loading_window.set_progress(progress)
+    app.processEvents()
+    tray.recorder = AudioRecorder()
+
+def _check_and_load_model(tray, loading_window, app, progress):
+    """Check model availability and load appropriate model"""
+    settings = Settings()
+    model_name = settings.get('model', DEFAULT_WHISPER_MODEL)
+    
     try:
-        # Initialize basic tray setup
-        loading_window.set_status("Initializing application...")
-        loading_window.set_progress(10)
-        app.processEvents()
-        tray.initialize()
-        
-        # Initialize recorder
-        loading_window.set_status("Initializing audio system...")
-        loading_window.set_progress(25)
-        app.processEvents()
-        tray.recorder = AudioRecorder()
-        
-        # Initialize transcriber
-        settings = Settings()
-        model_name = settings.get('model', DEFAULT_WHISPER_MODEL)
-        
-        # Check if model is downloaded
-        try:
-            model_info, _ = get_model_info()
-            if model_name in model_info and not model_info[model_name]['is_downloaded']:
-                loading_window.set_status(f"Whisper model '{model_name}' is not downloaded. Using default model.")
-                loading_window.set_progress(40)
-                app.processEvents()
-                # Set model to default if current model is not downloaded
-                settings.set('model', DEFAULT_WHISPER_MODEL)
-                model_name = DEFAULT_WHISPER_MODEL
-        except Exception as model_error:
-            logger.error(f"Error checking model info: {model_error}")
-            loading_window.set_status("Error checking model info. Using default model.")
-            loading_window.set_progress(40)
+        model_info, _ = get_model_info()
+        if model_name in model_info and not model_info[model_name]['is_downloaded']:
+            loading_window.set_status(f"Whisper model '{model_name}' is not downloaded. Using default model.")
+            loading_window.set_progress(progress + 10)
             app.processEvents()
-            # Set model to default if there was an error
             settings.set('model', DEFAULT_WHISPER_MODEL)
             model_name = DEFAULT_WHISPER_MODEL
+    except Exception as model_error:
+        logger.error(f"Error checking model info: {model_error}")
+        loading_window.set_status("Error checking model info. Using default model.")
+        loading_window.set_progress(progress + 10)
+        app.processEvents()
+        settings.set('model', DEFAULT_WHISPER_MODEL)
+        model_name = DEFAULT_WHISPER_MODEL
+    
+    return model_name
+
+def _initialize_transcriber(tray, loading_window, app, model_name, progress):
+    """Initialize the Whisper transcriber"""
+    loading_window.set_status(f"Loading Whisper model: {model_name}")
+    loading_window.set_progress(progress)
+    app.processEvents()
+    
+    try:
+        tray.transcriber = WhisperTranscriber()
+    except Exception as e:
+        logger.error(f"Failed to initialize transcriber: {e}")
+        QMessageBox.critical(None, "Error",
+            f"Failed to load Whisper model: {str(e)}\n\nPlease check Settings to download the model.")
+        # Create transcriber anyway to handle errors during transcription
+        tray.transcriber = WhisperTranscriber()
+
+def _connect_signals(tray, loading_window, app, progress):
+    """Connect all necessary signals"""
+    loading_window.set_status("Setting up signal handlers...")
+    loading_window.set_progress(progress)
+    app.processEvents()
+    
+    # Audio recorder signals
+    tray.recorder.volume_changing.connect(tray._update_volume_display)
+    tray.recorder.recording_completed.connect(tray._handle_recording_completed)
+    tray.recorder.recording_failed.connect(tray.handle_recording_error)
+    tray._stop_recording = tray.recorder._stop_recording
+    
+    # Transcriber signals
+    tray.transcriber.transcription_progress.connect(tray.update_processing_status)
+    tray.transcriber.transcription_progress_percent.connect(tray.update_processing_progress)
+    tray.transcriber.transcription_finished.connect(tray.handle_transcription_finished)
+    tray.transcriber.transcription_error.connect(tray.handle_transcription_error)
+
+def _finalize_initialization(tray, loading_window, app):
+    """Complete the initialization process"""
+    loading_window.set_status("Starting application...")
+    loading_window.set_progress(100)
+    app.processEvents()
+    tray.setVisible(True)
+    tray.initialization_complete.emit()
+
+def initialize_tray(tray, loading_window, app):
+    """Initialize the application tray with all components"""
+    try:
+        # Initialize basic tray components (10% progress)
+        _initialize_tray_basic(tray, loading_window, app, 10)
         
-        loading_window.set_status(f"Loading Whisper model: {model_name}")
-        loading_window.set_progress(50)
+        # Initialize audio recorder (25% progress)
+        _initialize_audio_recorder(tray, loading_window, app, 25)
+        
+        # Check and load model (40% progress)
+        model_name = _check_and_load_model(tray, loading_window, app, 40)
+        
+        # Initialize transcriber (50-80% progress)
+        _initialize_transcriber(tray, loading_window, app, model_name, 50)
+        loading_window.set_progress(80)
         app.processEvents()
         
-        try:
-            tray.transcriber = WhisperTranscriber()
-            loading_window.set_progress(80)
-            app.processEvents()
-        except Exception as e:
-            logger.error(f"Failed to initialize transcriber: {e}")
-            QMessageBox.critical(None, "Error",
-                f"Failed to load Whisper model: {str(e)}\n\nPlease check Settings to download the model.")
-            loading_window.set_progress(80)
-            app.processEvents()
-            # Create transcriber anyway, it will handle errors during transcription
-            tray.transcriber = WhisperTranscriber()
+        # Connect signals (90% progress)
+        _connect_signals(tray, loading_window, app, 90)
         
-        # Connect signals
-        loading_window.set_status("Setting up signal handlers...")
-        loading_window.set_progress(90)
-        app.processEvents()
-        tray.recorder.volume_changing.connect(tray._update_volume_display)
-        tray.recorder.recording_completed.connect(tray._handle_recording_completed)
-        tray.recorder.recording_failed.connect(tray.handle_recording_error)
-        # Ensure recorder's stop method is properly connected
-        tray._stop_recording = tray.recorder._stop_recording
-        
-        tray.transcriber.transcription_progress.connect(tray.update_processing_status)
-        tray.transcriber.transcription_progress_percent.connect(tray.update_processing_progress)
-        tray.transcriber.transcription_finished.connect(tray.handle_transcription_finished)
-        tray.transcriber.transcription_error.connect(tray.handle_transcription_error)
-        
-        # Make tray visible
-        loading_window.set_status("Starting application...")
-        loading_window.set_progress(100)
-        app.processEvents()
-        
-        # Make tray visible
-        tray.setVisible(True)
-        
-        # Signal completion
-        tray.initialization_complete.emit()
+        # Finalize initialization (100% progress)
+        _finalize_initialization(tray, loading_window, app)
         
     except Exception as e:
         logger.error(f"Initialization failed: {e}")
         QMessageBox.critical(None, "Error", f"Failed to initialize application: {str(e)}")
         loading_window.close()
-        # Ensure the application can be closed with CTRL+C
         app.quit()
 
 if __name__ == "__main__":

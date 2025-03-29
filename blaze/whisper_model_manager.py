@@ -84,9 +84,7 @@ def confirm_download(model_name, size_mb):
     msg = QMessageBox()
     msg.setIcon(QMessageBox.Icon.Question)
     msg.setText(f"Download Whisper model '{model_name}'?")
-    msg.setInformativeText(
-        f"This will download approximately {size_mb:.1f} MB of data."
-    )
+
     msg.setWindowTitle("Confirm Download")
     msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
     return msg.exec() == QMessageBox.StandardButton.Yes
@@ -97,7 +95,7 @@ def confirm_delete(model_name, size_mb):
     msg.setIcon(QMessageBox.Icon.Warning)
     msg.setText(f"Delete Whisper model '{model_name}'?")
     msg.setInformativeText(
-        f"This will free up approximately {size_mb:.1f} MB of disk space.\n"
+        f"This will free up {size_mb:.1f} MB of disk space.\n"
         f"You will need to download this model again if you want to use it in the future."
     )
     msg.setWindowTitle("Confirm Deletion")
