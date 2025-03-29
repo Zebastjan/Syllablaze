@@ -105,13 +105,13 @@ def uninstall_application():
             try:
                 # If unlink fails, try using os.remove
                 os.remove(run_script_link)
-                print(f"Successfully removed run script link with os.remove")
+                print("Successfully removed run script link with os.remove")
             except Exception as e2:
                 print(f"Error removing run script link with os.remove: {e2}")
                 try:
                     # If os.remove fails, try using rm command
                     subprocess.run(["rm", "-f", str(run_script_link)], check=True)
-                    print(f"Successfully removed run script link with rm command")
+                    print("Successfully removed run script link with rm command")
                 except Exception as e3:
                     print(f"Error removing run script link with rm command: {e3}")
                     print(f"WARNING: Could not remove {run_script_link}. You may need to remove it manually.")
@@ -130,13 +130,13 @@ def uninstall_application():
             try:
                 # If unlink fails, try using os.remove
                 os.remove(syllablaze_link)
-                print(f"Successfully removed syllablaze launcher with os.remove")
+                print("Successfully removed syllablaze launcher with os.remove")
             except Exception as e2:
                 print(f"Error removing syllablaze launcher with os.remove: {e2}")
                 try:
                     # If os.remove fails, try using rm command
                     subprocess.run(["rm", "-f", str(syllablaze_link)], check=True)
-                    print(f"Successfully removed syllablaze launcher with rm command")
+                    print("Successfully removed syllablaze launcher with rm command")
                 except Exception as e3:
                     print(f"Error removing syllablaze launcher with rm command: {e3}")
                     print(f"WARNING: Could not remove {syllablaze_link}. You may need to remove it manually.")
@@ -210,13 +210,13 @@ def uninstall_application():
             try:
                 # If unlink fails, try using os.remove
                 os.remove(project_desktop_file)
-                print(f"Successfully removed desktop file with os.remove")
+                print("Successfully removed desktop file with os.remove")
             except Exception as e2:
                 print(f"Error removing desktop file with os.remove: {e2}")
                 try:
                     # If os.remove fails, try using rm command
                     subprocess.run(["rm", "-f", str(project_desktop_file)], check=True)
-                    print(f"Successfully removed desktop file with rm command")
+                    print("Successfully removed desktop file with rm command")
                 except Exception as e3:
                     print(f"Error removing desktop file with rm command: {e3}")
     

@@ -1,6 +1,6 @@
 from PyQt6.QtCore import QSettings
 from blaze.constants import (
-    APP_NAME, VALID_LANGUAGES, DEFAULT_WHISPER_MODEL,
+    APP_NAME, VALID_LANGUAGES,
     SAMPLE_RATE_MODE_WHISPER, SAMPLE_RATE_MODE_DEVICE, DEFAULT_SAMPLE_RATE_MODE
 )
 import whisper

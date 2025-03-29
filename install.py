@@ -2,14 +2,12 @@
 
 import os
 import shutil
-from pathlib import Path
 import sys
 import subprocess
 import warnings
 
 # Add the current directory to the path so we can import from blaze
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from blaze.constants import APP_VERSION
 
 def check_system_dependencies():
     """Check if required system dependencies are installed"""
@@ -71,25 +69,29 @@ def install_with_pipx(skip_whisper=False):
         # Create setup.py file for pipx installation
         print_stage(2, total_stages, "Creating setup configuration")
         with open("setup.py", "w") as f:
-            f.write(f"""
+            f.write("""
 from setuptools import setup, find_packages
 import os
 import sys
 
-# Add the current directory to the path so we can import from blaze
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from blaze.constants import APP_VERSION
+# Read requirements.txt and filter out empty lines/comments
+with open("requirements.txt") as req_file:
+    requirements = [
+        line.strip()
+        for line in req_file
+        if line.strip() and not line.startswith('#')
+    ]
 
 setup(
     name="syllablaze",
-    version=APP_VERSION,
+    version="0.3",  # Hardcoded version for now
     packages=find_packages(),
-    install_requires=open("requirements.txt").read().splitlines(),
-    entry_points={{
+    install_requires=requirements,
+    entry_points={
         "console_scripts": [
             "syllablaze=blaze.main:main",
         ],
-    }},
+    },
 )
 """)
         
@@ -104,17 +106,32 @@ setup(
         
         print("\n  Starting installation...")
         
-        # Create a subprocess with Popen to get real-time output
-        process = subprocess.Popen(
-            ["pipx", "install", ".", "--force", "--verbose", "--verbose"],  # Double verbose for maximum detail
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1,
-            universal_newlines=True
-        )
-        
-        print("  Installation progress:")
+        # Create a subprocess with proper output handling
+        try:
+            process = subprocess.Popen(
+                ["pipx", "install", ".", "--force", "--verbose"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            
+            # Stream output in real-time
+            while True:
+                output = process.stdout.readline()
+                if output == '' and process.poll() is not None:
+                    break
+                if output:
+                    print(output.strip())
+            
+            # Check return code
+            return_code = process.poll()
+            if return_code != 0:
+                raise subprocess.CalledProcessError(return_code, process.args)
+        except subprocess.CalledProcessError as e:
+            print(f"  [ERROR] Installation failed: {e}")
+            return False
+
+        print("\n  Installation progress:")
         current_package = None
         pip_install_started = False
         
@@ -240,7 +257,7 @@ def suppress_alsa_errors():
                     continue
             warnings.warn("Failed to suppress ALSA warnings", RuntimeWarning)
             return False
-    except:
+    except Exception:
         warnings.warn("Failed to suppress ALSA warnings", RuntimeWarning)
         return False
 
@@ -279,16 +296,16 @@ def install_desktop_integration():
         # Update desktop database
         try:
             subprocess.run(["update-desktop-database", app_dir], check=False)
-        except:
+        except OSError:
             pass  # Not critical if this fails
             
         # Force KDE to refresh its menu cache
         try:
             subprocess.run(["kbuildsycoca5"], check=False)
-        except:
+        except OSError:
             try:
                 subprocess.run(["kbuildsycoca6"], check=False)  # For newer KDE versions
-            except:
+            except OSError:
                 pass  # Not critical if this fails
             
         print("  [SUCCESS] Desktop integration files installed successfully")

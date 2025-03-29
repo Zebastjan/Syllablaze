@@ -1,5 +1,5 @@
 from PyQt6.QtCore import QObject
-from PyQt6.QtGui import QClipboard, QGuiApplication
+from PyQt6.QtGui import QGuiApplication
 import subprocess
 import logging
 

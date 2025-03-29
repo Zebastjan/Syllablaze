@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                            QPushButton, QComboBox, QLabel, QDialog,
-                           QProgressBar, QMessageBox, QFrame, QStackedWidget)
+                           QProgressBar, QMessageBox, QFrame)
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QSize
 from PyQt6.QtGui import QKeySequence, QIcon
 from blaze.settings import Settings

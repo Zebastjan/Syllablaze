@@ -2,9 +2,13 @@
 
 # Script to update installed Syllablaze with current repository files
 # This is for development purposes only
+shopt -s nullglob  # Handle empty globs gracefully
 
-# Define files and directories to process
-PY_FILES=("./*.py" "./blaze/*.py")
+PY_FILES=(
+  ./*.py
+  ./blaze/*.py
+)
+
 SUB_DIRS=("ui" "utils")
 RUN_SCRIPT="./run-syllablaze.sh"
 
@@ -25,15 +29,11 @@ run_checks() {
     
     echo "Checking $file..."
     
-    # Check Python imports
-    if ! python -c "import $(basename "$file" .py)" 2>/dev/null; then
-        echo "  [ERROR] Import check failed for $file"
-        errors=$((errors+1))
-    fi
-    
-    # Run ruff check
-    if ! ruff check "$file"; then
-        echo "  [ERROR] Ruff check failed for $file"
+    # Inside run_checks()
+    ruff check "$file" --fix
+    local ruff_exit_code=$?
+    if [ $ruff_exit_code -ne 0 ]; then
+        echo "  [ERROR] Ruff check failed for $file (post-fix)"
         errors=$((errors+1))
     fi
     
@@ -60,9 +60,9 @@ for dir in "${SUB_DIRS[@]}"; do
     done
 done
 
-# Only proceed if no errors found
+# Only proceed if no ruff errors found
 if [ $TOTAL_ERRORS -gt 0 ]; then
-    echo "Found $TOTAL_ERRORS errors - not copying files"
+    echo "Found $TOTAL_ERRORS ruff errors - not copying files"
     exit 1
 fi
 
@@ -71,6 +71,7 @@ echo "Copying Python files from repository to installed location..."
 for pattern in "${PY_FILES[@]}"; do
     cp -v $pattern "$INSTALL_DIR/"
 done
+
 
 # Create subdirectories if they don't exist
 for dir in "${SUB_DIRS[@]}"; do

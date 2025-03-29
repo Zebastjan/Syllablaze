@@ -1,9 +1,7 @@
 from PyQt6.QtCore import QObject, pyqtSignal, QThread, QTimer
 from PyQt6.QtWidgets import QApplication, QSystemTrayIcon
-import whisper
-import os
 import logging
-import time
+import sys
 from blaze.settings import Settings
 from blaze.constants import DEFAULT_WHISPER_MODEL
 from blaze.utils.whisper_model_manager import WhisperModelManager
@@ -135,13 +133,10 @@ class WhisperTranscriber(QObject):
             
     def update_language(self, language=None):
         """Update the language setting"""
-        import sys
-        
         if language is None:
             language = self.settings.get('language', 'auto')
             
         if language != self.current_language:
-            old_language = self.current_language
             self.current_language = language
             self.language_changed.emit(language)
             

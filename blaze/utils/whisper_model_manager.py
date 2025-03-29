@@ -28,7 +28,6 @@ class WhisperModelManager:
     def _get_models_directory(self):
         """Get the directory where Whisper stores its models"""
         import os
-        from pathlib import Path
         return os.path.join(Path.home(), ".cache", "whisper")
     
     def get_available_models(self):

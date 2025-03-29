@@ -1,5 +1,5 @@
 from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel, QProgressBar
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QIcon
 from blaze.constants import APP_NAME, APP_VERSION
 from blaze.utils import center_window

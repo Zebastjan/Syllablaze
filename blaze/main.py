@@ -1,23 +1,18 @@
 import os
 import sys
-import signal
 from PyQt6.QtWidgets import (QApplication, QMessageBox, QSystemTrayIcon, QMenu)
-from PyQt6.QtCore import Qt, QTimer, QCoreApplication
+from PyQt6.QtCore import QTimer, QCoreApplication
 from PyQt6.QtGui import QIcon, QAction
 import logging
 from blaze.settings_window import SettingsWindow
 from blaze.progress_window import ProgressWindow
-from blaze.processing_window import ProcessingWindow
 from blaze.recorder import AudioRecorder
 from blaze.transcriber import WhisperTranscriber
 from blaze.loading_window import LoadingWindow
 from PyQt6.QtCore import pyqtSignal
-import warnings
-import ctypes
 from blaze.settings import Settings
 from blaze.constants import APP_NAME, APP_VERSION, DEFAULT_WHISPER_MODEL, ORG_NAME, VALID_LANGUAGES, LOCK_FILE_PATH
 from blaze.whisper_model_manager import get_model_info
-# from blaze.mic_debug import MicDebugWindow
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -539,7 +534,7 @@ def check_already_running():
                 # If we can't read the lock file, try to remove it
                 try:
                     os.remove(LOCK_FILE_PATH)
-                except:
+                except Exception:
                     pass
         
         # Create a new lock file

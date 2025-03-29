@@ -1,5 +1,5 @@
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QProgressBar, QApplication
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel, QProgressBar
+from PyQt6.QtCore import Qt
 from blaze.utils import center_window
 
 class ProcessingWindow(QWidget):

@@ -1,16 +1,24 @@
-# Set environment variables to suppress Jack errors
 import os
 import sys
+import io
+import logging
+import warnings
+import ctypes
+import numpy as np
+import pyaudio
+from PyQt6.QtCore import QObject, pyqtSignal
+from scipy import signal
+from blaze.settings import Settings
+from blaze.constants import (
+    WHISPER_SAMPLE_RATE, SAMPLE_RATE_MODE_WHISPER,
+    DEFAULT_SAMPLE_RATE_MODE
+)
+from blaze.utils.audio_utils import AudioProcessor
+
+# Set environment variables to suppress Jack errors
 os.environ['JACK_NO_AUDIO_RESERVATION'] = '1'
 os.environ['JACK_NO_START_SERVER'] = '1'
-
-# Completely disable Jack
 os.environ['DISABLE_JACK'] = '1'
-
-# Redirect stderr permanently to filter out Jack errors
-import io
-import contextlib
-import threading
 
 # Create a custom stderr filter
 class JackErrorFilter:
@@ -33,22 +41,6 @@ class JackErrorFilter:
 
 # Replace stderr with our filtered version
 sys.stderr = JackErrorFilter(sys.stderr)
-
-# Import other required modules
-import pyaudio
-import wave
-from PyQt6.QtCore import QObject, pyqtSignal
-import logging
-import numpy as np
-from blaze.settings import Settings
-from blaze.constants import (
-    WHISPER_SAMPLE_RATE, SAMPLE_RATE_MODE_WHISPER,
-    SAMPLE_RATE_MODE_DEVICE, DEFAULT_SAMPLE_RATE_MODE
-)
-from scipy import signal
-import warnings
-import ctypes
-from blaze.utils.audio_utils import AudioProcessor
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +75,7 @@ class AudioRecorder(QObject):
                 asound = ctypes.cdll.LoadLibrary('libasound.so.2')
                 asound.snd_lib_error_set_handler(c_error_handler)
                 logger.info("ALSA error handler configured")
-            except:
+            except Exception:
                 logger.info("ALSA error handler not available - continuing anyway")
             
             # Initialize PyAudio with all warnings suppressed
@@ -343,7 +335,7 @@ class AudioRecorder(QObject):
             
             self.test_stream.start_stream()
             self.is_microphone_test_running = True
-            logger.info(f"Started mic test on device {device_index}")
+            logger.info(f"Started mic test on device {microphone_device_index}")
             
         except Exception as e:
             logger.error(f"Failed to start mic test: {e}")

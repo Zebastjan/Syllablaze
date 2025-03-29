@@ -11,14 +11,10 @@ This module provides components for managing Whisper models, including:
 
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTableWidget,
                              QTableWidgetItem, QLabel, QPushButton, QHeaderView,
-                             QMessageBox, QDialog, QProgressBar, QSizePolicy,
-                             QApplication, QSystemTrayIcon)
+                             QMessageBox, QDialog, QProgressBar, QSizePolicy)
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
-from PyQt6.QtGui import QColor
 import os
 import logging
-import time
-import random
 from pathlib import Path
 from blaze.settings import Settings
 from blaze.constants import DEFAULT_WHISPER_MODEL
@@ -29,7 +25,6 @@ def get_model_info():
     """Get comprehensive information about all Whisper models"""
     import whisper
     import os
-    from pathlib import Path
     
     # Get the directory where Whisper stores its models
     models_dir = os.path.join(Path.home(), ".cache", "whisper")
@@ -203,9 +198,8 @@ class ModelDownloadThread(QThread):
             import whisper
             import random
             
-            # Get model info for size estimate
+            # Get model info (not used in simulation)
             model_info, _ = get_model_info()
-            estimated_size = model_info[self.model_name]['size_mb']
             
             # Simulate download progress
             total_steps = 100

@@ -1,6 +1,0 @@
-[Desktop Entry]
-Type=Application
-Name=Telly Spelly
-Exec=/path/to/your/python /path/to/your/main.py
-Icon=telly-spelly
-X-GNOME-Autostart-enabled=true

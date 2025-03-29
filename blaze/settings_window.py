@@ -1,13 +1,13 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QComboBox,
                              QGroupBox, QFormLayout, QPushButton,
-                             QMessageBox, QApplication, QSystemTrayIcon,
+                             QMessageBox, QApplication,
                              QHBoxLayout, QSizePolicy)
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QObject, QUrl
+from PyQt6.QtCore import QUrl, pyqtSignal
 from PyQt6.QtGui import QDesktopServices
 import logging
 from blaze.settings import Settings
 from blaze.constants import (
-    APP_NAME, APP_VERSION, DEFAULT_WHISPER_MODEL, GITHUB_REPO_URL,
+    APP_NAME, APP_VERSION, GITHUB_REPO_URL,
     SAMPLE_RATE_MODE_WHISPER, SAMPLE_RATE_MODE_DEVICE, DEFAULT_SAMPLE_RATE_MODE
 )
 from blaze.whisper_model_manager import WhisperModelTableWidget
@@ -135,8 +135,6 @@ class SettingsWindow(QWidget):
         self.current_model = None
 
     def on_language_changed(self, index):
-        import sys
-        
         language_code = self.lang_combo.currentData()
         language_name = self.lang_combo.currentText()
         try:
