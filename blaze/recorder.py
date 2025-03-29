@@ -342,7 +342,7 @@ class AudioRecorder(QObject):
             )
             
             self.test_stream.start_stream()
-            self.is_testing = True
+            self.is_microphone_test_running = True
             logger.info(f"Started mic test on device {device_index}")
             
         except Exception as e:
