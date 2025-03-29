@@ -38,6 +38,7 @@ flowchart TD
 5. **User Directory Installation**: Application installs to user's home directory for easier management
 6. **Modular Design**: Components are separated for easier maintenance and extension
 7. **Table-based Model Management**: Provides a comprehensive interface for managing Whisper models
+8. **Continuous Refactoring**: Regular refactoring to improve code quality (see [refactoring_summary.md](refactoring_summary.md))
 
 ## Design Patterns in Use
 
