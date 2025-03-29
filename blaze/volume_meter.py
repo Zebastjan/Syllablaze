@@ -10,7 +10,7 @@ class VolumeMeter(QWidget):
         self.setMinimumSize(200, 20)
         self.current_volume = 0
         self.peaks = []
-        self.gradient = self._create_gradient()
+        self.gradient = self._create_volume_gradient()
         
         # Smaller buffer for less lag
         self.buffer_size = 3  # Reduced from 10
@@ -21,7 +21,7 @@ class VolumeMeter(QWidget):
         self.smoothing_factor = 0.5     # Less smoothing for faster response
         self.previous_volume = 0
         
-    def _create_gradient(self):
+    def _create_volume_gradient(self):
         gradient = QLinearGradient(0, 0, self.width(), 0)
         gradient.setColorAt(0.0, QColor(0, 255, 0))    # Green
         gradient.setColorAt(0.5, QColor(255, 255, 0))  # Yellow
@@ -30,7 +30,7 @@ class VolumeMeter(QWidget):
         return gradient
         
     def resizeEvent(self, event):
-        self.gradient = self._create_gradient()
+        self.gradient = self._create_volume_gradient()
         super().resizeEvent(event)
         
     def set_value(self, volume_level):
