@@ -61,7 +61,7 @@ def update_tray_tooltip():
     if tray_recorder_instance:
         tray_recorder_instance.update_tooltip()
 
-class TrayRecorder(QSystemTrayIcon):
+class ApplicationTrayIcon(QSystemTrayIcon):
     initialization_complete = pyqtSignal()
     
     def __init__(self):
@@ -159,7 +159,7 @@ class TrayRecorder(QSystemTrayIcon):
             # Stop the actual recording
             if self.recorder:
                 try:
-                    self.recorder.stop_recording()
+                    self.recorder._stop_recording()
                 except Exception as e:
                     logger.error(f"Error stopping recording: {e}")
                     if self.progress_window:
@@ -172,7 +172,7 @@ class TrayRecorder(QSystemTrayIcon):
             # Show progress window
             if not self.progress_window:
                 self.progress_window = ProgressWindow("Voice Recording")
-                self.progress_window.stop_clicked.connect(self.stop_recording)
+                self.progress_window.stop_clicked.connect(self._stop_recording)
             self.progress_window.show()
             
             # Start recording
@@ -180,12 +180,12 @@ class TrayRecorder(QSystemTrayIcon):
             self.setIcon(self.recording_icon)
             self.recorder.start_recording()
 
-    def stop_recording(self):
-        """Handle stopping the recording and starting processing"""
+    def _stop_recording(self):
+        """Internal method to stop recording and start processing"""
         if not self.recording:
             return
         
-        logger.info("TrayRecorder: Stopping recording")
+        logger.info("ApplicationTrayIcon: Stopping recording")
         self.toggle_recording()  # This is now safe since toggle_recording handles everything
 
     def toggle_settings(self):
@@ -267,7 +267,7 @@ class TrayRecorder(QSystemTrayIcon):
             # Stop recording if active
             if self.recording:
                 try:
-                    self.stop_recording()
+                    self._stop_recording()
                 except Exception as rec_error:
                     logger.error(f"Error stopping recording: {rec_error}")
             
@@ -310,47 +310,49 @@ class TrayRecorder(QSystemTrayIcon):
             # Force exit if there was an error
             sys.exit(1)
 
-    def update_volume_meter(self, value):
-        # Update debug window first
-        if hasattr(self, 'debug_window'):
-            self.debug_window.update_values(value)
-            
-        # Then update volume meter as before
+    def _update_volume_display(self, value):
+        # Directly update volume meter
         if self.progress_window and self.recording:
             self.progress_window.update_volume(value)
     
-    def handle_recording_finished(self, audio_data):
+    def _handle_recording_completed(self, audio_data):
         """Called when recording is processed in memory"""
-        logger.info("TrayRecorder: Recording processed, starting transcription")
+        logger.info("ApplicationTrayIcon: Recording processed, starting transcription")
         
         # Ensure progress window is in processing mode
         if self.progress_window:
             self.progress_window.set_processing_mode()
             self.progress_window.set_status("Starting transcription...")
         
-        if self.transcriber:
+        try:
+            if not self.transcriber:
+                raise RuntimeError("Transcriber not initialized")
+            
+            if not hasattr(self.transcriber, 'model') or not self.transcriber.model:
+                raise RuntimeError("Whisper model not loaded")
+                
             self.transcriber.transcribe_file(audio_data)
-        else:
-            logger.error("Transcriber not initialized")
+            
+        except Exception as e:
+            logger.error(f"Failed to start transcription: {e}")
             if self.progress_window:
                 self.progress_window.close()
                 self.progress_window = None
             
-            # Show notification instead of dialog
             self.showMessage("Error",
-                           "Transcriber not initialized",
+                           f"Failed to start transcription: {str(e)}",
                            self.normal_icon)
     
     def handle_recording_error(self, error):
         """Handle recording errors"""
-        logger.error(f"TrayRecorder: Recording error: {error}")
+        logger.error(f"ApplicationTrayIcon: Recording error: {error}")
         
         # Show notification instead of dialog
         self.showMessage("Recording Error",
                        error,
                        self.normal_icon)
         
-        self.stop_recording()
+        self._stop_recording()
         if self.progress_window:
             self.progress_window.close()
             self.progress_window = None
@@ -431,13 +433,6 @@ class TrayRecorder(QSystemTrayIcon):
         else:
             logger.warning("Progress window not found when trying to close after transcription error")
 
-    def stop_recording(self):
-        """Handle stopping the recording and starting processing"""
-        if not self.recording:
-            return
-        
-        logger.info("TrayRecorder: Stopping recording")
-        self.toggle_recording()  # This is now safe since toggle_recording handles everything
 
     def toggle_debug_window(self):
         """Toggle debug window visibility"""
@@ -645,13 +640,13 @@ def main():
         app.processEvents()  # Force update of UI
         
         # Check if system tray is available
-        if not TrayRecorder.isSystemTrayAvailable():
+        if not ApplicationTrayIcon.isSystemTrayAvailable():
             QMessageBox.critical(None, "Error",
                 "System tray is not available. Please ensure your desktop environment supports system tray icons.")
             return 1
         
         # Create tray icon but don't initialize yet
-        tray = TrayRecorder()
+        tray = ApplicationTrayIcon()
         
         # Connect loading window to tray initialization
         tray.initialization_complete.connect(loading_window.close)
@@ -746,9 +741,11 @@ def initialize_tray(tray, loading_window, app):
         loading_window.set_status("Setting up signal handlers...")
         loading_window.set_progress(90)
         app.processEvents()
-        tray.recorder.volume_updated.connect(tray.update_volume_meter)
-        tray.recorder.recording_finished.connect(tray.handle_recording_finished)
-        tray.recorder.recording_error.connect(tray.handle_recording_error)
+        tray.recorder.volume_changing.connect(tray._update_volume_display)
+        tray.recorder.recording_completed.connect(tray._handle_recording_completed)
+        tray.recorder.recording_failed.connect(tray.handle_recording_error)
+        # Ensure recorder's stop method is properly connected
+        tray._stop_recording = tray.recorder._stop_recording
         
         tray.transcriber.transcription_progress.connect(tray.update_processing_status)
         tray.transcriber.transcription_progress_percent.connect(tray.update_processing_progress)

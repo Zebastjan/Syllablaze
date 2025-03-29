@@ -103,8 +103,8 @@ class RecordingDialog(QDialog):
                 self.volume_meter.set_value(value)
 
 class WhisperWindow(QMainWindow):
-    start_recording = pyqtSignal()
-    stop_recording = pyqtSignal()
+    recording_started = pyqtSignal()
+    recording_stopped = pyqtSignal()
     output_method_changed = pyqtSignal(str)
     initialization_complete = pyqtSignal()
     
@@ -279,7 +279,7 @@ class WhisperWindow(QMainWindow):
         
     def stop_current_recording(self):
         if self.recording_dialog:
-            self.stop_recording.emit()
+            self.recording_stopped.emit()
             self.recording_dialog.set_transcribing()  # Show processing status
 
     def update_transcription_progress(self, message):

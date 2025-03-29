@@ -53,9 +53,11 @@ from blaze.utils.audio_utils import AudioProcessor
 logger = logging.getLogger(__name__)
 
 class AudioRecorder(QObject):
-    recording_finished = pyqtSignal(object)  # Emits audio data as numpy array
-    recording_error = pyqtSignal(str)
-    volume_updated = pyqtSignal(float)
+    # Use past tense for events that have occurred
+    recording_completed = pyqtSignal(object)  # Emits audio data as numpy array
+    recording_failed = pyqtSignal(str)
+    # Use present continuous for ongoing updates
+    volume_changing = pyqtSignal(float)
     
     def __init__(self):
         super().__init__()
@@ -101,8 +103,8 @@ class AudioRecorder(QObject):
         
         self.stream = None
         self.frames = []
-        self.is_recording = False
-        self.is_testing = False
+        self.is_recording_active = False
+        self.is_microphone_test_running = False
         self.test_stream = None
         self.current_device_info = None
         # Keep a reference to self to prevent premature deletion
@@ -115,12 +117,12 @@ class AudioRecorder(QObject):
         logger.info(f"Sample rate mode updated to: {mode}")
         
     def start_recording(self):
-        if self.is_recording:
+        if self.is_recording_active:
             return
             
         try:
             self.frames = []
-            self.is_recording = True
+            self.is_recording_active = True
             
             # Get settings
             settings = Settings()
@@ -158,7 +160,7 @@ class AudioRecorder(QObject):
                         input=True,
                         input_device_index=mic_index,
                         frames_per_buffer=1024,
-                        stream_callback=self._callback
+                        stream_callback=self._handle_audio_frame
                     )
                     # If successful, store the sample rate
                     self.current_sample_rate = target_sample_rate
@@ -179,7 +181,7 @@ class AudioRecorder(QObject):
                         input=True,
                         input_device_index=mic_index,
                         frames_per_buffer=1024,
-                        stream_callback=self._callback
+                        stream_callback=self._handle_audio_frame
                     )
                     # Store the sample rate
                     self.current_sample_rate = default_sample_rate
@@ -196,7 +198,7 @@ class AudioRecorder(QObject):
                     input=True,
                     input_device_index=mic_index,
                     frames_per_buffer=1024,
-                    stream_callback=self._callback
+                    stream_callback=self._handle_audio_frame
                 )
                 # Store the sample rate
                 self.current_sample_rate = default_sample_rate
@@ -206,23 +208,23 @@ class AudioRecorder(QObject):
             
         except Exception as e:
             logger.error(f"Failed to start recording: {e}")
-            self.recording_error.emit(f"Failed to start recording: {e}")
-            self.is_recording = False
+            self.recording_failed.emit(f"Failed to start recording: {e}")
+            self.is_recording_active = False
         
-    def _callback(self, in_data, frame_count, time_info, status):
+    def _handle_audio_frame(self, in_data, frame_count, time_info, status):
         if status:
             logger.warning(f"Recording status: {status}")
         try:
-            if self.is_recording:
+            if self.is_recording_active:
                 self.frames.append(in_data)
                 # Calculate and emit volume level
                 try:
                     audio_data = np.frombuffer(in_data, dtype=np.int16)
                     volume = AudioProcessor.calculate_volume(audio_data)
-                    self.volume_updated.emit(volume)
+                    self.volume_changing.emit(volume)
                 except Exception as e:
-                    logger.warning(f"Error calculating volume: {e}")
-                    self.volume_updated.emit(0.0)
+                    logger.error(f"Error calculating volume: {e}")
+                    self.volume_changing.emit(0.0)
                 return (in_data, pyaudio.paContinue)
         except RuntimeError:
             # Handle case where object is being deleted
@@ -230,12 +232,13 @@ class AudioRecorder(QObject):
             return (in_data, pyaudio.paComplete)
         return (in_data, pyaudio.paComplete)
         
-    def stop_recording(self):
-        if not self.is_recording:
+    def _stop_recording(self):
+        """Internal method to safely stop audio recording and process captured data"""
+        if not self.is_recording_active:
             return
             
-        logger.info("Stopping recording")
-        self.is_recording = False
+        logger.info("Stopping audio recording")
+        self.is_recording_active = False
         
         try:
             # Stop and close the stream first
@@ -247,15 +250,15 @@ class AudioRecorder(QObject):
             # Check if we have any recorded frames
             if not self.frames:
                 logger.error("No audio data recorded")
-                self.recording_error.emit("No audio was recorded")
+                self.recording_failed.emit("No audio was recorded")
                 return
             
             # Process the recording
-            self._process_recording()
+            self._process_recorded_audio()
             
         except Exception as e:
             logger.error(f"Error stopping recording: {e}")
-            self.recording_error.emit(f"Error stopping recording: {e}")
+            self.recording_failed.emit(f"Error stopping recording: {e}")
 
     def _process_audio_data(self):
         """Process recorded audio data and return processed numpy array"""
@@ -277,20 +280,29 @@ class AudioRecorder(QObject):
         
         return audio_data
 
-    def _process_recording(self):
-        """Process the recording and keep it in memory"""
+    def _process_recorded_audio(self):
+        """Process the recorded audio data for transcription"""
         try:
             logger.info("Processing recording in memory...")
+            
+            # Verify we have frames to process
+            if not self.frames:
+                raise ValueError("No audio frames available for processing")
+                
             audio_data = self._process_audio_data()
+            
+            # Verify audio data was generated
+            if audio_data is None or len(audio_data) == 0:
+                raise ValueError("Processed audio data is empty")
             
             # Normalize the audio data to float32 in the range [-1.0, 1.0] as expected by Whisper
             audio_data = audio_data.astype(np.float32) / 32768.0
             
-            logger.info("Recording processed in memory")
-            self.recording_finished.emit(audio_data)
+            logger.info(f"Recording processed in memory (length: {len(audio_data)} samples)")
+            self.recording_completed.emit(audio_data)
         except Exception as e:
-            logger.error(f"Failed to process recording: {e}")
-            self.recording_error.emit(f"Failed to process recording: {e}")
+            logger.error(f"Failed to process recording: {str(e)}", exc_info=True)
+            self.recording_failed.emit(f"Failed to process recording: {str(e)}")
         
     def save_audio(self, filename):
         """Save recorded audio to a WAV file"""
@@ -313,9 +325,9 @@ class AudioRecorder(QObject):
             logger.error(f"Failed to save audio file: {e}")
             raise
         
-    def start_mic_test(self, device_index):
-        """Start microphone test"""
-        if self.is_testing or self.is_recording:
+    def start_microphone_test(self, microphone_device_index):
+        """Start a test recording from the specified microphone device"""
+        if self.is_microphone_test_running or self.is_recording_active:
             return
             
         try:
@@ -337,23 +349,23 @@ class AudioRecorder(QObject):
             logger.error(f"Failed to start mic test: {e}")
             raise
             
-    def stop_mic_test(self):
-        """Stop microphone test"""
+    def stop_microphone_test(self):
+        """Stop the microphone test recording"""
         if self.test_stream:
             self.test_stream.stop_stream()
             self.test_stream.close()
             self.test_stream = None
-        self.is_testing = False
+        self.is_microphone_test_running = False
         
     def _test_callback(self, in_data, frame_count, time_info, status):
-        """Callback for mic test"""
+        """Handle audio frames during microphone testing"""
         if status:
             logger.warning(f"Test callback status: {status}")
         return (in_data, pyaudio.paContinue)
         
     def get_current_audio_level(self):
-        """Get current audio level for meter"""
-        if not self.test_stream or not self.is_testing:
+        """Get current audio level for the microphone test meter"""
+        if not self.test_stream or not self.is_microphone_test_running:
             return 0
             
         try:

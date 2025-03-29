@@ -8,18 +8,18 @@ class VolumeMeter(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setMinimumSize(200, 20)
-        self.value = 0
+        self.current_volume = 0
         self.peaks = []
         self.gradient = self._create_gradient()
         
         # Smaller buffer for less lag
         self.buffer_size = 3  # Reduced from 10
-        self.value_buffer = deque(maxlen=self.buffer_size)
+        self.volume_buffer = deque(maxlen=self.buffer_size)
         
         # Adjusted sensitivity and response
         self.sensitivity = 0.002  # Slightly more sensitive
-        self.smoothing = 0.5     # Less smoothing for faster response
-        self.last_value = 0
+        self.smoothing_factor = 0.5     # Less smoothing for faster response
+        self.previous_volume = 0
         
     def _create_gradient(self):
         gradient = QLinearGradient(0, 0, self.width(), 0)
@@ -33,33 +33,33 @@ class VolumeMeter(QWidget):
         self.gradient = self._create_gradient()
         super().resizeEvent(event)
         
-    def set_value(self, value):
-        # Add value to buffer
-        self.value_buffer.append(value)
+    def set_value(self, volume_level):
+        # Add volume level to buffer
+        self.volume_buffer.append(volume_level)
         
-        # Calculate smoothed value
-        if len(self.value_buffer) > 0:
+        # Calculate smoothed volume level
+        if len(self.volume_buffer) > 0:
             # Use weighted average favoring recent values
-            weights = np.array([0.5, 0.3, 0.2][:len(self.value_buffer)])
-            weights = weights / weights.sum()  # Normalize weights
-            avg_value = np.average(self.value_buffer, weights=weights)
+            weight_factors = np.array([0.5, 0.3, 0.2][:len(self.volume_buffer)])
+            normalized_weights = weight_factors / weight_factors.sum()
+            average_volume = np.average(self.volume_buffer, weights=normalized_weights)
             
             # More responsive scaling
-            target_value = min(1.0, avg_value / self.sensitivity)
+            target_volume = min(1.0, average_volume / self.sensitivity)
             
-            # Faster smoothing
-            smoothed = (self.smoothing * self.last_value + 
-                       (1 - self.smoothing) * target_value)
+            # Apply smoothing filter
+            smoothed_volume = (self.smoothing_factor * self.previous_volume +
+                              (1 - self.smoothing_factor) * target_volume)
             
-            # Less aggressive curve
-            self.value = np.power(smoothed, 0.9)
-            self.last_value = smoothed
+            # Apply non-linear curve for better visual response
+            self.current_volume = np.power(smoothed_volume, 0.9)
+            self.previous_volume = smoothed_volume
         else:
-            self.value = 0
+            self.current_volume = 0
             
         # Faster peak decay
-        if not self.peaks or value > self.peaks[-1][0]:
-            self.peaks.append((self.value, 15))  # Shorter hold time
+        if not self.peaks or volume_level > self.peaks[-1][0]:
+            self.peaks.append((self.current_volume, 15))  # Shorter hold time
         
         # Update peaks with faster decay
         new_peaks = []
@@ -85,7 +85,7 @@ class VolumeMeter(QWidget):
         x = 2
         y = 2
         
-        meter_width = int(width * self.value)
+        meter_width = int(width * self.current_volume)
         if meter_width > 0:
             rect = self.rect().adjusted(2, 2, -2, -2)
             rect.setWidth(meter_width)

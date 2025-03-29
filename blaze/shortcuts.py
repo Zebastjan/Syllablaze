@@ -6,8 +6,8 @@ import logging
 logger = logging.getLogger(__name__)
 
 class GlobalShortcuts(QObject):
-    start_recording_triggered = pyqtSignal()
-    stop_recording_triggered = pyqtSignal()
+    recording_start_requested = pyqtSignal()
+    recording_stop_requested = pyqtSignal()
     
     def __init__(self):
         super().__init__()
@@ -60,8 +60,8 @@ class GlobalShortcuts(QObject):
         
     def _on_stop_triggered(self):
         """Called when stop recording shortcut is pressed"""
-        logger.info("Stop recording shortcut triggered")
-        self.stop_recording_triggered.emit()
+        logger.info("Recording stop requested via shortcut")
+        self.recording_stop_requested.emit()
         
     def __del__(self):
         try:
