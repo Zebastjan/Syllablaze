@@ -17,7 +17,7 @@ class VolumeMeter(QWidget):
         self.volume_buffer = deque(maxlen=self.buffer_size)
         
         # Adjusted sensitivity and response
-        self.sensitivity = 0.002  # Slightly more sensitive
+        self.sensitivity = 0.002  # Original sensitivity value
         self.smoothing_factor = 0.5     # Less smoothing for faster response
         self.previous_volume = 0
         

@@ -15,7 +15,7 @@ from PyQt6.QtCore import pyqtSignal
 import warnings
 import ctypes
 from blaze.settings import Settings
-from blaze.constants import APP_NAME, APP_VERSION, DEFAULT_WHISPER_MODEL, ORG_NAME, VALID_LANGUAGES
+from blaze.constants import APP_NAME, APP_VERSION, DEFAULT_WHISPER_MODEL, ORG_NAME, VALID_LANGUAGES, LOCK_FILE_PATH
 from blaze.whisper_model_manager import get_model_info
 # from blaze.mic_debug import MicDebugWindow
 
@@ -368,6 +368,28 @@ class ApplicationTrayIcon(QSystemTrayIcon):
         if self.progress_window:
             self.progress_window.update_progress(percent)
     
+    def _close_progress_window(self, context=""):
+        """Helper method to safely close progress window"""
+        if self.progress_window:
+            logger.info(f"Closing progress window {context}".strip())
+            try:
+                # Try multiple approaches to ensure the window closes
+                self.progress_window.hide()
+                self.progress_window.close()
+                self.progress_window.deleteLater()
+                
+                # Set processing to false to allow closing
+                self.progress_window.processing = False
+                
+                # Force an immediate process of events
+                QApplication.processEvents()
+                
+                self.progress_window = None
+            except Exception as e:
+                logger.error(f"Error closing progress window: {e}")
+        else:
+            logger.warning(f"Progress window not found when trying to close {context}".strip())
+    
     def handle_transcription_finished(self, text):
         if text:
             # Copy text to clipboard
@@ -386,26 +408,8 @@ class ApplicationTrayIcon(QSystemTrayIcon):
             # Update tooltip with recognized text
             self.update_tooltip(text)
         
-        # Force close the progress window
-        if self.progress_window:
-            logger.info("Closing progress window after transcription")
-            try:
-                # Try multiple approaches to ensure the window closes
-                self.progress_window.hide()
-                self.progress_window.close()
-                self.progress_window.deleteLater()
-                
-                # Set processing to false to allow closing
-                self.progress_window.processing = False
-                
-                # Force an immediate process of events
-                QApplication.processEvents()
-                
-                self.progress_window = None
-            except Exception as e:
-                logger.error(f"Error closing progress window: {e}")
-        else:
-            logger.warning("Progress window not found when trying to close after transcription")
+        # Close progress window
+        self._close_progress_window("after transcription")
     
     def handle_transcription_error(self, error):
         self.showMessage("Transcription Error",
@@ -415,26 +419,8 @@ class ApplicationTrayIcon(QSystemTrayIcon):
         # Update tooltip to indicate error
         self.update_tooltip()
         
-        # Force close the progress window
-        if self.progress_window:
-            logger.info("Closing progress window after transcription error")
-            try:
-                # Try multiple approaches to ensure the window closes
-                self.progress_window.hide()
-                self.progress_window.close()
-                self.progress_window.deleteLater()
-                
-                # Set processing to false to allow closing
-                self.progress_window.processing = False
-                
-                # Force an immediate process of events
-                QApplication.processEvents()
-                
-                self.progress_window = None
-            except Exception as e:
-                logger.error(f"Error closing progress window: {e}")
-        else:
-            logger.warning("Progress window not found when trying to close after transcription error")
+        # Close progress window
+        self._close_progress_window("after transcription error")
 
 
     def toggle_debug_window(self):
@@ -452,8 +438,8 @@ def setup_application_metadata():
     QCoreApplication.setOrganizationName(ORG_NAME)
     QCoreApplication.setOrganizationDomain("kde.org")
 
-# Global variable for lock file
-LOCK_FILE_PATH = os.path.expanduser("~/.cache/syllablaze/syllablaze.lock")
+# Global variable for the active lock file handle
+# None when no lock is held, file object when locked
 LOCK_FILE = None
 
 

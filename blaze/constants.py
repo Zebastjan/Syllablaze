@@ -1,6 +1,8 @@
 """
 Constants for the Syllablaze application.
 """
+import os
+
 
 # Application name
 APP_NAME = "Syllablaze"
@@ -41,3 +43,7 @@ VALID_LANGUAGES = {
     'ru': 'Russian',
     # Add more languages as needed
 }
+
+# Lock file configuration - path where the application lock file will be stored
+# This is just the path string, not the actual file handle
+LOCK_FILE_PATH = os.path.expanduser("~/.cache/syllablaze/syllablaze.lock")
