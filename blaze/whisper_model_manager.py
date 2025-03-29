@@ -236,7 +236,7 @@ class ModelDownloadThread(QThread):
             logger.error(f"Error downloading model: {e}")
             self.download_error.emit(str(e))
 
-class WhisperModelTable(QWidget):
+class WhisperModelTableWidget(QWidget):
     model_activated = pyqtSignal(str)  # Emitted when a model is set as active
     model_downloaded = pyqtSignal(str)  # Emitted when a model is downloaded
     model_deleted = pyqtSignal(str)  # Emitted when a model is deleted
@@ -451,6 +451,6 @@ class WhisperModelTable(QWidget):
                 
         open_directory(self.models_dir)
     
-    def on_table_header_clicked(self, column_index):
+    def on_table_header_clicked(self, sorted_column_index):
         """Sort the table by the clicked column"""
-        self.table.sortByColumn(column_index, Qt.SortOrder.AscendingOrder)
+        self.table.sortByColumn(sorted_column_index, Qt.SortOrder.AscendingOrder)

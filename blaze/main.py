@@ -314,13 +314,25 @@ class ApplicationTrayIcon(QSystemTrayIcon):
             except Exception as lock_error:
                 logger.error(f"Error releasing lock file: {lock_error}")
 
-    def _update_volume_display(self, value):
-        # Directly update volume meter
+    def _update_volume_display(self, volume_level):
+        """Update the UI with current volume level"""
         if self.progress_window and self.recording:
-            self.progress_window.update_volume(value)
+            self.progress_window.update_volume(volume_level)
     
-    def _handle_recording_completed(self, audio_data):
-        """Called when recording is processed in memory"""
+    def _handle_recording_completed(self, normalized_audio_data):
+        """Handle completion of audio recording and start transcription
+        
+        Parameters:
+        -----------
+        normalized_audio_data : np.ndarray
+            Audio data normalized to range [-1.0, 1.0] and ready for transcription
+            
+        Notes:
+        ------
+        - Updates UI to processing mode
+        - Starts transcription process
+        - Handles any errors during transcription setup
+        """
         logger.info("ApplicationTrayIcon: Recording processed, starting transcription")
         
         # Ensure progress window is in processing mode
@@ -338,7 +350,7 @@ class ApplicationTrayIcon(QSystemTrayIcon):
             if not hasattr(self.transcriber, 'model') or not self.transcriber.model:
                 raise RuntimeError("Whisper model not loaded")
                 
-            self.transcriber.transcribe_file(audio_data)
+            self.transcriber.transcribe_audio(normalized_audio_data)
             
         except Exception as e:
             logger.error(f"Failed to start transcription: {e}")

@@ -336,7 +336,7 @@ class AudioRecorder(QObject):
                 channels=1,
                 rate=44100,
                 input=True,
-                input_device_index=device_index,
+                input_device_index=microphone_device_index,
                 frames_per_buffer=1024,
                 stream_callback=self._test_callback
             )

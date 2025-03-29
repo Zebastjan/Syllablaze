@@ -228,14 +228,25 @@ class WhisperTranscriber(QObject):
             logger.error(f"Transcription failed: {e}")
             self.transcription_error.emit(str(e))
 
-    def transcribe_file(self, audio_data):
+    def transcribe_audio(self, normalized_audio_data):
         """
-        Transcribe audio data directly from memory
+        Transcribe normalized audio data from memory using Whisper model
         
         Parameters:
         -----------
-        audio_data: np.ndarray
-            Audio data as a NumPy array, expected to be float32 in range [-1.0, 1.0]
+        normalized_audio_data : np.ndarray
+            Pre-processed audio data as float32 NumPy array with values normalized
+            to range [-1.0, 1.0]. The array should be mono (single channel) and
+            sampled at 16kHz for optimal Whisper performance.
+            
+        Notes:
+        ------
+        - This method starts an asynchronous transcription process
+        - Progress updates are emitted via signals:
+          * transcription_progress(str)
+          * transcription_progress_percent(int)
+          * transcription_finished(str) when finished
+          * transcription_error(str) on errors
         """
         if self.worker and self.worker.isRunning():
             logger.warning("Transcription already in progress")
@@ -258,7 +269,7 @@ class WhisperTranscriber(QObject):
         
         print(f"Transcribing audio with model: {self.current_model_name}, language: {lang_str}")
         
-        self.worker = TranscriptionWorker(self.model, audio_data)
+        self.worker = TranscriptionWorker(self.model, normalized_audio_data)
         # Make sure the worker uses the current language setting
         self.worker.language = self.current_language
         self.worker.finished.connect(self.transcription_finished)

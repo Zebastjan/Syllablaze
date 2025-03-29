@@ -10,7 +10,7 @@ from blaze.constants import (
     APP_NAME, APP_VERSION, DEFAULT_WHISPER_MODEL, GITHUB_REPO_URL,
     SAMPLE_RATE_MODE_WHISPER, SAMPLE_RATE_MODE_DEVICE, DEFAULT_SAMPLE_RATE_MODE
 )
-from blaze.whisper_model_manager import WhisperModelTable
+from blaze.whisper_model_manager import WhisperModelTableWidget
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +46,7 @@ class SettingsWindow(QWidget):
         model_layout = QVBoxLayout()
         
         # Create the model table
-        self.model_table = WhisperModelTable()
+        self.model_table = WhisperModelTableWidget()
         self.model_table.model_activated.connect(self.on_model_activated)
         model_layout.addWidget(self.model_table)
         
