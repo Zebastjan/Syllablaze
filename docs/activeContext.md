@@ -1,44 +1,30 @@
 # Syllablaze Status Summary
 
 ## Current Version: 0.3
-### Key Features Implemented
-- In-memory audio processing (no temp files)
-- Enhanced Whisper model management UI
+### Key Features
+- In-memory audio processing
+- Enhanced Whisper model UI
 - KDE Plasma integration
-- Ubuntu KDE optimizations
-- Rebranding from Telly Spelly to Syllablaze
+- pipx-based installation
 
-## Recent Improvements
-1. **Recording UI**:
+## Recent Work
+1. **UI Improvements**:
    - Larger stop button
-   - Version/status display
-   - Improved layout
+   - Better layout/status display
 
-2. **Code Quality**:
-   - DRY principle refactoring
-   - Consolidated audio processing
-   - Unified transcription logic
-
-3. **Installation**:
-   - pipx-based installation
-   - System dependency checks
-   - Desktop file integration
+2. **Code Refactoring**:
+   - DRY principles
+   - Consolidated audio/transcription
 
 ## Pending Work
-1. **Future Exploration**:
-   - Flatpak packaging
-   - System-wide installation option
+1. **Packaging**:
+   - Flatpak support
+   - System-wide install option
 
 2. **Code Quality**:
-   - Single Responsibility refactoring
-   - Presenter pattern implementation
+   - Single Responsibility
+   - Presenter pattern
 
-3. **Enhancements**:
+3. **Features**:
    - Model benchmarking
-   - Advanced error handling
-   - Detailed model info
-
-## Installation Status
-- Works on KDE Plasma
-- User-level install via pipx
-- Ubuntu KDE tested
+   - Enhanced error handling

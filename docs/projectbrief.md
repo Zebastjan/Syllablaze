@@ -1,34 +1,28 @@
 # Syllablaze Project Summary
 
 ## Core Purpose
-- Local, privacy-focused speech-to-text for KDE Plasma
-- Real-time transcription using OpenAI Whisper (local processing)
-- Designed for Ubuntu KDE with cross-distro potential
+- Local, privacy-focused STT for KDE Plasma
+- Real-time transcription using local Whisper models
+- Ubuntu KDE optimized with cross-distro support
 
 ## Key Features
 1. **Audio Processing**:
-   - In-memory recording (no temp files)
-   - Direct 16kHz capture for efficiency
+   - In-memory recording (16kHz direct capture)
    - System microphone integration
 
 2. **Transcription**:
-   - Local Whisper model processing
-   - Multiple model size options
-   - Automatic clipboard integration
+   - Local Whisper models (multiple sizes)
+   - Auto clipboard integration
 
 3. **UI/UX**:
-   - System tray integration
-   - Global keyboard shortcuts
-   - Model management interface
-   - Progress feedback
+   - System tray, global shortcuts
+   - Model management, progress feedback
 
 ## Target Users
-- Students, professionals, content creators
-- Accessibility users
-- Privacy-conscious individuals
-- KDE enthusiasts
+- Students, professionals, creators
+- Accessibility users, privacy-conscious, KDE enthusiasts
 
 ## Technical Stack
 - Python 3.8+, PyQt6, Whisper, PyAudio
 - KDE Plasma integration
-- User-level installation via pipx
+- pipx user-level installation
