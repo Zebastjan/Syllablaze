@@ -11,7 +11,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 def check_system_dependencies():
     """Check if required system dependencies are installed"""
-    dependencies = ["ffmpeg", "pipx"]
+    dependencies = ["pipx"]
     missing = []
     
     for dep in dependencies:
@@ -26,13 +26,9 @@ def check_system_dependencies():
         if os.path.exists("/etc/debian_version"):  # Ubuntu/Debian
             if "pipx" in missing:
                 print("sudo apt install -y python3-pipx")
-            if "ffmpeg" in missing:
-                print("sudo apt install -y ffmpeg")
         elif os.path.exists("/etc/fedora-release"):  # Fedora
             if "pipx" in missing:
                 print("sudo dnf install -y pipx")
-            if "ffmpeg" in missing:
-                print("sudo dnf install -y ffmpeg")
         else:
             print(f"Please install: {' '.join(missing)}")
         return False

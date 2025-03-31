@@ -12,16 +12,15 @@ Before installing, ensure you have the following dependencies:
 
 1. Python 3.8 or higher
 2. pipx
-3. ffmpeg
 
 On Ubuntu/Debian:
 ```bash
-sudo apt install python3-pipx ffmpeg
+sudo apt install python3-pipx
 ```
 
 On Fedora:
 ```bash
-sudo dnf install pipx ffmpeg
+sudo dnf install pipx
 ```
 
 ### Installation Steps

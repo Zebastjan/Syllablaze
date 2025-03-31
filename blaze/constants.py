@@ -8,7 +8,7 @@ import os
 APP_NAME = "Syllablaze"
 
 # Application version
-APP_VERSION = "0.3"
+APP_VERSION = "0.4 beta"
 
 # Organization name
 ORG_NAME = "KDE"
