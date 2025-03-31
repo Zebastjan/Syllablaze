@@ -85,7 +85,7 @@ class WhisperTranscriber(QObject):
     model_changed = pyqtSignal(str)  # Signal to notify when model is changed
     language_changed = pyqtSignal(str)  # Signal to notify when language is changed
     
-    def __init__(self):
+    def __init__(self, load_model=True):
         super().__init__()
         self.model = None
         self.worker = None
@@ -95,7 +95,22 @@ class WhisperTranscriber(QObject):
         self.settings = Settings()
         self.current_language = self.settings.get('language', 'auto')
         self.model_manager = WhisperModelManager(self.settings)
-        self.load_model()
+        self.current_model_name = self.settings.get('model', DEFAULT_WHISPER_MODEL)
+        
+        # Only load the model if explicitly requested and it's downloaded
+        if load_model:
+            try:
+                # Check if model is downloaded
+                if self.model_manager.is_model_downloaded(self.current_model_name):
+                    logger.info(f"Loading model {self.current_model_name} which is already downloaded")
+                    self.load_model()
+                else:
+                    logger.info(f"Model {self.current_model_name} is not downloaded, deferring loading")
+            except Exception as e:
+                logger.error(f"Error checking model: {e}")
+                logger.info("Model loading deferred due to error")
+        else:
+            logger.info("Model loading deferred until explicitly requested")
         
     def load_model(self):
         """Load the Whisper model based on current settings"""
