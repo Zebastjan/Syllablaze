@@ -10,16 +10,109 @@ This module provides components for managing Whisper models, including:
 """
 
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTableWidget,
-                              QTableWidgetItem, QLabel, QPushButton, QHeaderView,
-                              QMessageBox, QDialog, QProgressBar, QSizePolicy)
+                               QTableWidgetItem, QLabel, QPushButton, QHeaderView,
+                               QMessageBox, QDialog, QProgressBar, QSizePolicy)
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 import os
+import re
 import logging
+import subprocess
+import platform
 from pathlib import Path
 from blaze.settings import Settings
 from blaze.constants import DEFAULT_WHISPER_MODEL
 
 logger = logging.getLogger(__name__)
+
+# -------------------------------------------------------------------------
+# Constants and Utilities
+# -------------------------------------------------------------------------
+
+class ModelPaths:
+    """Utility class for model path operations"""
+    
+    @staticmethod
+    def get_models_dir():
+        """Get the directory where Whisper stores its models"""
+        models_dir = os.path.join(Path.home(), ".cache", "whisper")
+        os.makedirs(models_dir, exist_ok=True)
+        return models_dir
+    
+    @staticmethod
+    def get_faster_whisper_dir(model_name):
+        """Get the directory path for a Faster Whisper model"""
+        return os.path.join(ModelPaths.get_models_dir(), f"models--Systran--faster-whisper-{model_name}")
+    
+    @staticmethod
+    def get_whisper_file_path(model_name):
+        """Get the file path for an original Whisper model"""
+        return os.path.join(ModelPaths.get_models_dir(), f"{model_name}.pt")
+    
+    @staticmethod
+    def get_distil_whisper_dir(repo_id):
+        """Get the directory path for a Distil Whisper model"""
+        return os.path.join(ModelPaths.get_models_dir(), f"models--{repo_id.replace('/', '--')}")
+
+class ModelUtils:
+    """Utility class for model operations"""
+    
+    @staticmethod
+    def is_model_downloaded(model_name):
+        """Check if a model is downloaded in any format"""
+        faster_whisper_dir = ModelPaths.get_faster_whisper_dir(model_name)
+        whisper_file_path = ModelPaths.get_whisper_file_path(model_name)
+        
+        faster_whisper_exists = os.path.exists(faster_whisper_dir)
+        whisper_exists = os.path.exists(whisper_file_path)
+        
+        if faster_whisper_exists:
+            logger.info(f"Found Faster Whisper directory for model {model_name}")
+        if whisper_exists:
+            logger.info(f"Found original Whisper file for model {model_name}")
+            
+        return faster_whisper_exists or whisper_exists
+    
+    @staticmethod
+    def get_model_path(model_name):
+        """Get the best available path for a model"""
+        faster_whisper_dir = ModelPaths.get_faster_whisper_dir(model_name)
+        whisper_file_path = ModelPaths.get_whisper_file_path(model_name)
+        
+        if os.path.exists(faster_whisper_dir):
+            return faster_whisper_dir
+        else:
+            return whisper_file_path
+    
+    @staticmethod
+    def calculate_model_size(model_path):
+        """Calculate the size of a model in MB"""
+        if not os.path.exists(model_path):
+            return 0
+            
+        if os.path.isdir(model_path):
+            # For directories, calculate total size of all files
+            total_size = 0
+            for root, dirs, files in os.walk(model_path):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    if os.path.exists(file_path):
+                        total_size += os.path.getsize(file_path)
+            return round(total_size / (1024 * 1024))  # Convert to MB
+        elif os.path.isfile(model_path):
+            # For files, get the file size
+            return round(os.path.getsize(model_path) / (1024 * 1024))  # Convert to MB
+        
+        return 0
+    
+    @staticmethod
+    def open_directory(path):
+        """Open directory in file explorer"""
+        if platform.system() == "Windows":
+            subprocess.run(['explorer', path])
+        elif platform.system() == "Darwin":  # macOS
+            subprocess.run(['open', path])
+        else:  # Linux
+            subprocess.run(['xdg-open', path])
 
 # Define Faster Whisper model information
 FASTER_WHISPER_MODELS = {
@@ -46,15 +139,63 @@ FASTER_WHISPER_MODELS = {
     "distil-small.en": {"size_mb": 400, "description": "Distilled Small English-only model (400MB) - Good for resource-constrained applications", "type": "distil", "repo_id": "distil-whisper/distil-small.en"}
 }
 
+# -------------------------------------------------------------------------
+# Model Registry
+# -------------------------------------------------------------------------
+
+class ModelRegistry:
+    """Registry for Whisper model information"""
+    
+    # Use the existing FASTER_WHISPER_MODELS dictionary
+    MODELS = FASTER_WHISPER_MODELS
+    
+    @classmethod
+    def get_model_info(cls, model_name):
+        """Get information for a specific model"""
+        return cls.MODELS.get(model_name, {})
+    
+    @classmethod
+    def get_all_models(cls):
+        """Get list of all available models"""
+        return list(cls.MODELS.keys())
+    
+    @classmethod
+    def is_distil_model(cls, model_name):
+        """Check if a model is a distil-whisper model"""
+        return cls.get_model_info(model_name).get('type') == 'distil'
+    
+    @classmethod
+    def get_repo_id(cls, model_name):
+        """Get the repository ID for a model"""
+        return cls.get_model_info(model_name).get('repo_id')
+    
+    @classmethod
+    def add_model(cls, model_name, model_info):
+        """Add a new model to the registry"""
+        cls.MODELS[model_name] = model_info
+        logger.info(f"Added new model to registry: {model_name}")
+    
+    @classmethod
+    def update_from_huggingface(cls):
+        """Update the registry with models from Hugging Face"""
+        try:
+            # This would be implemented to query Hugging Face API
+            # For now, we'll just use the existing models
+            pass
+        except Exception as e:
+            logger.warning(f"Failed to update model registry from Hugging Face: {e}")
+
+# -------------------------------------------------------------------------
+# Model Information Functions
+# -------------------------------------------------------------------------
+
 def get_model_info():
     """Get comprehensive information about all Whisper models"""
-    import os
+    # Get the models directory
+    models_dir = ModelPaths.get_models_dir()
     
-    # Get the directory where Whisper stores its models
-    models_dir = os.path.join(Path.home(), ".cache", "whisper")
-    
-    # Get available models from the FASTER_WHISPER_MODELS dictionary
-    available_models = list(FASTER_WHISPER_MODELS.keys())
+    # Get available models from the registry
+    available_models = ModelRegistry.get_all_models()
     logger.info(f"Available models for Faster Whisper: {available_models}")
     
     # Get current active model from settings
@@ -73,45 +214,17 @@ def get_model_info():
     # Create model info dictionary
     model_info = {}
     for model_name in available_models:
-        # Check for both formats: Faster Whisper directory and original Whisper .pt file
-        faster_whisper_model_dir = os.path.join(models_dir, f"models--Systran--faster-whisper-{model_name}")
-        whisper_model_path = os.path.join(models_dir, f"{model_name}.pt")
+        # Check if the model is downloaded
+        is_downloaded = ModelUtils.is_model_downloaded(model_name)
         
-        # Check if either format exists
-        faster_whisper_exists = os.path.exists(faster_whisper_model_dir)
-        whisper_exists = os.path.exists(whisper_model_path)
-        is_downloaded = faster_whisper_exists or whisper_exists
-        
-        # Determine the model path to use
-        if faster_whisper_exists:
-            model_path = faster_whisper_model_dir
-            logger.info(f"Found Faster Whisper directory for model {model_name}")
-        elif whisper_exists:
-            model_path = whisper_model_path
-            logger.info(f"Found original Whisper file for model {model_name}")
-        else:
-            model_path = whisper_model_path  # Default to the .pt path even if it doesn't exist
+        # Get the model path
+        model_path = ModelUtils.get_model_path(model_name)
         
         # Calculate the model size
-        actual_size = 0
-        if is_downloaded:
-            if os.path.isdir(model_path):
-                # For directories, calculate total size of all files
-                for root, dirs, files in os.walk(model_path):
-                    for file in files:
-                        file_path = os.path.join(root, file)
-                        if os.path.exists(file_path):
-                            actual_size += os.path.getsize(file_path)
-                actual_size = round(actual_size / (1024 * 1024))  # Convert to MB and round to integer
-            elif os.path.isfile(model_path):
-                # For files, get the file size
-                actual_size = round(os.path.getsize(model_path) / (1024 * 1024))  # Convert to MB and round to integer
-        else:
-            # Use the approximate size from our model info dictionary
-            actual_size = FASTER_WHISPER_MODELS.get(model_name, {}).get('size_mb', 0)
+        actual_size = ModelUtils.calculate_model_size(model_path) if is_downloaded else ModelRegistry.get_model_info(model_name).get('size_mb', 0)
         
-        # Get model description from our consolidated dictionary
-        model_description = FASTER_WHISPER_MODELS.get(model_name, {}).get('description', f"{model_name} model")
+        # Get model description
+        model_description = ModelRegistry.get_model_info(model_name).get('description', f"{model_name} model")
         
         # Create model info object
         model_info[model_name] = {
@@ -126,44 +239,60 @@ def get_model_info():
     
     return model_info, models_dir
 
+# -------------------------------------------------------------------------
+# Dialog Utilities
+# -------------------------------------------------------------------------
+
+class DialogUtils:
+    """Utility class for dialog operations"""
+    
+    @staticmethod
+    def confirm_download(model_name, size_mb):
+        """Show confirmation dialog before downloading a model"""
+        # Get model information from the registry
+        model_info = ModelRegistry.get_model_info(model_name)
+        if not model_info:
+            model_info = {"size_mb": size_mb, "description": f"{model_name} model"}
+        
+        msg = QMessageBox()
+        msg.setIcon(QMessageBox.Icon.Question)
+        msg.setText(f"Download Faster Whisper model '{model_name}'?")
+        msg.setInformativeText(f"This will download approximately {model_info['size_mb']} MB of data.\n{model_info['description']}")
+        
+        msg.setWindowTitle("Confirm Download")
+        msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        return msg.exec() == QMessageBox.StandardButton.Yes
+    
+    @staticmethod
+    def confirm_delete(model_name, size_mb):
+        """Show confirmation dialog before deleting a model"""
+        msg = QMessageBox()
+        msg.setIcon(QMessageBox.Icon.Warning)
+        msg.setText(f"Delete Faster Whisper model '{model_name}'?")
+        msg.setInformativeText(
+            f"This will free up {size_mb:.1f} MB of disk space.\n"
+            f"You will need to download this model again if you want to use it in the future."
+        )
+        msg.setWindowTitle("Confirm Deletion")
+        msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        return msg.exec() == QMessageBox.StandardButton.Yes
+
+# For backward compatibility
 def confirm_download(model_name, size_mb):
-    """Show confirmation dialog before downloading a model"""
-    # Get model information from the consolidated dictionary
-    model_info = FASTER_WHISPER_MODELS.get(model_name, {"size_mb": size_mb, "description": f"{model_name} model"})
-    
-    msg = QMessageBox()
-    msg.setIcon(QMessageBox.Icon.Question)
-    msg.setText(f"Download Faster Whisper model '{model_name}'?")
-    msg.setInformativeText(f"This will download approximately {model_info['size_mb']} MB of data.\n{model_info['description']}")
-    
-    msg.setWindowTitle("Confirm Download")
-    msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-    return msg.exec() == QMessageBox.StandardButton.Yes
+    """Show confirmation dialog before downloading a model (backward compatibility)"""
+    return DialogUtils.confirm_download(model_name, size_mb)
 
 def confirm_delete(model_name, size_mb):
-    """Show confirmation dialog before deleting a model"""
-    msg = QMessageBox()
-    msg.setIcon(QMessageBox.Icon.Warning)
-    msg.setText(f"Delete Faster Whisper model '{model_name}'?")
-    msg.setInformativeText(
-        f"This will free up {size_mb:.1f} MB of disk space.\n"
-        f"You will need to download this model again if you want to use it in the future."
-    )
-    msg.setWindowTitle("Confirm Deletion")
-    msg.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-    return msg.exec() == QMessageBox.StandardButton.Yes
+    """Show confirmation dialog before deleting a model (backward compatibility)"""
+    return DialogUtils.confirm_delete(model_name, size_mb)
 
 def open_directory(path):
-    """Open directory in file explorer"""
-    import subprocess
-    import platform
-    
-    if platform.system() == "Windows":
-        subprocess.run(['explorer', path])
-    elif platform.system() == "Darwin":  # macOS
-        subprocess.run(['open', path])
-    else:  # Linux
-        subprocess.run(['xdg-open', path])
+    """Open directory in file explorer (backward compatibility)"""
+    ModelUtils.open_directory(path)
+
+# -------------------------------------------------------------------------
+# Download Components
+# -------------------------------------------------------------------------
 
 class ModelDownloadDialog(QDialog):
     """Dialog to show model download progress"""
@@ -214,7 +343,6 @@ class ModelDownloadDialog(QDialog):
         self.status_label.setText(text)
         
         # Try to extract download size information from status text
-        import re
         size_match = re.search(r'(\d+\.\d+)MB\s*/\s*(\d+\.\d+)MB', text)
         if size_match:
             self.downloaded_mb = float(size_match.group(1))
@@ -228,6 +356,120 @@ class ModelDownloadDialog(QDialog):
         else:
             minutes, secs = divmod(seconds, 60)
             self.time_remaining_label.setText(f"Time remaining: {int(minutes)}m {int(secs)}s")
+
+class DownloadManager:
+    """Manager for model downloads"""
+    
+    @staticmethod
+    def setup_progress_tracking(callback_func):
+        """Set up progress tracking for Hugging Face Hub downloads"""
+        # Set environment variable to enable progress bar for huggingface_hub
+        os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
+        
+        try:
+            # Try the newer API first
+            from huggingface_hub.utils import ProgressCallback
+            from huggingface_hub import set_progress_callback
+            
+            # Create a progress callback adapter
+            class HFProgressCallback(ProgressCallback):
+                def __call__(self, progress_info):
+                    callback_func(progress_info)
+            
+            # Register the progress callback
+            set_progress_callback(HFProgressCallback())
+            logger.info("Using newer Hugging Face Hub API for progress tracking")
+            return True
+        except ImportError:
+            # Fall back to older API if available
+            try:
+                from huggingface_hub import configure_http_backend
+                # Try with different parameter names
+                try:
+                    configure_http_backend(progress_callback=callback_func)
+                    logger.info("Using older Hugging Face Hub API for progress tracking (progress_callback)")
+                    return True
+                except TypeError:
+                    # Maybe it uses a different parameter name
+                    try:
+                        configure_http_backend(callback=callback_func)
+                        logger.info("Using older Hugging Face Hub API for progress tracking (callback)")
+                        return True
+                    except TypeError:
+                        logger.warning("Could not configure progress callback for Hugging Face Hub")
+            except ImportError:
+                logger.warning("Could not import Hugging Face Hub progress tracking API")
+        
+        return False
+    
+    @staticmethod
+    def download_standard_model(model_name, models_dir):
+        """Download a standard Whisper model"""
+        from faster_whisper import WhisperModel
+        
+        logger.info(f"Downloading standard Faster Whisper model: {model_name}")
+        return WhisperModel(
+            model_name,
+            device="cpu",
+            compute_type="int8",
+            download_root=models_dir,
+            local_files_only=False
+        )
+    
+    @staticmethod
+    def download_distil_model(repo_id, models_dir):
+        """Download a Distil-Whisper model"""
+        from faster_whisper import WhisperModel
+        
+        logger.info(f"Downloading Distil-Whisper model from repo: {repo_id}")
+        return WhisperModel(
+            repo_id,
+            device="cpu",
+            compute_type="int8",
+            download_root=models_dir,
+            local_files_only=False
+        )
+    
+    @staticmethod
+    def fallback_download_standard(model_name, models_dir):
+        """Fallback method for downloading standard models"""
+        try:
+            # Try to import the download_model function from faster_whisper.download
+            from faster_whisper.download import download_model
+            
+            # Download the model directly
+            download_model(model_name, models_dir)
+            logger.info(f"Direct download of model {model_name} completed successfully")
+            return True
+        except ImportError:
+            logger.error("Could not import download_model from faster_whisper.download")
+            
+            # Try using WhisperModel with a simpler approach
+            from faster_whisper import WhisperModel
+            WhisperModel(
+                model_name,
+                device="cpu",
+                compute_type="int8",
+                download_root=models_dir
+            )
+            logger.info(f"Simple download of model {model_name} completed successfully")
+            return True
+        
+        return False
+    
+    @staticmethod
+    def fallback_download_distil(repo_id, models_dir):
+        """Fallback method for downloading distil-whisper models"""
+        from huggingface_hub import snapshot_download
+        
+        # Download the model files
+        snapshot_download(
+            repo_id=repo_id,
+            local_dir=os.path.join(models_dir, f"models--{repo_id.replace('/', '--')}"),
+            local_dir_use_symlinks=False
+        )
+        logger.info(f"Download of distil-whisper model {repo_id} completed successfully")
+        return True
 
 class ModelDownloadThread(QThread):
     """Thread for downloading Whisper models"""
@@ -248,14 +490,12 @@ class ModelDownloadThread(QThread):
         try:
             self.status_update.emit(f"Downloading {self.model_name} model...")
             
-            # Import faster_whisper and set up download hooks
-            from faster_whisper import WhisperModel
+            # Import required modules
             import time
             import traceback
             
             # Log the start of the download process
             logger.info(f"Starting download process for model: {self.model_name}")
-            print(f"Starting download process for model: {self.model_name}")
             
             # Define a progress callback for huggingface_hub
             def progress_callback(progress_info):
@@ -288,189 +528,70 @@ class ModelDownloadThread(QThread):
                                 time_remaining = remaining_bytes / download_rate
                                 self.time_remaining_update.emit(int(time_remaining))
             
-            # Set environment variable to enable progress bar for huggingface_hub
-            os.environ["HF_HUB_ENABLE_HF_TRANSFER"] = "1"
+            # Set up progress tracking
+            DownloadManager.setup_progress_tracking(progress_callback)
             
-            # Import huggingface_hub and set up the progress callback
-            try:
-                # Try the newer API first
-                from huggingface_hub.utils import ProgressCallback
-                from huggingface_hub import set_progress_callback
-                
-                # Create a progress callback adapter
-                class HFProgressCallback(ProgressCallback):
-                    def __call__(self, progress_info):
-                        progress_callback(progress_info)
-                
-                # Register the progress callback
-                set_progress_callback(HFProgressCallback())
-                logger.info("Using newer Hugging Face Hub API for progress tracking")
-            except ImportError:
-                # Fall back to older API if available
-                try:
-                    from huggingface_hub import configure_http_backend
-                    # Try with different parameter names
-                    try:
-                        configure_http_backend(progress_callback=progress_callback)
-                        logger.info("Using older Hugging Face Hub API for progress tracking (progress_callback)")
-                    except TypeError:
-                        # Maybe it uses a different parameter name
-                        try:
-                            configure_http_backend(callback=progress_callback)
-                            logger.info("Using older Hugging Face Hub API for progress tracking (callback)")
-                        except TypeError:
-                            logger.warning("Could not configure progress callback for Hugging Face Hub")
-                except ImportError:
-                    logger.warning("Could not import Hugging Face Hub progress tracking API")
-            
-            # Check if this is a Distil-Whisper model
-            model_info = FASTER_WHISPER_MODELS.get(self.model_name, {})
+            # Get model information
+            model_info = ModelRegistry.get_model_info(self.model_name)
             model_type = model_info.get('type', 'standard')
             
-            # Download the model using Faster Whisper
+            # Initialize download
             self.status_update.emit(f"Initializing download of {self.model_name} model...")
-            
-            # Get the models directory
-            models_dir = os.path.join(Path.home(), ".cache", "whisper")
-            
-            # Initialize start time for progress tracking
+            models_dir = ModelPaths.get_models_dir()
             self.start_time = time.time()
             
-            # Log the download attempt
-            logger.info(f"Starting download of model: {self.model_name}")
-            print(f"Starting download of model: {self.model_name}")
-            
-            if model_type == 'distil':
-                # For Distil-Whisper models, we need to use the repo_id
-                repo_id = model_info.get('repo_id')
-                if not repo_id:
-                    raise ValueError(f"Repository ID not found for Distil-Whisper model '{self.model_name}'")
-                
-                logger.info(f"Downloading Distil-Whisper model from repo: {repo_id}")
-                # Create a WhisperModel instance which will download the model if not present
-                WhisperModel(
-                    repo_id,
-                    device="cpu",
-                    compute_type="int8",
-                    download_root=models_dir,
-                    local_files_only=False  # Allow download since this is the download thread
-                )
-            else:
-                # For standard models
-                logger.info(f"Downloading standard Faster Whisper model: {self.model_name}")
-                WhisperModel(
-                    self.model_name,
-                    device="cpu",
-                    compute_type="int8",
-                    download_root=models_dir,
-                    local_files_only=False  # Allow download since this is the download thread
-                )
-            
-            self.status_update.emit(f"Download of {self.model_name} model completed")
-            self.progress_update.emit(100, 100)
-            self.download_complete.emit()
-            
-        except Exception as e:
-            error_msg = f"Error downloading model: {e}"
-            logger.error(error_msg)
-            print(error_msg)  # Print to console for debugging
-            
-            # Print the full traceback for debugging
-            traceback_str = traceback.format_exc()
-            logger.error(f"Traceback: {traceback_str}")
-            print(f"Traceback: {traceback_str}")
-            
-            # Try to get more information about the model
+            # Download based on model type
             try:
-                model_info = FASTER_WHISPER_MODELS.get(self.model_name, {})
-                logger.info(f"Model info: {model_info}")
-                print(f"Model info: {model_info}")
-            except Exception as model_info_error:
-                logger.error(f"Error getting model info: {model_info_error}")
-                print(f"Error getting model info: {model_info_error}")
-            
-            # Try a direct download approach as a fallback, but only for standard models
-            model_info = FASTER_WHISPER_MODELS.get(self.model_name, {})
-            model_type = model_info.get('type', 'standard')
-            
-            if model_type == 'standard':
-                try:
-                    logger.info("Attempting direct download as fallback for standard model...")
-                    print("Attempting direct download as fallback for standard model...")
-                    
-                    # Get the models directory
-                    models_dir = os.path.join(Path.home(), ".cache", "whisper")
-                    
-                    # Try to import the download_model function from faster_whisper.download
-                    try:
-                        from faster_whisper.download import download_model
-                        
-                        # Download the model directly
-                        download_model(self.model_name, models_dir)
-                        
-                        logger.info(f"Direct download of model {self.model_name} completed successfully")
-                        print(f"Direct download of model {self.model_name} completed successfully")
-                        
-                        self.status_update.emit(f"Download of {self.model_name} model completed")
-                        self.progress_update.emit(100, 100)
-                        self.download_complete.emit()
-                        return
-                    except ImportError:
-                        logger.error("Could not import download_model from faster_whisper.download")
-                        print("Could not import download_model from faster_whisper.download")
-                        
-                        # Try using WhisperModel with a simpler approach
-                        WhisperModel(
-                            self.model_name,
-                            device="cpu",
-                            compute_type="int8",
-                            download_root=models_dir
-                        )
-                        
-                        logger.info(f"Simple download of model {self.model_name} completed successfully")
-                        print(f"Simple download of model {self.model_name} completed successfully")
-                        
-                        self.status_update.emit(f"Download of {self.model_name} model completed")
-                        self.progress_update.emit(100, 100)
-                        self.download_complete.emit()
-                        return
-                except Exception as direct_download_error:
-                    logger.error(f"Direct download failed: {direct_download_error}")
-                    print(f"Direct download failed: {direct_download_error}")
-            else:
-                # For distil-whisper models, try using the repo_id approach again
-                try:
-                    logger.info(f"Attempting download using repo_id for distil-whisper model: {self.model_name}")
-                    print(f"Attempting download using repo_id for distil-whisper model: {self.model_name}")
-                    
-                    # Get the models directory
-                    models_dir = os.path.join(Path.home(), ".cache", "whisper")
-                    
-                    # Get the repo_id from model_info
+                if model_type == 'distil':
+                    # For Distil-Whisper models, we need to use the repo_id
                     repo_id = model_info.get('repo_id')
                     if not repo_id:
                         raise ValueError(f"Repository ID not found for Distil-Whisper model '{self.model_name}'")
                     
-                    # Try to download using the repo_id
-                    from huggingface_hub import snapshot_download
+                    DownloadManager.download_distil_model(repo_id, models_dir)
+                else:
+                    # For standard models
+                    DownloadManager.download_standard_model(self.model_name, models_dir)
+                
+                # Signal completion
+                self.status_update.emit(f"Download of {self.model_name} model completed")
+                self.progress_update.emit(100, 100)
+                self.download_complete.emit()
+                
+            except Exception as primary_error:
+                # Log the error
+                logger.error(f"Primary download method failed: {primary_error}")
+                logger.error(f"Traceback: {traceback.format_exc()}")
+                
+                # Try fallback methods
+                try:
+                    if model_type == 'standard':
+                        if DownloadManager.fallback_download_standard(self.model_name, models_dir):
+                            self.status_update.emit(f"Download of {self.model_name} model completed")
+                            self.progress_update.emit(100, 100)
+                            self.download_complete.emit()
+                            return
+                    else:  # distil model
+                        repo_id = model_info.get('repo_id')
+                        if repo_id and DownloadManager.fallback_download_distil(repo_id, models_dir):
+                            self.status_update.emit(f"Download of {self.model_name} model completed")
+                            self.progress_update.emit(100, 100)
+                            self.download_complete.emit()
+                            return
                     
-                    # Download the model files
-                    snapshot_download(
-                        repo_id=repo_id,
-                        local_dir=os.path.join(models_dir, f"models--{repo_id.replace('/', '--')}"),
-                        local_dir_use_symlinks=False
-                    )
+                    # If we get here, all fallback methods failed
+                    raise primary_error
                     
-                    logger.info(f"Download of distil-whisper model {self.model_name} completed successfully")
-                    print(f"Download of distil-whisper model {self.model_name} completed successfully")
-                    
-                    self.status_update.emit(f"Download of {self.model_name} model completed")
-                    self.progress_update.emit(100, 100)
-                    self.download_complete.emit()
-                    return
-                except Exception as distil_download_error:
-                    logger.error(f"Distil-whisper download failed: {distil_download_error}")
-                    print(f"Distil-whisper download failed: {distil_download_error}")
+                except Exception as fallback_error:
+                    # Log the fallback error
+                    logger.error(f"Fallback download failed: {fallback_error}")
+                    raise fallback_error
+            
+        except Exception as e:
+            # Handle any errors that occurred during download
+            error_msg = f"Error downloading model: {e}"
+            logger.error(error_msg)
+            logger.error(f"Traceback: {traceback.format_exc()}")
             
             # Provide more detailed error message to the user
             if "Connection error" in str(e):
@@ -482,7 +603,12 @@ class ModelDownloadThread(QThread):
             else:
                 self.download_error.emit(f"Failed to download model: {str(e)}")
 
+# -------------------------------------------------------------------------
+# UI Components
+# -------------------------------------------------------------------------
+
 class WhisperModelTableWidget(QWidget):
+    """Widget for displaying and managing Whisper models"""
     model_activated = pyqtSignal(str)  # Emitted when a model is set as active
     model_downloaded = pyqtSignal(str)  # Emitted when a model is downloaded
     model_deleted = pyqtSignal(str)  # Emitted when a model is deleted
@@ -495,9 +621,8 @@ class WhisperModelTableWidget(QWidget):
         self.refresh_model_list()
         
     def setup_ui(self):
+        """Set up the UI components"""
         layout = QVBoxLayout(self)
-        
-        # No refresh button needed
         
         # Create table
         self.table = QTableWidget()
@@ -547,8 +672,8 @@ class WhisperModelTableWidget(QWidget):
     
     def refresh_model_list(self):
         """Refresh the model list and update the table"""
-        # First, try to update the FASTER_WHISPER_MODELS dictionary with any new models
-        self.update_model_dictionary()
+        # First, try to update the model registry with any new models
+        self.update_model_registry()
         
         # Then get the model info
         self.model_info, self.models_dir = get_model_info()
@@ -565,8 +690,8 @@ class WhisperModelTableWidget(QWidget):
         self.update_table()
         self.storage_path_label.setText(f"Models stored at: {self.models_dir}")
     
-    def update_model_dictionary(self):
-        """Update the FASTER_WHISPER_MODELS dictionary with any new models found"""
+    def update_model_registry(self):
+        """Update the model registry with any new models found"""
         try:
             # Import the WhisperModelManager to use its query_huggingface_models method
             from blaze.utils.whisper_model_manager import WhisperModelManager
@@ -575,10 +700,10 @@ class WhisperModelTableWidget(QWidget):
             # Query available models
             available_models = model_manager.query_huggingface_models()
             
-            # Check for new models that aren't in FASTER_WHISPER_MODELS
+            # Check for new models that aren't in the registry
             for model_name in available_models:
-                if model_name.startswith("distil-") and model_name not in FASTER_WHISPER_MODELS:
-                    # This is a new distil-whisper model, add it to the dictionary
+                if model_name.startswith("distil-") and model_name not in ModelRegistry.MODELS:
+                    # This is a new distil-whisper model, add it to the registry
                     logger.info(f"Found new distil-whisper model: {model_name}")
                     
                     # Determine size based on model name
@@ -594,18 +719,17 @@ class WhisperModelTableWidget(QWidget):
                     # Create repo_id based on model name
                     repo_id = f"distil-whisper/{model_name}"
                     
-                    # Add to FASTER_WHISPER_MODELS
-                    FASTER_WHISPER_MODELS[model_name] = {
+                    # Add to registry
+                    model_info = {
                         "size_mb": size_mb,
                         "description": f"Distilled {model_name.replace('distil-', '').capitalize()} model ({size_mb}MB)",
                         "type": "distil",
                         "repo_id": repo_id
                     }
-                    
-                    logger.info(f"Added new model to dictionary: {model_name}")
+                    ModelRegistry.add_model(model_name, model_info)
             
         except Exception as e:
-            logger.warning(f"Failed to update model dictionary: {e}")
+            logger.warning(f"Failed to update model registry: {e}")
     
     def update_table(self):
         """Update the table with current model information"""
@@ -616,8 +740,8 @@ class WhisperModelTableWidget(QWidget):
             self.table.insertRow(row)
             
             # Model name with special formatting for Distil-Whisper models
-            model_type = FASTER_WHISPER_MODELS.get(model_name, {}).get('type', 'standard')
-            if model_type == 'distil':
+            is_distil = ModelRegistry.is_distil_model(model_name)
+            if is_distil:
                 name_item = QTableWidgetItem(f"⚡ {info['display_name']} ({model_name})")
             else:
                 name_item = QTableWidgetItem(f"{info['display_name']} ({model_name})")
@@ -665,9 +789,9 @@ class WhisperModelTableWidget(QWidget):
     def on_use_model_clicked(self, model_name):
         """Set the selected model as active"""
         if model_name in self.model_info and self.model_info[model_name]['is_downloaded']:
-            # Update is_active status
-            for name in self.model_info:
-                self.model_info[name]['is_active'] = (name == model_name)
+            # Update settings
+            settings = Settings()
+            settings.set('model', model_name)
             
             # Emit signal that model was activated
             self.model_activated.emit(model_name)
@@ -676,8 +800,8 @@ class WhisperModelTableWidget(QWidget):
             from blaze.main import update_tray_tooltip
             update_tray_tooltip()
             
-            # Update the table display
-            self.update_table()
+            # Refresh the model list to update active status
+            self.refresh_model_list()
     
     def on_download_model_clicked(self, model_name):
         """Download the selected model"""
@@ -687,7 +811,7 @@ class WhisperModelTableWidget(QWidget):
         info = self.model_info[model_name]
         
         # Confirm download
-        if not confirm_download(model_name, info['size_mb']):
+        if not DialogUtils.confirm_download(model_name, info['size_mb']):
             return
             
         # Create and show download dialog
@@ -712,7 +836,7 @@ class WhisperModelTableWidget(QWidget):
     def handle_download_error(self, error, dialog):
         """Handle model download error"""
         dialog.close()
-        QMessageBox.critical(self, "Download Error", 
+        QMessageBox.critical(self, "Download Error",
                            f"Failed to download model: {error}")
     
     def on_delete_model_clicked(self, model_name):
@@ -724,21 +848,26 @@ class WhisperModelTableWidget(QWidget):
         
         # Cannot delete active model
         if info['is_active']:
-            QMessageBox.warning(self, "Cannot Delete", 
+            QMessageBox.warning(self, "Cannot Delete",
                               "Cannot delete the currently active model. Please select a different model first.")
             return
             
         # Confirm deletion
-        if not confirm_delete(model_name, info['size_mb']):
+        if not DialogUtils.confirm_delete(model_name, info['size_mb']):
             return
             
         # Delete the model file
         try:
-            os.remove(info['path'])
+            if os.path.isdir(info['path']):
+                import shutil
+                shutil.rmtree(info['path'])
+            else:
+                os.remove(info['path'])
+                
             self.refresh_model_list()
             self.model_deleted.emit(model_name)
         except Exception as e:
-            QMessageBox.critical(self, "Deletion Error", 
+            QMessageBox.critical(self, "Deletion Error",
                                f"Failed to delete model: {str(e)}")
     
     def on_open_storage_clicked(self):
@@ -747,11 +876,11 @@ class WhisperModelTableWidget(QWidget):
             try:
                 os.makedirs(self.models_dir)
             except Exception as e:
-                QMessageBox.critical(self, "Error", 
+                QMessageBox.critical(self, "Error",
                                    f"Failed to create models directory: {str(e)}")
                 return
                 
-        open_directory(self.models_dir)
+        ModelUtils.open_directory(self.models_dir)
     
     def on_table_header_clicked(self, sorted_column_index):
         """Sort the table by the clicked column"""

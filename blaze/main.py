@@ -6,8 +6,6 @@ from PyQt6.QtGui import QIcon, QAction
 import logging
 from blaze.settings_window import SettingsWindow
 from blaze.progress_window import ProgressWindow
-from blaze.recorder import AudioRecorder
-from blaze.transcriber import WhisperTranscriber
 from blaze.loading_window import LoadingWindow
 from PyQt6.QtCore import pyqtSignal
 from blaze.settings import Settings
@@ -15,7 +13,10 @@ from blaze.constants import (
     APP_NAME, APP_VERSION, DEFAULT_WHISPER_MODEL, ORG_NAME, VALID_LANGUAGES, LOCK_FILE_PATH,
     DEFAULT_BEAM_SIZE, DEFAULT_VAD_FILTER, DEFAULT_WORD_TIMESTAMPS
 )
-from blaze.whisper_model_manager import get_model_info
+from blaze.managers.ui_manager import UIManager
+from blaze.managers.lock_manager import LockManager
+from blaze.managers.audio_manager import AudioManager
+from blaze.managers.transcription_manager import TranscriptionManager
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -106,8 +107,11 @@ class ApplicationTrayIcon(QSystemTrayIcon):
         self.settings_window = None
         self.progress_window = None
         self.processing_window = None
-        self.recorder = None
-        self.transcriber = None
+        
+        # Initialize managers
+        self.ui_manager = UIManager()
+        self.audio_manager = None
+        self.transcription_manager = None
 
         # Set tooltip
         self.setToolTip(f"{APP_NAME} {APP_VERSION}")
@@ -173,12 +177,15 @@ class ApplicationTrayIcon(QSystemTrayIcon):
 
     def toggle_recording(self):
         # Check if transcriber is properly initialized
-        if not self.recording and (not hasattr(self, 'transcriber') or not self.transcriber or
-                                  not hasattr(self.transcriber, 'model') or not self.transcriber.model):
+        if not self.recording and (not hasattr(self, 'transcription_manager') or not self.transcription_manager or
+                                  not hasattr(self.transcription_manager.transcriber, 'model') or not self.transcription_manager.transcriber.model):
             # Transcriber is not properly initialized, show a message
-            self.showMessage("No Models Downloaded",
-                           "No Whisper models are downloaded. Please go to Settings to download a model.",
-                           self.normal_icon)
+            self.ui_manager.show_notification(
+                self,
+                "No Models Downloaded",
+                "No Whisper models are downloaded. Please go to Settings to download a model.",
+                self.normal_icon
+            )
             # Open settings window to allow user to download a model
             self.toggle_settings()
             return
@@ -195,9 +202,9 @@ class ApplicationTrayIcon(QSystemTrayIcon):
                 self.progress_window.set_status("Processing audio...")
             
             # Stop the actual recording
-            if self.recorder:
+            if self.audio_manager:
                 try:
-                    self.recorder._stop_recording()
+                    self.audio_manager.stop_recording()
                 except Exception as e:
                     logger.error(f"Error stopping recording: {e}")
                     if self.progress_window:
@@ -216,7 +223,7 @@ class ApplicationTrayIcon(QSystemTrayIcon):
             # Start recording
             self.record_action.setText("Stop Recording")
             self.setIcon(self.recording_icon)
-            self.recorder.start_recording()
+            self.audio_manager.start_recording()
 
     def _stop_recording(self):
         """Internal method to stop recording and start processing"""
@@ -274,14 +281,17 @@ class ApplicationTrayIcon(QSystemTrayIcon):
     def on_activate(self, reason):
         if reason == QSystemTrayIcon.ActivationReason.Trigger:  # Left click
             # Check if transcriber is properly initialized
-            if hasattr(self, 'transcriber') and self.transcriber and hasattr(self.transcriber, 'model') and self.transcriber.model:
+            if hasattr(self, 'transcription_manager') and self.transcription_manager and hasattr(self.transcription_manager.transcriber, 'model') and self.transcription_manager.transcriber.model:
                 # Transcriber is properly initialized, proceed with recording
                 self.toggle_recording()
             else:
                 # Transcriber is not properly initialized, show a message
-                self.showMessage("No Models Downloaded",
-                               "No Whisper models are downloaded. Please go to Settings to download a model.",
-                               self.normal_icon)
+                self.ui_manager.show_notification(
+                    self,
+                    "No Models Downloaded",
+                    "No Whisper models are downloaded. Please go to Settings to download a model.",
+                    self.normal_icon
+                )
                 # Open settings window to allow user to download a model
                 self.toggle_settings()
 
@@ -291,7 +301,6 @@ class ApplicationTrayIcon(QSystemTrayIcon):
             self._close_windows()
             self._stop_active_recording()
             self._wait_for_threads()
-            self._release_lock_file()
             
             logger.info("Application shutdown complete, exiting...")
             
@@ -307,29 +316,21 @@ class ApplicationTrayIcon(QSystemTrayIcon):
             sys.exit(1)
 
     def _cleanup_recorder(self):
-        if self.recorder:
+        if self.audio_manager:
             try:
-                self.recorder.cleanup()
+                self.audio_manager.cleanup()
             except Exception as rec_error:
                 logger.error(f"Error cleaning up recorder: {rec_error}")
-            self.recorder = None
+            self.audio_manager = None
 
     def _close_windows(self):
         # Close settings window
         if hasattr(self, 'settings_window') and self.settings_window:
-            try:
-                if self.settings_window.isVisible():
-                    self.settings_window.close()
-            except Exception as win_error:
-                logger.error(f"Error closing settings window: {win_error}")
+            self.ui_manager.safely_close_window(self.settings_window, "settings")
             
         # Close progress window
         if hasattr(self, 'progress_window') and self.progress_window:
-            try:
-                if self.progress_window.isVisible():
-                    self.progress_window.close()
-            except Exception as win_error:
-                logger.error(f"Error closing progress window: {win_error}")
+            self.ui_manager.safely_close_window(self.progress_window, "progress")
 
     def _stop_active_recording(self):
         if self.recording:
@@ -339,31 +340,11 @@ class ApplicationTrayIcon(QSystemTrayIcon):
                 logger.error(f"Error stopping recording: {rec_error}")
 
     def _wait_for_threads(self):
-        if hasattr(self, 'transcriber') and self.transcriber:
+        if hasattr(self, 'transcription_manager') and self.transcription_manager:
             try:
-                if hasattr(self.transcriber, 'worker') and self.transcriber.worker:
-                    if self.transcriber.worker.isRunning():
-                        logger.info("Waiting for transcription worker to finish...")
-                        self.transcriber.worker.wait(5000)  # Wait up to 5 seconds
+                self.transcription_manager.cleanup()
             except Exception as thread_error:
                 logger.error(f"Error waiting for transcription worker: {thread_error}")
-
-    def _release_lock_file(self):
-        import os
-        global LOCK_FILE
-        if LOCK_FILE:
-            try:
-                import fcntl
-                # Release the lock
-                fcntl.flock(LOCK_FILE, fcntl.LOCK_UN)
-                LOCK_FILE.close()
-                # Remove the lock file
-                if os.path.exists(LOCK_FILE_PATH):
-                    os.remove(LOCK_FILE_PATH)
-                LOCK_FILE = None
-                logger.info("Released application lock file")
-            except Exception as lock_error:
-                logger.error(f"Error releasing lock file: {lock_error}")
 
     def _update_volume_display(self, volume_level):
         """Update the UI with current volume level"""
@@ -394,14 +375,14 @@ class ApplicationTrayIcon(QSystemTrayIcon):
             logger.error("Progress window not available when recording completed")
         
         try:
-            if not self.transcriber:
+            if not self.transcription_manager:
                 raise RuntimeError("Transcriber not initialized")
-            logger.info(f"Transcriber ready: {self.transcriber}")
+            logger.info(f"Transcriber ready: {self.transcription_manager}")
             
-            if not hasattr(self.transcriber, 'model') or not self.transcriber.model:
+            if not hasattr(self.transcription_manager.transcriber, 'model') or not self.transcription_manager.transcriber.model:
                 raise RuntimeError("Whisper model not loaded")
                 
-            self.transcriber.transcribe_audio(normalized_audio_data)
+            self.transcription_manager.transcribe_audio(normalized_audio_data)
             
         except Exception as e:
             logger.error(f"Failed to start transcription: {e}")
@@ -409,18 +390,24 @@ class ApplicationTrayIcon(QSystemTrayIcon):
                 self.progress_window.close()
                 self.progress_window = None
             
-            self.showMessage("Error",
-                           f"Failed to start transcription: {str(e)}",
-                           self.normal_icon)
+            self.ui_manager.show_notification(
+                self,
+                "Error",
+                f"Failed to start transcription: {str(e)}",
+                self.normal_icon
+            )
     
     def handle_recording_error(self, error):
         """Handle recording errors"""
         logger.error(f"ApplicationTrayIcon: Recording error: {error}")
         
         # Show notification instead of dialog
-        self.showMessage("Recording Error",
-                       error,
-                       self.normal_icon)
+        self.ui_manager.show_notification(
+            self,
+            "Recording Error",
+            error,
+            self.normal_icon
+        )
         
         self._stop_recording()
         if self.progress_window:
@@ -438,22 +425,7 @@ class ApplicationTrayIcon(QSystemTrayIcon):
     def _close_progress_window(self, context=""):
         """Helper method to safely close progress window"""
         if self.progress_window:
-            logger.info(f"Closing progress window {context}".strip())
-            try:
-                # Try multiple approaches to ensure the window closes
-                self.progress_window.hide()
-                self.progress_window.close()
-                self.progress_window.deleteLater()
-                
-                # Set processing to false to allow closing
-                self.progress_window.processing = False
-                
-                # Force an immediate process of events
-                QApplication.processEvents()
-                
-                self.progress_window = None
-            except Exception as e:
-                logger.error(f"Error closing progress window: {e}")
+            self.ui_manager.safely_close_window(self.progress_window, f"progress {context}")
         else:
             logger.warning(f"Progress window not found when trying to close {context}".strip())
     
@@ -468,9 +440,12 @@ class ApplicationTrayIcon(QSystemTrayIcon):
                 display_text = text[:100] + "..."
                 
             # Show notification with the transcribed text
-            self.showMessage("Transcription Complete",
-                           f"{display_text}",
-                           self.normal_icon)
+            self.ui_manager.show_notification(
+                self,
+                "Transcription Complete",
+                display_text,
+                self.normal_icon
+            )
             
             # Update tooltip with recognized text
             self.update_tooltip(text)
@@ -479,9 +454,12 @@ class ApplicationTrayIcon(QSystemTrayIcon):
         self._close_progress_window("after transcription")
     
     def handle_transcription_error(self, error):
-        self.showMessage("Transcription Error",
-                       error,
-                       self.normal_icon)
+        self.ui_manager.show_notification(
+            self,
+            "Transcription Error",
+            error,
+            self.normal_icon
+        )
         
         # Update tooltip to indicate error
         self.update_tooltip()
@@ -505,167 +483,22 @@ def setup_application_metadata():
     QCoreApplication.setOrganizationName(ORG_NAME)
     QCoreApplication.setOrganizationDomain("kde.org")
 
-# Global variable for the active lock file handle
-# None when no lock is held, file object when locked
-LOCK_FILE = None
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+# Global lock manager instance
+lock_manager = LockManager(LOCK_FILE_PATH)
 
 def check_already_running():
     """Check if Syllablaze is already running using a file lock mechanism"""
-    global LOCK_FILE
-    
-    
-
-
-    # Create directory if it doesn't exist
-    lock_dir = os.path.dirname(LOCK_FILE_PATH)
-    if not os.path.exists(lock_dir):
-        try:
-            os.makedirs(lock_dir, exist_ok=True)
-        except Exception as e:
-            logger.error(f"Failed to create lock directory: {e}")
-            # Fall back to process-based check if we can't create the lock directory
-            return _check_already_running_by_process()
-    
-    try:
-        # Try to create and lock the file
-        import fcntl
-        
-        # Check if the lock file exists
-        if os.path.exists(LOCK_FILE_PATH):
-            try:
-                # Try to open the existing lock file for reading and writing
-                test_lock = open(LOCK_FILE_PATH, 'r+')
-                try:
-                    # Try to get a non-blocking exclusive lock
-                    fcntl.flock(test_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                    
-                    # If we got here, the file wasn't locked
-                    # Read the PID from the file
-                    test_lock.seek(0)
-                    pid = test_lock.read().strip()
-                    
-                    # Check if the process with this PID is still running
-                    if pid and pid.isdigit():
-                        try:
-                            # If we can send signal 0 to the process, it exists
-                            os.kill(int(pid), 0)
-                            # This is strange - the file exists and the process exists,
-                            # but the file wasn't locked. This could happen if the process
-                            # crashed without cleaning up. Let's assume it's not running.
-                            logger.warning(f"Found process {pid} but lock file wasn't locked. Assuming stale lock.")
-                        except OSError:
-                            # Process doesn't exist
-                            logger.info(f"Removing stale lock file for PID {pid}")
-                    
-                    # Release the lock and close the file
-                    fcntl.flock(test_lock, fcntl.LOCK_UN)
-                    test_lock.close()
-                    
-                    # Remove the stale lock file
-                    os.remove(LOCK_FILE_PATH)
-                except IOError:
-                    # The file is locked by another process
-                    test_lock.close()
-                    logger.info("Lock file is locked by another process")
-                    return True
-            except Exception as e:
-                logger.error(f"Error checking existing lock file: {e}")
-                # If we can't read the lock file, try to remove it
-                try:
-                    os.remove(LOCK_FILE_PATH)
-                except Exception:
-                    pass
-        
-        # Create a new lock file
-        LOCK_FILE = open(LOCK_FILE_PATH, 'w')
-        # Write PID to the file
-        LOCK_FILE.write(str(os.getpid()))
-        LOCK_FILE.flush()
-        # Log the lock file path for debugging
-        logger.info(f"INFO: Lock file created at: {os.path.abspath(LOCK_FILE_PATH)}")
-        
-        try:
-            # Try to get an exclusive lock
-            fcntl.flock(LOCK_FILE, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            logger.info(f"Acquired lock file for PID {os.getpid()}")
-            return False
-        except IOError:
-            # This shouldn't happen since we just created the file,
-            # but handle it just in case
-            logger.error("Failed to acquire lock on newly created file")
-            LOCK_FILE.close()
-            LOCK_FILE = None
-            return True
-    except IOError as e:
-        # Lock already held by another process
-        logger.info(f"Lock already held by another process: {e}")
-        if LOCK_FILE:
-            LOCK_FILE.close()
-            LOCK_FILE = None
+    # Try to acquire the lock
+    if lock_manager.acquire_lock():
+        # Lock acquired, no other instance is running
+        return False
+    else:
+        # Lock not acquired, another instance is running
         return True
-    except Exception as e:
-        logger.error(f"Error in file locking mechanism: {e}")
-        # Fall back to process-based check if file locking fails
-        if LOCK_FILE:
-            LOCK_FILE.close()
-            LOCK_FILE = None
-        return _check_already_running_by_process()
-
-def _check_already_running_by_process():
-    """Fallback method to check if Syllablaze is already running by process name"""
-    import psutil
-    current_pid = os.getpid()
-    count = 0
-    
-    for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
-        try:
-            # Check if this is a Python process
-            if proc.info['name'] == 'python' or proc.info['name'] == 'python3':
-                # Check if it's running syllablaze
-                cmdline = proc.info['cmdline']
-                if cmdline and any('syllablaze' in cmd for cmd in cmdline):
-                    # Don't count the current process
-                    if proc.info['pid'] != current_pid:
-                        count += 1
-                        logger.info(f"Found existing Syllablaze process: PID {proc.info['pid']}")
-        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-            pass
-    
-    return count > 0
 
 def cleanup_lock_file():
     """Clean up lock file when application exits"""
-    global LOCK_FILE
-    if LOCK_FILE:
-        try:
-            import fcntl
-            # Release the lock
-            fcntl.flock(LOCK_FILE, fcntl.LOCK_UN)
-            LOCK_FILE.close()
-            # Remove the lock file
-            if os.path.exists(LOCK_FILE_PATH):
-                os.remove(LOCK_FILE_PATH)
-            LOCK_FILE = None
-            logger.info("Released application lock file at exit")
-        except Exception as e:
-            logger.error(f"Error releasing lock file: {e}")
+    lock_manager.release_lock()
 
 # Suppress GTK module error messages
 os.environ['GTK_MODULES'] = ''
@@ -688,17 +521,21 @@ def main():
         app = QApplication(sys.argv)
         setup_application_metadata()
         
+        # Create UI manager
+        ui_manager = UIManager()
+        
         # Show loading window first
         loading_window = LoadingWindow()
         loading_window.show()
         app.processEvents()  # Force update of UI
-        loading_window.set_status("Checking system requirements...")
-        app.processEvents()  # Force update of UI
+        ui_manager.update_loading_status(loading_window, "Checking system requirements...", 10)
         
         # Check if system tray is available
         if not ApplicationTrayIcon.isSystemTrayAvailable():
-            QMessageBox.critical(None, "Error",
-                "System tray is not available. Please ensure your desktop environment supports system tray icons.")
+            ui_manager.show_error_message(
+                "Error",
+                "System tray is not available. Please ensure your desktop environment supports system tray icons."
+            )
             return 1
         
         # Create tray icon but don't initialize yet
@@ -708,8 +545,7 @@ def main():
         tray.initialization_complete.connect(loading_window.close)
         
         # Check dependencies in background
-        loading_window.set_status("Checking dependencies...")
-        app.processEvents()  # Force update of UI
+        ui_manager.update_loading_status(loading_window, "Checking dependencies...", 20)
         if not check_dependencies():
             return 1
         
@@ -717,7 +553,7 @@ def main():
         app.setQuitOnLastWindowClosed(False)
         
         # Initialize tray in background
-        QTimer.singleShot(100, lambda: initialize_tray(tray, loading_window, app))
+        QTimer.singleShot(100, lambda: initialize_tray(tray, loading_window, app, ui_manager))
         
         # Instead of using app.exec(), we'll use a custom event loop
         # that allows us to check for keyboard interrupts
@@ -739,170 +575,98 @@ def main():
             f"Failed to start application: {str(e)}")
         return 1
 
-def _initialize_tray_ui(tray, loading_window, app):
+def _initialize_tray_ui(tray, loading_window, app, ui_manager):
     """Initialize basic tray UI components"""
-    loading_window.set_status("Initializing application...")
-    loading_window.set_progress(10)
-    app.processEvents()
+    ui_manager.update_loading_status(loading_window, "Initializing application...", 10)
     tray.initialize()
 
-def _initialize_recorder(tray, loading_window, app):
+def _initialize_audio_manager(tray, loading_window, app, ui_manager):
     """Initialize audio recording system"""
-    loading_window.set_status("Initializing audio system...")
-    loading_window.set_progress(25)
-    app.processEvents()
-    tray.recorder = AudioRecorder()
-
-def _verify_model_availability(model_name, settings, loading_window, app):
-    """Verify that the selected model is available, or fall back to default"""
-    try:
-        model_info, _ = get_model_info()
-        if model_name in model_info and not model_info[model_name]['is_downloaded']:
-            loading_window.set_status(f"Whisper model '{model_name}' is not downloaded. Using default model.")
-            loading_window.set_progress(40)
-            app.processEvents()
-            settings.set('model', DEFAULT_WHISPER_MODEL)
-            return DEFAULT_WHISPER_MODEL
-    except Exception as model_error:
-        logger.error(f"Error checking model info: {model_error}")
-        loading_window.set_status("Error checking model info. Using default model.")
-        loading_window.set_progress(40)
-        app.processEvents()
-        settings.set('model', DEFAULT_WHISPER_MODEL)
-        return DEFAULT_WHISPER_MODEL
+    ui_manager.update_loading_status(loading_window, "Initializing audio system...", 25)
     
-    return model_name
-
-def _handle_transcriber_initialization_error(e, loading_window, app):
-    """Handle errors during transcriber initialization"""
-    logger.error(f"Failed to initialize transcriber: {e}")
+    # Create audio manager
+    tray.audio_manager = AudioManager(Settings())
     
-    # Check if the error is about no models being downloaded
-    if "is not downloaded" in str(e):
-        QMessageBox.warning(None, "No Models Downloaded",
+    # Initialize audio manager
+    if not tray.audio_manager.initialize():
+        ui_manager.show_error_message(
+            "Error",
+            "Failed to initialize audio system. Please check your audio devices and try again."
+        )
+        return False
+    
+    return True
+
+def _initialize_transcription_manager(tray, loading_window, app, ui_manager):
+    """Initialize transcription system"""
+    ui_manager.update_loading_status(loading_window, "Initializing transcription system...", 40)
+    
+    # Create transcription manager
+    tray.transcription_manager = TranscriptionManager(Settings())
+    
+    # Configure optimal settings
+    tray.transcription_manager.configure_optimal_settings()
+    
+    # Initialize transcription manager
+    if not tray.transcription_manager.initialize():
+        ui_manager.show_warning_message(
+            "No Models Downloaded",
             "No Whisper models are downloaded. The application will start, but you will need to download a model before you can use transcription.\n\n"
-            "Please go to Settings to download a model.")
-    else:
-        QMessageBox.critical(None, "Error",
-            f"Failed to load Faster Whisper model: {str(e)}\n\nPlease check Settings to download the model.")
+            "Please go to Settings to download a model."
+        )
     
-    loading_window.set_progress(80)
-    app.processEvents()
+    return True
 
-def _initialize_transcriber(tray, loading_window, app):
-    """Initialize the Whisper transcriber"""
-    settings = Settings()
-    
-    # Configure Faster Whisper settings based on hardware
-    loading_window.set_status("Configuring Faster Whisper settings...")
-    loading_window.set_progress(40)
-    app.processEvents()
-    configure_faster_whisper()
-    
-    model_name = settings.get('model', DEFAULT_WHISPER_MODEL)
-    
-    # Check if model is downloaded
-    model_name = _verify_model_availability(model_name, settings, loading_window, app)
-    
-    loading_window.set_status(f"Loading Faster Whisper model: {model_name}")
-    loading_window.set_progress(50)
-    app.processEvents()
-    
-    try:
-        # Create the transcriber object
-        tray.transcriber = WhisperTranscriber()
-        loading_window.set_progress(80)
-        app.processEvents()
-    except Exception as e:
-        _handle_transcriber_initialization_error(e, loading_window, app)
-        
-        # Create a dummy transcriber that will show a message when used
-        from PyQt6.QtCore import QObject, pyqtSignal
-        
-        class DummyTranscriber(QObject):
-            # Define signals at the class level
-            transcription_progress = pyqtSignal(str)
-            transcription_progress_percent = pyqtSignal(int)
-            transcription_finished = pyqtSignal(str)
-            transcription_error = pyqtSignal(str)
-            model_changed = pyqtSignal(str)
-            language_changed = pyqtSignal(str)
-            
-            def __init__(self):
-                super().__init__()  # Initialize the QObject base class
-                self.model = None
-                
-            def transcribe_audio(self, *args, **kwargs):
-                self.transcription_error.emit("No models downloaded. Please go to Settings to download a model.")
-                
-            def transcribe(self, *args, **kwargs):
-                self.transcription_error.emit("No models downloaded. Please go to Settings to download a model.")
-                
-            def update_model(self, *args, **kwargs):
-                return False
-                
-            def update_language(self, *args, **kwargs):
-                return False
-        
-        # Create a dummy transcriber with the same interface
-        tray.transcriber = DummyTranscriber()
-
-def _connect_signals(tray, loading_window, app):
+def _connect_signals(tray, loading_window, app, ui_manager):
     """Connect all necessary signals"""
-    loading_window.set_status("Setting up signal handlers...")
-    loading_window.set_progress(90)
-    app.processEvents()
+    ui_manager.update_loading_status(loading_window, "Setting up signal handlers...", 90)
     
-    # Connect recorder signals
-    tray.recorder.volume_changing.connect(tray._update_volume_display)
-    tray.recorder.recording_completed.connect(tray._handle_recording_completed)
-    tray.recorder.recording_failed.connect(tray.handle_recording_error)
+    # Connect audio manager signals
+    tray.audio_manager.volume_changing.connect(tray._update_volume_display)
+    tray.audio_manager.recording_completed.connect(tray._handle_recording_completed)
+    tray.audio_manager.recording_failed.connect(tray.handle_recording_error)
     
-    # Connect transcriber signals
-    tray.transcriber.transcription_progress.connect(tray.update_processing_status)
-    tray.transcriber.transcription_progress_percent.connect(tray.update_processing_progress)
-    tray.transcriber.transcription_finished.connect(tray.handle_transcription_finished)
-    tray.transcriber.transcription_error.connect(tray.handle_transcription_error)
+    # Connect transcription manager signals
+    tray.transcription_manager.transcription_progress.connect(tray.update_processing_status)
+    tray.transcription_manager.transcription_progress_percent.connect(tray.update_processing_progress)
+    tray.transcription_manager.transcription_finished.connect(tray.handle_transcription_finished)
+    tray.transcription_manager.transcription_error.connect(tray.handle_transcription_error)
 
-def _finalize_tray_initialization(tray, loading_window):
-    """Complete the initialization process"""
-    loading_window.set_status("Starting application...")
-    loading_window.set_progress(100)
-    QApplication.instance().processEvents()
-    
-    # Make tray visible
-    tray.setVisible(True)
-    
-    # Signal completion
-    tray.initialization_complete.emit()
-
-def _handle_initialization_error(e, loading_window, app):
-    """Handle initialization errors"""
-    logger.error(f"Initialization failed: {e}")
-    QMessageBox.critical(None, "Error", f"Failed to initialize application: {str(e)}")
-    loading_window.close()
-    app.quit()
-
-def initialize_tray(tray, loading_window, app):
+def initialize_tray(tray, loading_window, app, ui_manager):
     """Initialize the application tray with all components"""
     try:
         # Initialize basic tray setup
-        _initialize_tray_ui(tray, loading_window, app)
+        _initialize_tray_ui(tray, loading_window, app, ui_manager)
         
-        # Initialize recorder
-        _initialize_recorder(tray, loading_window, app)
+        # Initialize audio manager
+        if not _initialize_audio_manager(tray, loading_window, app, ui_manager):
+            loading_window.close()
+            app.quit()
+            return
         
-        # Initialize transcriber
-        _initialize_transcriber(tray, loading_window, app)
+        # Initialize transcription manager
+        if not _initialize_transcription_manager(tray, loading_window, app, ui_manager):
+            # Continue anyway, but with limited functionality
+            pass
         
         # Connect signals
-        _connect_signals(tray, loading_window, app)
+        _connect_signals(tray, loading_window, app, ui_manager)
         
         # Make tray visible
-        _finalize_tray_initialization(tray, loading_window)
+        ui_manager.update_loading_status(loading_window, "Starting application...", 100)
+        tray.setVisible(True)
+        
+        # Signal completion
+        tray.initialization_complete.emit()
         
     except Exception as e:
-        _handle_initialization_error(e, loading_window, app)
+        logger.error(f"Initialization failed: {e}")
+        ui_manager.show_error_message(
+            "Error",
+            f"Failed to initialize application: {str(e)}"
+        )
+        loading_window.close()
+        app.quit()
 
 if __name__ == "__main__":
-    sys.exit(main()) 
+    sys.exit(main())

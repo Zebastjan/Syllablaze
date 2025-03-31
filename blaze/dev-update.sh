@@ -9,7 +9,7 @@ PY_FILES=(
   ./blaze/*.py
 )
 
-SUB_DIRS=("ui" "utils")
+SUB_DIRS=("ui" "utils" "managers")
 RUN_SCRIPT="./run-syllablaze.sh"
 
 # Find the installed package directory
