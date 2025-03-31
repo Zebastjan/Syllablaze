@@ -41,7 +41,9 @@ FASTER_WHISPER_MODELS = {
     # Distil-Whisper models (optimized for Faster Whisper)
     "distil-medium.en": {"size_mb": 1200, "description": "Distilled Medium English-only model (1.2GB)", "type": "distil", "repo_id": "distil-whisper/distil-medium.en"},
     "distil-large-v2": {"size_mb": 2400, "description": "Distilled Large v2 model (2.4GB)", "type": "distil", "repo_id": "distil-whisper/distil-large-v2"},
-    "distil-large-v3": {"size_mb": 2500, "description": "Distilled Large v3 model (2.5GB) - Optimized for Faster Whisper", "type": "distil", "repo_id": "distil-whisper/distil-large-v3"}
+    "distil-large-v3": {"size_mb": 2500, "description": "Distilled Large v3 model (2.5GB) - Optimized for Faster Whisper", "type": "distil", "repo_id": "distil-whisper/distil-large-v3"},
+    "distil-large-v3.5": {"size_mb": 2500, "description": "Distilled Large v3.5 model (2.5GB) - Latest version", "type": "distil", "repo_id": "distil-whisper/distil-large-v3.5"},
+    "distil-small.en": {"size_mb": 400, "description": "Distilled Small English-only model (400MB) - Good for resource-constrained applications", "type": "distil", "repo_id": "distil-whisper/distil-small.en"}
 }
 
 def get_model_info():
@@ -387,50 +389,88 @@ class ModelDownloadThread(QThread):
                 logger.error(f"Error getting model info: {model_info_error}")
                 print(f"Error getting model info: {model_info_error}")
             
-            # Try a direct download approach as a fallback
-            try:
-                logger.info("Attempting direct download as fallback...")
-                print("Attempting direct download as fallback...")
-                
-                # Get the models directory
-                models_dir = os.path.join(Path.home(), ".cache", "whisper")
-                
-                # Try to import the download_model function from faster_whisper.download
+            # Try a direct download approach as a fallback, but only for standard models
+            model_info = FASTER_WHISPER_MODELS.get(self.model_name, {})
+            model_type = model_info.get('type', 'standard')
+            
+            if model_type == 'standard':
                 try:
-                    from faster_whisper.download import download_model
+                    logger.info("Attempting direct download as fallback for standard model...")
+                    print("Attempting direct download as fallback for standard model...")
                     
-                    # Download the model directly
-                    download_model(self.model_name, models_dir)
+                    # Get the models directory
+                    models_dir = os.path.join(Path.home(), ".cache", "whisper")
                     
-                    logger.info(f"Direct download of model {self.model_name} completed successfully")
-                    print(f"Direct download of model {self.model_name} completed successfully")
+                    # Try to import the download_model function from faster_whisper.download
+                    try:
+                        from faster_whisper.download import download_model
+                        
+                        # Download the model directly
+                        download_model(self.model_name, models_dir)
+                        
+                        logger.info(f"Direct download of model {self.model_name} completed successfully")
+                        print(f"Direct download of model {self.model_name} completed successfully")
+                        
+                        self.status_update.emit(f"Download of {self.model_name} model completed")
+                        self.progress_update.emit(100, 100)
+                        self.download_complete.emit()
+                        return
+                    except ImportError:
+                        logger.error("Could not import download_model from faster_whisper.download")
+                        print("Could not import download_model from faster_whisper.download")
+                        
+                        # Try using WhisperModel with a simpler approach
+                        WhisperModel(
+                            self.model_name,
+                            device="cpu",
+                            compute_type="int8",
+                            download_root=models_dir
+                        )
+                        
+                        logger.info(f"Simple download of model {self.model_name} completed successfully")
+                        print(f"Simple download of model {self.model_name} completed successfully")
+                        
+                        self.status_update.emit(f"Download of {self.model_name} model completed")
+                        self.progress_update.emit(100, 100)
+                        self.download_complete.emit()
+                        return
+                except Exception as direct_download_error:
+                    logger.error(f"Direct download failed: {direct_download_error}")
+                    print(f"Direct download failed: {direct_download_error}")
+            else:
+                # For distil-whisper models, try using the repo_id approach again
+                try:
+                    logger.info(f"Attempting download using repo_id for distil-whisper model: {self.model_name}")
+                    print(f"Attempting download using repo_id for distil-whisper model: {self.model_name}")
                     
-                    self.status_update.emit(f"Download of {self.model_name} model completed")
-                    self.progress_update.emit(100, 100)
-                    self.download_complete.emit()
-                    return
-                except ImportError:
-                    logger.error("Could not import download_model from faster_whisper.download")
-                    print("Could not import download_model from faster_whisper.download")
+                    # Get the models directory
+                    models_dir = os.path.join(Path.home(), ".cache", "whisper")
                     
-                    # Try using WhisperModel with a simpler approach
-                    WhisperModel(
-                        self.model_name,
-                        device="cpu",
-                        compute_type="int8",
-                        download_root=models_dir
+                    # Get the repo_id from model_info
+                    repo_id = model_info.get('repo_id')
+                    if not repo_id:
+                        raise ValueError(f"Repository ID not found for Distil-Whisper model '{self.model_name}'")
+                    
+                    # Try to download using the repo_id
+                    from huggingface_hub import snapshot_download
+                    
+                    # Download the model files
+                    snapshot_download(
+                        repo_id=repo_id,
+                        local_dir=os.path.join(models_dir, f"models--{repo_id.replace('/', '--')}"),
+                        local_dir_use_symlinks=False
                     )
                     
-                    logger.info(f"Simple download of model {self.model_name} completed successfully")
-                    print(f"Simple download of model {self.model_name} completed successfully")
+                    logger.info(f"Download of distil-whisper model {self.model_name} completed successfully")
+                    print(f"Download of distil-whisper model {self.model_name} completed successfully")
                     
                     self.status_update.emit(f"Download of {self.model_name} model completed")
                     self.progress_update.emit(100, 100)
                     self.download_complete.emit()
                     return
-            except Exception as direct_download_error:
-                logger.error(f"Direct download failed: {direct_download_error}")
-                print(f"Direct download failed: {direct_download_error}")
+                except Exception as distil_download_error:
+                    logger.error(f"Distil-whisper download failed: {distil_download_error}")
+                    print(f"Distil-whisper download failed: {distil_download_error}")
             
             # Provide more detailed error message to the user
             if "Connection error" in str(e):
@@ -507,6 +547,10 @@ class WhisperModelTableWidget(QWidget):
     
     def refresh_model_list(self):
         """Refresh the model list and update the table"""
+        # First, try to update the FASTER_WHISPER_MODELS dictionary with any new models
+        self.update_model_dictionary()
+        
+        # Then get the model info
         self.model_info, self.models_dir = get_model_info()
         
         # Log which models are actually downloaded
@@ -520,6 +564,48 @@ class WhisperModelTableWidget(QWidget):
         
         self.update_table()
         self.storage_path_label.setText(f"Models stored at: {self.models_dir}")
+    
+    def update_model_dictionary(self):
+        """Update the FASTER_WHISPER_MODELS dictionary with any new models found"""
+        try:
+            # Import the WhisperModelManager to use its query_huggingface_models method
+            from blaze.utils.whisper_model_manager import WhisperModelManager
+            model_manager = WhisperModelManager()
+            
+            # Query available models
+            available_models = model_manager.query_huggingface_models()
+            
+            # Check for new models that aren't in FASTER_WHISPER_MODELS
+            for model_name in available_models:
+                if model_name.startswith("distil-") and model_name not in FASTER_WHISPER_MODELS:
+                    # This is a new distil-whisper model, add it to the dictionary
+                    logger.info(f"Found new distil-whisper model: {model_name}")
+                    
+                    # Determine size based on model name
+                    if "small" in model_name:
+                        size_mb = 400
+                    elif "medium" in model_name:
+                        size_mb = 1200
+                    elif "large" in model_name:
+                        size_mb = 2500
+                    else:
+                        size_mb = 1000  # Default size
+                    
+                    # Create repo_id based on model name
+                    repo_id = f"distil-whisper/{model_name}"
+                    
+                    # Add to FASTER_WHISPER_MODELS
+                    FASTER_WHISPER_MODELS[model_name] = {
+                        "size_mb": size_mb,
+                        "description": f"Distilled {model_name.replace('distil-', '').capitalize()} model ({size_mb}MB)",
+                        "type": "distil",
+                        "repo_id": repo_id
+                    }
+                    
+                    logger.info(f"Added new model to dictionary: {model_name}")
+            
+        except Exception as e:
+            logger.warning(f"Failed to update model dictionary: {e}")
     
     def update_table(self):
         """Update the table with current model information"""

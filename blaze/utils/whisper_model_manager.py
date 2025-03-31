@@ -12,6 +12,8 @@ This module provides a high-level interface for managing Whisper models, includi
 import os
 import logging
 import threading
+import json
+import urllib.request
 from pathlib import Path
 from blaze.settings import Settings
 from blaze.constants import (
@@ -25,11 +27,15 @@ class WhisperModelManager:
     
     # Define available models for Faster Whisper
     AVAILABLE_MODELS = [
+        # Standard Whisper models
         "tiny", "tiny.en",
         "base", "base.en",
         "small", "small.en",
         "medium", "medium.en",
-        "large-v1", "large-v2", "large-v3", "large"
+        "large-v1", "large-v2", "large-v3", "large",
+        
+        # Distil-Whisper models (only include confirmed existing models)
+        "distil-medium.en", "distil-large-v2", "distil-large-v3", "distil-large-v3.5", "distil-small.en"
     ]
     
     def __init__(self, settings_service=None):
@@ -68,9 +74,74 @@ class WhisperModelManager:
         # This is for backward compatibility
         return os.path.join(self.models_dir, f"{model_name}.pt")
     
+    def query_huggingface_models(self):
+        """Query Hugging Face API to get available distil-whisper models"""
+        try:
+            # Standard Whisper models (these are always available)
+            standard_models = [
+                "tiny", "tiny.en",
+                "base", "base.en",
+                "small", "small.en",
+                "medium", "medium.en",
+                "large-v1", "large-v2", "large-v3", "large"
+            ]
+            
+            # Query Hugging Face API for distil-whisper models
+            distil_models = []
+            
+            try:
+                # Query the Hugging Face API for the distil-whisper organization's models
+                url = "https://huggingface.co/api/models?author=distil-whisper"
+                headers = {"Accept": "application/json"}
+                request = urllib.request.Request(url, headers=headers)
+                
+                with urllib.request.urlopen(request, timeout=5) as response:
+                    data = json.loads(response.read().decode())
+                    
+                    # Extract model names from the response
+                    for model in data:
+                        model_id = model.get("id", "")
+                        if model_id.startswith("distil-whisper/"):
+                            # Extract the model name from the ID (e.g., "distil-whisper/distil-large-v3" -> "distil-large-v3")
+                            model_name = model_id.split("/")[1]
+                            
+                            # Skip models with specific suffixes that aren't directly usable
+                            if not any(suffix in model_name for suffix in ["-ct2", "-ggml", "-openai", "-ONNX"]):
+                                distil_models.append(model_name)
+                    
+                    logger.info(f"Found {len(distil_models)} distil-whisper models from Hugging Face API")
+                    
+            except Exception as e:
+                logger.warning(f"Failed to query Hugging Face API: {e}")
+                # Fall back to hardcoded list of known distil-whisper models
+                distil_models = [
+                    "distil-medium.en", "distil-large-v2", "distil-large-v3",
+                    "distil-large-v3.5", "distil-small.en"
+                ]
+                logger.info(f"Using fallback list of {len(distil_models)} distil-whisper models")
+            
+            # Combine standard and distil models
+            all_models = standard_models + distil_models
+            
+            # Update the AVAILABLE_MODELS class variable
+            self.__class__.AVAILABLE_MODELS = all_models
+            
+            return all_models
+            
+        except Exception as e:
+            logger.error(f"Error querying available models: {e}")
+            # Return the default hardcoded list if anything goes wrong
+            return self.AVAILABLE_MODELS
+    
     def get_available_models(self):
         """Get list of all available models"""
-        return self.AVAILABLE_MODELS
+        try:
+            # Try to query the latest models from Hugging Face
+            return self.query_huggingface_models()
+        except Exception as e:
+            logger.warning(f"Failed to query available models: {e}")
+            # Fall back to the hardcoded list
+            return self.AVAILABLE_MODELS
     
     def get_model_info(self):
         """Get comprehensive information about all models"""
@@ -388,7 +459,33 @@ class WhisperModelManager:
                             return
                             
                         logger.info(f"Downloading Distil-Whisper model: {model_name} (repo_id: {repo_id})")
-                        WhisperModel(repo_id, device="cpu", compute_type="int8", download_root=models_dir)
+                        
+                        try:
+                            # First try using WhisperModel with repo_id
+                            WhisperModel(repo_id, device="cpu", compute_type="int8", download_root=models_dir)
+                        except Exception as e:
+                            logger.warning(f"Error downloading with WhisperModel: {e}")
+                            
+                            # If that fails, try using huggingface_hub directly
+                            try:
+                                from huggingface_hub import snapshot_download
+                                
+                                if progress_callback:
+                                    progress_callback(40, f"Downloading {model_name} using huggingface_hub...")
+                                
+                                # Download the model files
+                                snapshot_download(
+                                    repo_id=repo_id,
+                                    local_dir=os.path.join(models_dir, f"models--{repo_id.replace('/', '--')}"),
+                                    local_dir_use_symlinks=False
+                                )
+                                
+                                logger.info(f"Successfully downloaded {model_name} using huggingface_hub")
+                            except Exception as hub_error:
+                                logger.error(f"Error downloading with huggingface_hub: {hub_error}")
+                                if progress_callback:
+                                    progress_callback(-1, f"Error: {str(hub_error)}")
+                                return
                     else:
                         # For standard models, use the Hugging Face Hub automatic downloading
                         logger.info(f"Downloading model: {model_name} from Hugging Face Hub")

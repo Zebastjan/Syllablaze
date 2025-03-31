@@ -23,6 +23,6 @@
 - Accessibility users, privacy-conscious, KDE enthusiasts
 
 ## Technical Stack
-- Python 3.8+, PyQt6, Whisper, PyAudio
+- Python 3.8+, PyQt6, Faster Whisper, PyAudio
 - KDE Plasma integration
 - pipx user-level installation

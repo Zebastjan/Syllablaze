@@ -3,7 +3,7 @@
 ## Completed Work
 1. **Core Functionality**:
    - In-memory audio recording/transcription
-   - Whisper model processing
+   - Faster Whisper model processing
    - Clipboard integration
    - KDE Plasma integration
 
