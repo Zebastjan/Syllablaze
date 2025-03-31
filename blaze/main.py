@@ -176,54 +176,117 @@ class ApplicationTrayIcon(QSystemTrayIcon):
         return QSystemTrayIcon.isSystemTrayAvailable()
 
     def toggle_recording(self):
-        # Check if transcriber is properly initialized
-        if not self.recording and (not hasattr(self, 'transcription_manager') or not self.transcription_manager or
-                                  not hasattr(self.transcription_manager.transcriber, 'model') or not self.transcription_manager.transcriber.model):
-            # Transcriber is not properly initialized, show a message
-            self.ui_manager.show_notification(
-                self,
-                "No Models Downloaded",
-                "No Whisper models are downloaded. Please go to Settings to download a model.",
-                self.normal_icon
-            )
-            # Open settings window to allow user to download a model
-            self.toggle_settings()
+        """Toggle recording state with improved resilience to rapid clicks"""
+        # Use a lock to prevent concurrent execution of this method
+        if hasattr(self, '_recording_lock') and self._recording_lock:
+            logger.info("Recording toggle already in progress, ignoring request")
             return
             
-        if self.recording:
-            # Stop recording
-            self.recording = False
-            self.record_action.setText("Start Recording")
-            self.setIcon(self.normal_icon)
-            
-            # Update progress window before stopping recording
-            if self.progress_window:
-                self.progress_window.set_processing_mode()
-                self.progress_window.set_status("Processing audio...")
-            
-            # Stop the actual recording
-            if self.audio_manager:
-                try:
-                    self.audio_manager.stop_recording()
-                except Exception as e:
-                    logger.error(f"Error stopping recording: {e}")
-                    if self.progress_window:
-                        self.progress_window.close()
-                        self.progress_window = None
-                    return
-        else:
-            # Start recording
-            self.recording = True
-            # Show progress window
-            if not self.progress_window:
+        # Set lock
+        self._recording_lock = True
+        
+        try:
+            # Check if transcriber is properly initialized
+            if not self.recording and (not hasattr(self, 'transcription_manager') or not self.transcription_manager or
+                                      not hasattr(self.transcription_manager.transcriber, 'model') or not self.transcription_manager.transcriber.model):
+                # Transcriber is not properly initialized, show a message
+                self.ui_manager.show_notification(
+                    self,
+                    "No Models Downloaded",
+                    "No Whisper models are downloaded. Please go to Settings to download a model.",
+                    self.normal_icon
+                )
+                # Open settings window to allow user to download a model
+                self.toggle_settings()
+                return
+                
+            # Get current state before changing it (for logging)
+            current_state = "recording" if self.recording else "not recording"
+            new_state = "stop recording" if self.recording else "start recording"
+            logger.info(f"Toggle recording: {current_state} -> {new_state}")
+                
+            if self.recording:
+                # Stop recording
+                # Update UI first to give immediate feedback
+                self.record_action.setText("Start Recording")
+                self.setIcon(self.normal_icon)
+                
+                # Update progress window before stopping recording
+                if self.progress_window:
+                    self.progress_window.set_processing_mode()
+                    self.progress_window.set_status("Processing audio...")
+                
+                # Stop the actual recording
+                if self.audio_manager:
+                    try:
+                        # Only change recording state after successful stop
+                        result = self.audio_manager.stop_recording()
+                        if result:
+                            self.recording = False
+                            logger.info("Recording stopped successfully")
+                        else:
+                            # Revert UI if stop failed
+                            logger.error("Failed to stop recording")
+                            self.record_action.setText("Stop Recording")
+                            self.setIcon(self.recording_icon)
+                    except Exception as e:
+                        logger.error(f"Error stopping recording: {e}")
+                        # Revert UI if exception occurred
+                        self.record_action.setText("Stop Recording")
+                        self.setIcon(self.recording_icon)
+                        if self.progress_window:
+                            self.progress_window.close()
+                            self.progress_window = None
+                else:
+                    # No audio manager, just update state
+                    self.recording = False
+            else:
+                # Start recording
+                # Always create a fresh progress window
+                # Close any existing window first
+                if self.progress_window:
+                    self.ui_manager.safely_close_window(self.progress_window, "before new recording")
+                    self.progress_window = None
+                
+                # Create a new progress window
                 self.progress_window = ProgressWindow("Voice Recording")
                 self.progress_window.stop_clicked.connect(self._stop_recording)
-            self.progress_window.show()
-            
-            # Start recording
-            self.record_action.setText("Stop Recording")
-            self.setIcon(self.recording_icon)
-            self.audio_manager.start_recording()
+                self.progress_window.show()
+                
+                # Update UI to give immediate feedback
+                self.record_action.setText("Stop Recording")
+                self.setIcon(self.recording_icon)
+                
+                # Start the actual recording
+                if self.audio_manager:
+                    try:
+                        # Only change recording state after successful start
+                        result = self.audio_manager.start_recording()
+                        if result:
+                            self.recording = True
+                            logger.info("Recording started successfully")
+                        else:
+                            # Revert UI if start failed
+                            logger.error("Failed to start recording")
+                            self.record_action.setText("Start Recording")
+                            self.setIcon(self.normal_icon)
+                            if self.progress_window:
+                                self.progress_window.close()
+                                self.progress_window = None
+                    except Exception as e:
+                        logger.error(f"Error starting recording: {e}")
+                        # Revert UI if exception occurred
+                        self.record_action.setText("Start Recording")
+                        self.setIcon(self.normal_icon)
+                        if self.progress_window:
+                            self.progress_window.close()
+                            self.progress_window = None
+                else:
+                    # No audio manager, just update state
+                    self.recording = True
+        finally:
+            # Always release the lock
+            self._recording_lock = False
 
     def _stop_recording(self):
         """Internal method to stop recording and start processing"""
@@ -279,21 +342,42 @@ class ApplicationTrayIcon(QSystemTrayIcon):
     # Removed update_shortcuts method as part of keyboard shortcut functionality removal
 
     def on_activate(self, reason):
-        if reason == QSystemTrayIcon.ActivationReason.Trigger:  # Left click
-            # Check if transcriber is properly initialized
-            if hasattr(self, 'transcription_manager') and self.transcription_manager and hasattr(self.transcription_manager.transcriber, 'model') and self.transcription_manager.transcriber.model:
-                # Transcriber is properly initialized, proceed with recording
-                self.toggle_recording()
-            else:
-                # Transcriber is not properly initialized, show a message
-                self.ui_manager.show_notification(
-                    self,
-                    "No Models Downloaded",
-                    "No Whisper models are downloaded. Please go to Settings to download a model.",
-                    self.normal_icon
-                )
-                # Open settings window to allow user to download a model
-                self.toggle_settings()
+        """Handle tray icon activation with improved resilience"""
+        # Ignore activations if we're already processing a click
+        if hasattr(self, '_activation_lock') and self._activation_lock:
+            logger.info("Activation already in progress, ignoring request")
+            return
+            
+        # Set lock
+        self._activation_lock = True
+        
+        try:
+            if reason == QSystemTrayIcon.ActivationReason.Trigger:  # Left click
+                logger.info("Tray icon left-clicked")
+                
+                # Check if we're in the middle of processing a recording
+                if hasattr(self, 'progress_window') and self.progress_window and self.progress_window.isVisible():
+                    if not self.recording and getattr(self.progress_window, 'processing', False):
+                        logger.info("Processing in progress, ignoring activation")
+                        return
+                
+                # Check if transcriber is properly initialized
+                if hasattr(self, 'transcription_manager') and self.transcription_manager and hasattr(self.transcription_manager.transcriber, 'model') and self.transcription_manager.transcriber.model:
+                    # Transcriber is properly initialized, proceed with recording
+                    self.toggle_recording()
+                else:
+                    # Transcriber is not properly initialized, show a message
+                    self.ui_manager.show_notification(
+                        self,
+                        "No Models Downloaded",
+                        "No Whisper models are downloaded. Please go to Settings to download a model.",
+                        self.normal_icon
+                    )
+                    # Open settings window to allow user to download a model
+                    self.toggle_settings()
+        finally:
+            # Always release the lock
+            self._activation_lock = False
 
     def quit_application(self):
         try:
@@ -426,6 +510,8 @@ class ApplicationTrayIcon(QSystemTrayIcon):
         """Helper method to safely close progress window"""
         if self.progress_window:
             self.ui_manager.safely_close_window(self.progress_window, f"progress {context}")
+            # Explicitly set to None to force recreation on next recording
+            self.progress_window = None
         else:
             logger.warning(f"Progress window not found when trying to close {context}".strip())
     

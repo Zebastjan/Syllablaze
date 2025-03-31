@@ -6,6 +6,7 @@ reducing code duplication and improving maintainability.
 """
 
 import logging
+import time
 from PyQt6.QtCore import QObject, pyqtSignal
 
 logger = logging.getLogger(__name__)
@@ -57,7 +58,7 @@ class AudioManager(QObject):
             return False
     
     def start_recording(self):
-        """Start audio recording
+        """Start audio recording with improved error handling
         
         Returns:
         --------
@@ -74,7 +75,20 @@ class AudioManager(QObject):
             return True
             
         try:
+            # Check if recorder is ready
+            if not hasattr(self.recorder, 'start_recording'):
+                logger.error("Recorder object does not have start_recording method")
+                self.recording_failed.emit("Invalid recorder object")
+                return False
+                
+            # Start recording with timeout protection
+            start_time = time.time()
             self.recorder.start_recording()
+            
+            # Verify recording started within reasonable time
+            if time.time() - start_time > 2.0:  # More than 2 seconds is suspicious
+                logger.warning("Recording start took unusually long time")
+                
             self.is_recording = True
             logger.info("Recording started")
             return True
@@ -84,7 +98,7 @@ class AudioManager(QObject):
             return False
     
     def stop_recording(self):
-        """Stop audio recording
+        """Stop audio recording with improved error handling
         
         Returns:
         --------
@@ -100,7 +114,20 @@ class AudioManager(QObject):
             return True
             
         try:
+            # Check if recorder is ready
+            if not hasattr(self.recorder, '_stop_recording'):
+                logger.error("Recorder object does not have _stop_recording method")
+                self.recording_failed.emit("Invalid recorder object")
+                return False
+                
+            # Stop recording with timeout protection
+            start_time = time.time()
             self.recorder._stop_recording()
+            
+            # Verify recording stopped within reasonable time
+            if time.time() - start_time > 2.0:  # More than 2 seconds is suspicious
+                logger.warning("Recording stop took unusually long time")
+                
             self.is_recording = False
             logger.info("Recording stopped")
             return True

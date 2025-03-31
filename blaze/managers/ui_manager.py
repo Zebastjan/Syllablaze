@@ -63,8 +63,17 @@ class UIManager:
             
         try:
             logger.info(f"Closing {window_name} window")
+            
+            # Reset any processing state if it exists
+            if hasattr(window, 'processing'):
+                window.processing = False
+            
+            # Hide first to give immediate visual feedback
             window.hide()
+            
+            # Then close and schedule for deletion
             window.close()
+            window.deleteLater()
             
             # Force an immediate process of events
             QApplication.processEvents()
