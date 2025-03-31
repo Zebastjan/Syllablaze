@@ -1,7 +1,5 @@
 
 from setuptools import setup, find_packages
-import os
-import sys
 
 # Read requirements.txt and filter out empty lines/comments
 with open("requirements.txt") as req_file:

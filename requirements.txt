@@ -2,6 +2,7 @@ PyQt6
 numpy
 pyaudio
 scipy
-openai-whisper
+faster-whisper>=1.1.0
 keyboard
 psutil
+hf_transfer

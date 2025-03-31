@@ -361,6 +361,16 @@ def check_if_already_installed():
     except subprocess.CalledProcessError:
         return False
 
+def check_gpu_support():
+    """Check if CUDA is available for GPU acceleration"""
+    try:
+        import torch
+        return torch.cuda.is_available()
+    except ImportError:
+        return False
+    except Exception:
+        return False
+
 def run_installation(skip_whisper=False):
     """Run the complete installation process with stages"""
     # Check if already installed
@@ -371,6 +381,18 @@ def run_installation(skip_whisper=False):
     if not check_system_dependencies():
         print("Missing system dependencies. Please install them and try again.")
         return False
+    
+    # Check for GPU support
+    has_gpu = check_gpu_support()
+    if has_gpu:
+        print("GPU support detected. Installing CUDA dependencies...")
+        # Inform user about CUDA requirements
+        print("Note: For optimal performance with Faster Whisper on GPU, ensure you have:")
+        print("- CUDA 12 with cuBLAS")
+        print("- cuDNN 9 for CUDA 12")
+        print("These can be installed separately if not already present.")
+    else:
+        print("No GPU detected. Configuring for CPU-only operation.")
     
     # Install with pipx (includes stages 1-3)
     if not install_with_pipx(skip_whisper=skip_whisper):
@@ -389,6 +411,12 @@ def run_installation(skip_whisper=False):
     print("\nYou can now run Syllablaze in two ways:")
     print("  1. Type 'syllablaze' in the terminal")
     print("  2. Find it in your application menu under 'Utilities' or 'AudioVideo'")
+    
+    # Additional GPU-specific instructions
+    if has_gpu:
+        print("\nFor GPU acceleration with Faster Whisper, you may need to install:")
+        print("  pip install nvidia-cublas-cu12 nvidia-cudnn-cu12==9.*")
+    
     return True
 
 if __name__ == "__main__":

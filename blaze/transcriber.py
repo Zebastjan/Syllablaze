@@ -3,11 +3,13 @@ from PyQt6.QtWidgets import QApplication, QSystemTrayIcon
 import logging
 import sys
 from blaze.settings import Settings
-from blaze.constants import DEFAULT_WHISPER_MODEL
+from blaze.constants import (
+    DEFAULT_WHISPER_MODEL, DEFAULT_BEAM_SIZE, DEFAULT_VAD_FILTER, DEFAULT_WORD_TIMESTAMPS
+)
 from blaze.utils.whisper_model_manager import WhisperModelManager
 logger = logging.getLogger(__name__)
 
-class TranscriptionWorker(QThread):
+class FasterWhisperTranscriptionWorker(QThread):
     finished = pyqtSignal(str)
     progress = pyqtSignal(str)
     progress_percent = pyqtSignal(int)
@@ -25,30 +27,40 @@ class TranscriptionWorker(QThread):
             self.progress.emit("Processing audio...")
             self.progress_percent.emit(10)
             
-            # Transcribe directly from memory
-            self.progress.emit("Processing audio with Whisper...")
+            self.progress.emit("Processing audio with Faster Whisper...")
             self.progress_percent.emit(30)
             
-            # Simulate progress updates during transcription
-            def progress_callback(progress):
-                # Convert progress to percentage (30-90%)
-                percent = int(30 + progress * 60)
-                self.progress_percent.emit(percent)
-                self.progress.emit(f"Transcribing... {percent}%")
+            # Get transcription options from settings
+            beam_size = self.settings.get('beam_size', DEFAULT_BEAM_SIZE)
+            vad_filter = self.settings.get('vad_filter', DEFAULT_VAD_FILTER)
+            word_timestamps = self.settings.get('word_timestamps', DEFAULT_WORD_TIMESTAMPS)
             
             # Log the language being used for transcription
             lang_str = "auto-detect" if self.language == 'auto' else self.language
             logger.info(f"Transcribing with language: {lang_str}")
             
-            result = self.model.transcribe(
+            # Run transcription with Faster Whisper
+            segments, info = self.model.transcribe(
                 self.audio_data,
-                fp16=False,
-                language=None if self.language == 'auto' else self.language
+                beam_size=beam_size,
+                language=None if self.language == 'auto' else self.language,
+                vad_filter=vad_filter,
+                word_timestamps=word_timestamps
             )
             
-            text = result["text"].strip()
+            # Convert generator to list to complete transcription
+            segments_list = list(segments)
+            
+            # Combine all segment texts
+            text = " ".join([segment.text for segment in segments_list])
+            
             if not text:
-                raise ValueError("No text was transcribed")
+                # Instead of raising an error, emit a message that no voice was detected
+                logger.info("No text was transcribed - likely no voice detected")
+                self.progress.emit("No voice detected")
+                self.progress_percent.emit(100)
+                self.finished.emit("No voice detected")
+                return
                 
             self.progress.emit("Transcription completed!")
             self.progress_percent.emit(100)
@@ -57,8 +69,13 @@ class TranscriptionWorker(QThread):
             
         except Exception as e:
             logger.error(f"Transcription error: {e}")
-            self.error.emit(f"Transcription failed: {str(e)}")
-            self.finished.emit("")
+            # Check if this is a "no text transcribed" error, which is likely due to VAD filtering
+            if "No text was transcribed" in str(e):
+                self.progress.emit("No voice detected")
+                self.finished.emit("No voice detected")
+            else:
+                self.error.emit(f"Transcription failed: {str(e)}")
+                self.finished.emit("")
 
 class WhisperTranscriber(QObject):
     transcription_progress = pyqtSignal(str)
@@ -100,9 +117,9 @@ class WhisperTranscriber(QObject):
             print(f"Model loaded: {model_name}, Language: {lang_str}")
             
         except Exception as e:
-            logger.error(f"Failed to load Whisper model: {e}")
+            logger.error(f"Failed to load Faster Whisper model: {e}")
             print(f"Error loading model: {e}")
-            self.transcription_error.emit(f"Failed to load Whisper model: {e}")
+            self.transcription_error.emit(f"Failed to load Faster Whisper model: {e}")
             raise
             
     def reload_model_if_needed(self):
@@ -204,24 +221,45 @@ class WhisperTranscriber(QObject):
             
             print(f"Transcribing with model: {self.current_model_name}, language: {lang_str}")
             
-            # Run transcription with language setting
-            result = self.model.transcribe(
+            # Get transcription options from settings
+            beam_size = self.settings.get('beam_size', DEFAULT_BEAM_SIZE)
+            vad_filter = self.settings.get('vad_filter', DEFAULT_VAD_FILTER)
+            word_timestamps = self.settings.get('word_timestamps', DEFAULT_WORD_TIMESTAMPS)
+            
+            # Run transcription with Faster Whisper
+            segments, info = self.model.transcribe(
                 audio_data,
-                fp16=False,
-                language=None if self.current_language == 'auto' else self.current_language
+                beam_size=beam_size,
+                language=None if self.current_language == 'auto' else self.current_language,
+                vad_filter=vad_filter,
+                word_timestamps=word_timestamps
             )
             
-            text = result["text"].strip()
+            # Convert generator to list to complete transcription
+            segments_list = list(segments)
+            
+            # Combine all segment texts
+            text = " ".join([segment.text for segment in segments_list])
+            
             if not text:
-                raise ValueError("No text was transcribed")
+                # Instead of raising an error, emit a message that no voice was detected
+                logger.info("No text was transcribed - likely no voice detected")
+                self.transcription_progress.emit("No voice detected")
+                self.transcription_finished.emit("No voice detected")
+                return
                 
             self.transcription_progress.emit("Transcription completed!")
             logger.info(f"Transcribed text: [{text}]")
             self.transcription_finished.emit(text)
             
         except Exception as e:
-            logger.error(f"Transcription failed: {e}")
-            self.transcription_error.emit(str(e))
+            logger.error(f"Transcription error: {e}")
+            # Check if this is a "no text transcribed" error, which is likely due to VAD filtering
+            if "No text was transcribed" in str(e):
+                self.transcription_progress.emit("No voice detected")
+                self.transcription_finished.emit("No voice detected")
+            else:
+                self.transcription_error.emit(str(e))
 
     def transcribe_audio(self, normalized_audio_data):
         """
@@ -264,7 +302,7 @@ class WhisperTranscriber(QObject):
         
         print(f"Transcribing audio with model: {self.current_model_name}, language: {lang_str}")
         
-        self.worker = TranscriptionWorker(self.model, normalized_audio_data)
+        self.worker = FasterWhisperTranscriptionWorker(self.model, normalized_audio_data)
         # Make sure the worker uses the current language setting
         self.worker.language = self.current_language
         self.worker.finished.connect(self.transcription_finished)

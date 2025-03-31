@@ -5,12 +5,44 @@ import subprocess
 import os
 from pathlib import Path
 import sys
+def cleanup_faster_whisper():
+    """Clean up Faster Whisper specific files"""
+    # Faster Whisper uses the same cache directory as original Whisper
+    # No additional cleanup needed for model files
+    
+    print("Cleaning up Faster Whisper...")
+    
+    # Remove any Faster Whisper specific settings
+    try:
+        from blaze.settings import Settings
+        settings = Settings()
+        
+        # Remove Faster Whisper specific settings
+        faster_whisper_settings = [
+            'compute_type',
+            'device',
+            'beam_size',
+            'vad_filter',
+            'word_timestamps'
+        ]
+        
+        for setting in faster_whisper_settings:
+            if setting in settings.settings:
+                del settings.settings[setting]
+                
+        settings.save()
+        print("Faster Whisper settings removed.")
+    except Exception as e:
+        print(f"Error cleaning up Faster Whisper settings: {e}")
 
 def uninstall_application():
     home = Path.home()
     current_dir = Path.cwd()
     
     print("Uninstalling Syllablaze...")
+    
+    # Clean up Faster Whisper settings
+    cleanup_faster_whisper()
     
     # Remove pipx installation if it exists
     print("Checking for pipx installation and related files...")
@@ -24,6 +56,7 @@ def uninstall_application():
         except Exception as e:
             print(f"Error removing pipx venv directory: {e}")
     else:
+        print(f"Pipx venv directory not found: {pipx_venv_dir}")
         print(f"Pipx venv directory not found: {pipx_venv_dir}")
         
     # Check for pipx bin symlinks
