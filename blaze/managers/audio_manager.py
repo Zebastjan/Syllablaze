@@ -8,6 +8,7 @@ reducing code duplication and improving maintainability.
 import logging
 import time
 from PyQt6.QtCore import QObject, pyqtSignal
+from blaze.audio_processor import AudioProcessor
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +49,7 @@ class AudioManager(QObject):
             
             # Connect signals
             self.recorder.volume_changing.connect(self.volume_changing)
-            self.recorder.recording_completed.connect(self.recording_completed)
+            self.recorder.recording_completed.connect(self._on_recording_completed)
             self.recorder.recording_failed.connect(self.recording_failed)
             
             logger.info("Audio manager initialized successfully")
@@ -56,6 +57,17 @@ class AudioManager(QObject):
         except Exception as e:
             logger.error(f"Failed to initialize audio manager: {e}")
             return False
+    
+    def _on_recording_completed(self, audio_data):
+        """Handle the completed recording signal from the recorder
+        
+        Parameters:
+        -----------
+        audio_data : numpy.ndarray
+            Processed audio data from the recorder
+        """
+        # We can simply pass through the audio data, or add additional processing if needed
+        self.recording_completed.emit(audio_data)
     
     def start_recording(self):
         """Start audio recording with improved error handling
@@ -134,6 +146,42 @@ class AudioManager(QObject):
         except Exception as e:
             logger.error(f"Failed to stop recording: {e}")
             self.recording_failed.emit(f"Failed to stop recording: {str(e)}")
+            return False
+    
+    def save_audio_to_file(self, audio_data, filename):
+        """Save audio data to a file
+        
+        Parameters:
+        -----------
+        audio_data : numpy.ndarray
+            Audio data to save
+        filename : str
+            Path to save the audio file
+            
+        Returns:
+        --------
+        bool
+            True if saving was successful, False otherwise
+        """
+        try:
+            # Use AudioProcessor to save the file
+            from blaze.constants import WHISPER_SAMPLE_RATE
+            
+            result = AudioProcessor.save_to_wav(
+                audio_data, 
+                filename, 
+                WHISPER_SAMPLE_RATE, 
+                channels=1
+            )
+            
+            if result:
+                logger.info(f"Audio saved to {filename}")
+            else:
+                logger.error(f"Failed to save audio to {filename}")
+                
+            return result
+        except Exception as e:
+            logger.error(f"Error saving audio file: {e}")
             return False
     
     def cleanup(self):

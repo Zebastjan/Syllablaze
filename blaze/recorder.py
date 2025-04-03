@@ -7,13 +7,12 @@ import ctypes
 import numpy as np
 import pyaudio
 from PyQt6.QtCore import QObject, pyqtSignal
-from scipy import signal
 from blaze.settings import Settings
 from blaze.constants import (
     WHISPER_SAMPLE_RATE, SAMPLE_RATE_MODE_WHISPER,
     DEFAULT_SAMPLE_RATE_MODE
 )
-from blaze.utils.audio_utils import AudioProcessor
+from blaze.audio_processor import AudioProcessor  # Import our new unified audio processor
 
 # Set environment variables to suppress Jack errors
 os.environ['JACK_NO_AUDIO_RESERVATION'] = '1'
@@ -209,7 +208,7 @@ class AudioRecorder(QObject):
         try:
             if self.is_recording_active:
                 self.frames.append(in_data)
-                # Calculate and emit volume level
+                # Calculate and emit volume level using our unified AudioProcessor
                 try:
                     audio_data = np.frombuffer(in_data, dtype=np.int16)
                     volume = AudioProcessor.calculate_volume(audio_data)
@@ -252,26 +251,6 @@ class AudioRecorder(QObject):
             logger.error(f"Error stopping recording: {e}")
             self.recording_failed.emit(f"Error stopping recording: {e}")
 
-    def _process_audio_data(self):
-        """Process recorded audio data and return processed numpy array"""
-        # Convert frames to numpy array
-        audio_data = AudioProcessor.frames_to_numpy(self.frames)
-        
-        if not hasattr(self, 'current_sample_rate') or self.current_sample_rate is None:
-            logger.warning("No sample rate information available, assuming device default")
-            original_rate = AudioProcessor.get_device_sample_rate(self.audio, self.current_device_info)
-        else:
-            original_rate = self.current_sample_rate
-        
-        # Resample to Whisper sample rate if needed
-        if original_rate != WHISPER_SAMPLE_RATE:
-            logger.info(f"Resampling audio from {original_rate}Hz to {WHISPER_SAMPLE_RATE}Hz")
-            audio_data = signal.resample(audio_data, int(len(audio_data) * WHISPER_SAMPLE_RATE / original_rate))
-        else:
-            logger.info(f"No resampling needed, audio already at {WHISPER_SAMPLE_RATE}Hz")
-        
-        return audio_data
-
     def _process_recorded_audio(self):
         """Process the recorded audio data for transcription"""
         try:
@@ -280,15 +259,22 @@ class AudioRecorder(QObject):
             # Verify we have frames to process
             if not self.frames:
                 raise ValueError("No audio frames available for processing")
-                
-            audio_data = self._process_audio_data()
+            
+            # Use our unified AudioProcessor to process the audio
+            if not hasattr(self, 'current_sample_rate') or self.current_sample_rate is None:
+                logger.warning("No sample rate information available, assuming device default")
+                original_rate = AudioProcessor.get_device_sample_rate(self.audio, self.current_device_info)
+            else:
+                original_rate = self.current_sample_rate
+            
+            # Process the audio frames for transcription
+            audio_data = AudioProcessor.process_audio_for_transcription(
+                self.frames, original_rate
+            )
             
             # Verify audio data was generated
             if audio_data is None or len(audio_data) == 0:
                 raise ValueError("Processed audio data is empty")
-            
-            # Normalize the audio data to float32 in the range [-1.0, 1.0] as expected by Whisper
-            audio_data = audio_data.astype(np.float32) / 32768.0
             
             logger.info(f"Recording processed in memory (length: {len(audio_data)} samples)")
             self.recording_completed.emit(audio_data)
@@ -299,11 +285,24 @@ class AudioRecorder(QObject):
     def save_audio(self, filename):
         """Save recorded audio to a WAV file"""
         try:
-            audio_data = self._process_audio_data()
+            # Convert frames to numpy array using our unified AudioProcessor
+            audio_data_int16 = AudioProcessor.frames_to_numpy(self.frames)
             
-            # Save to WAV file using AudioProcessor
+            # Get the original sample rate
+            if not hasattr(self, 'current_sample_rate') or self.current_sample_rate is None:
+                original_rate = AudioProcessor.get_device_sample_rate(self.audio, self.current_device_info)
+            else:
+                original_rate = self.current_sample_rate
+            
+            # Resample to Whisper rate if needed
+            if original_rate != WHISPER_SAMPLE_RATE:
+                audio_data_int16 = AudioProcessor.resample_audio(
+                    audio_data_int16, original_rate, WHISPER_SAMPLE_RATE
+                )
+            
+            # Save to WAV file using our unified AudioProcessor
             AudioProcessor.save_to_wav(
-                audio_data.astype(np.int16),
+                audio_data_int16,
                 filename,
                 WHISPER_SAMPLE_RATE,  # Always save at 16000Hz for Whisper
                 channels=1,
@@ -363,7 +362,8 @@ class AudioRecorder(QObject):
         try:
             data = self.test_stream.read(1024, exception_on_overflow=False)
             audio_data = np.frombuffer(data, dtype=np.float32)
-            return np.sqrt(np.mean(np.square(audio_data)))
+            # Use our unified AudioProcessor to calculate volume
+            return AudioProcessor.calculate_volume(audio_data)
         except Exception as e:
             logger.error(f"Error getting audio level: {e}")
             return 0
@@ -381,4 +381,4 @@ class AudioRecorder(QObject):
         if self.audio:
             self.audio.terminate()
             self.audio = None
-        self._instance = None 
+        self._instance = None
