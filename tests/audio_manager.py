@@ -10,9 +10,7 @@ import os
 import sys
 import numpy as np
 import tempfile
-import pytest
 import logging
-from scipy import signal
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)

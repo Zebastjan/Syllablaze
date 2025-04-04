@@ -10,7 +10,6 @@ import sys
 import numpy as np
 import tempfile
 import pytest
-from scipy import signal
 
 # Add parent directory to path to import our module
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
