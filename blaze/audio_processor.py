@@ -12,7 +12,6 @@ Key features:
 """
 
 import numpy as np
-import wave
 from scipy import signal
 import logging
 from typing import Optional, List, Dict, Any
@@ -193,36 +192,3 @@ class AudioProcessor:
             logger.error(f"Error processing audio for transcription: {e}")
             raise
 
-    @staticmethod
-    def save_to_wav(
-        audio_data: np.ndarray,
-        filename: str,
-        sample_rate: int,
-        channels: int = 1,
-        sample_width: int = 2
-    ) -> bool:
-        """
-        Save audio data to a WAV file.
-
-        Args:
-            audio_data: NumPy array of audio samples
-            filename: Output filename
-            sample_rate: Sample rate in Hz
-            channels: Number of audio channels
-            sample_width: Sample width in bytes
-
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            wf = wave.open(filename, 'wb')
-            wf.setnchannels(channels)
-            wf.setsampwidth(sample_width)
-            wf.setframerate(sample_rate)
-            wf.writeframes(audio_data.tobytes())
-            wf.close()
-            logger.info(f"Audio saved to {filename}")
-            return True
-        except Exception as e:
-            logger.error(f"Error saving audio to WAV file: {e}")
-            return False

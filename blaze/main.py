@@ -10,8 +10,7 @@ from blaze.loading_window import LoadingWindow
 from PyQt6.QtCore import pyqtSignal
 from blaze.settings import Settings
 from blaze.constants import (
-    APP_NAME, APP_VERSION, DEFAULT_WHISPER_MODEL, ORG_NAME, VALID_LANGUAGES, LOCK_FILE_PATH,
-    DEFAULT_BEAM_SIZE, DEFAULT_VAD_FILTER, DEFAULT_WORD_TIMESTAMPS
+    APP_NAME, APP_VERSION, DEFAULT_WHISPER_MODEL, ORG_NAME, VALID_LANGUAGES, LOCK_FILE_PATH
 )
 from blaze.managers.ui_manager import UIManager
 from blaze.managers.lock_manager import LockManager
@@ -25,37 +24,6 @@ logger = logging.getLogger(__name__)
 # Audio error handling is now done in recorder.py
 # This comment is kept for documentation purposes
 
-def configure_faster_whisper():
-    """Configure optimal settings for Faster Whisper based on hardware"""
-    settings = Settings()
-    
-    # Check if this is the first run with Faster Whisper settings
-    if settings.get('compute_type') is None:
-        # Check for GPU support
-        try:
-            import torch
-            has_gpu = torch.cuda.is_available()
-        except ImportError:
-            has_gpu = False
-        except Exception:
-            has_gpu = False
-            
-        if has_gpu:
-            # Configure for GPU
-            settings.set('device', 'cuda')
-            settings.set('compute_type', 'float16')  # Good balance of speed and accuracy
-        else:
-            # Configure for CPU
-            settings.set('device', 'cpu')
-            settings.set('compute_type', 'int8')  # Best performance on CPU
-            
-        # Set other defaults
-        settings.set('beam_size', DEFAULT_BEAM_SIZE)
-        settings.set('vad_filter', DEFAULT_VAD_FILTER)
-        settings.set('word_timestamps', DEFAULT_WORD_TIMESTAMPS)
-        
-        logger.info("Faster Whisper configured with optimal settings for your hardware.")
-        print("Faster Whisper configured with optimal settings for your hardware.")
 
 def check_dependencies():
     required_packages = ['faster_whisper', 'pyaudio', 'keyboard']
@@ -80,17 +48,6 @@ def check_dependencies():
         
     return True
 
-# Global variable to store the tray recorder instance
-tray_recorder_instance = None
-
-def get_tray_recorder():
-    """Get the global tray recorder instance"""
-    return tray_recorder_instance
-
-def update_tray_tooltip():
-    """Update the tray tooltip"""
-    if tray_recorder_instance:
-        tray_recorder_instance.update_tooltip()
 
 class ApplicationTrayIcon(QSystemTrayIcon):
     initialization_complete = pyqtSignal()
@@ -98,9 +55,7 @@ class ApplicationTrayIcon(QSystemTrayIcon):
     def __init__(self):
         super().__init__()
         
-        # Store the instance in the global variable
-        global tray_recorder_instance
-        tray_recorder_instance = self
+        # Initialize basic state
         
         # Initialize basic state
         self.recording = False
@@ -572,15 +527,6 @@ def setup_application_metadata():
 # Global lock manager instance
 lock_manager = LockManager(LOCK_FILE_PATH)
 
-def check_already_running():
-    """Check if Syllablaze is already running using a file lock mechanism"""
-    # Try to acquire the lock
-    if lock_manager.acquire_lock():
-        # Lock acquired, no other instance is running
-        return False
-    else:
-        # Lock not acquired, another instance is running
-        return True
 
 def cleanup_lock_file():
     """Clean up lock file when application exits"""
@@ -598,7 +544,7 @@ def main():
     try:
         
         # Check if already running
-        if check_already_running():
+        if not lock_manager.acquire_lock():
             print("Syllablaze is already running. Only one instance is allowed.")
             # Exit gracefully without trying to show a QMessageBox
             return 1
@@ -671,7 +617,9 @@ def _initialize_audio_manager(tray, loading_window, app, ui_manager):
     ui_manager.update_loading_status(loading_window, "Initializing audio system...", 25)
     
     # Create audio manager
+    global tray_recorder_instance
     tray.audio_manager = AudioManager(Settings())
+    tray_recorder_instance = tray
     
     # Initialize audio manager
     if not tray.audio_manager.initialize():
@@ -755,4 +703,15 @@ def initialize_tray(tray, loading_window, app, ui_manager):
         app.quit()
 
 if __name__ == "__main__":
+    # Global variable to store the tray recorder instance
+    tray_recorder_instance = None
+
+def update_tray_tooltip():
+    """Update the tray tooltip"""
+    if tray_recorder_instance:
+        tray_recorder_instance.update_tooltip()
+
+    if tray_recorder_instance:
+        tray_recorder_instance.update_tooltip()
+
     sys.exit(main())

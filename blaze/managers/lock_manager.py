@@ -156,34 +156,3 @@ class LockManager:
             logger.error(f"Error releasing lock file: {e}")
             return False
     
-    def check_already_running_by_process(self):
-        """Check if application is already running by process name
-        
-        Returns:
-        --------
-        bool
-            True if another instance is running, False otherwise
-        """
-        try:
-            import psutil
-            current_pid = os.getpid()
-            count = 0
-            
-            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
-                try:
-                    # Check if this is a Python process
-                    if proc.info['name'] == 'python' or proc.info['name'] == 'python3':
-                        # Check if it's running syllablaze
-                        cmdline = proc.info['cmdline']
-                        if cmdline and any('syllablaze' in cmd for cmd in cmdline):
-                            # Don't count the current process
-                            if proc.info['pid'] != current_pid:
-                                count += 1
-                                logger.info(f"Found existing Syllablaze process: PID {proc.info['pid']}")
-                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-                    pass
-            
-            return count > 0
-        except Exception as e:
-            logger.error(f"Error checking for running processes: {e}")
-            return False

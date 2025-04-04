@@ -22,13 +22,15 @@ class ClipboardManager(QObject):
         if self.should_paste_to_active_window():
             self.paste_to_active_window()
     
-    def should_paste_to_active_window(self):
-        # TODO: Get this from settings
-        return False
         
     def paste_to_active_window(self):
         try:
             # Use xdotool to simulate Ctrl+V
             subprocess.run(['xdotool', 'key', 'ctrl+v'], check=True)
         except Exception as e:
-            logger.error(f"Failed to paste to active window: {e}") 
+            logger.error(f"Failed to paste to active window: {e}")
+
+    def should_paste_to_active_window(self):
+        # TODO: Get this from settings
+        return False
+
