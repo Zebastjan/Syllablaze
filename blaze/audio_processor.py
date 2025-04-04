@@ -1,14 +1,15 @@
 """
-Unified Audio Processing for Syllablaze
+Unified Audio Processing for Syllablaze - OPTIMIZED VERSION
 
 This module provides a comprehensive audio processing system that consolidates
 functionality previously scattered between recorder.py and audio_utils.py.
 
 Key features:
-- Audio frame conversion and manipulation
+- Audio frame conversion and manipulation with improved performance
 - Volume level calculation
-- Resampling for Whisper compatibility
+- Optimized resampling for Whisper compatibility
 - Unified interface for audio file operations
+- Memory-efficient processing
 """
 
 import numpy as np
@@ -49,10 +50,17 @@ class AudioProcessor:
             return np.array([], dtype=dtype)
 
         try:
-            return np.frombuffer(b''.join(frames), dtype=dtype)
+            # Optimized implementation: convert each frame to array first, then concatenate
+            # This avoids the intermediate byte join operation which can be expensive
+            frame_arrays = [np.frombuffer(frame, dtype=dtype) for frame in frames]
+            return np.concatenate(frame_arrays) if frame_arrays else np.array([], dtype=dtype)
         except Exception as e:
             logger.error(f"Error converting frames to numpy array: {e}")
-            return np.array([], dtype=dtype)
+            # Fall back to original method if the optimized approach fails
+            try:
+                return np.frombuffer(b''.join(frames), dtype=dtype)
+            except Exception:
+                return np.array([], dtype=dtype)
 
     @staticmethod
     def calculate_volume(audio_data: np.ndarray) -> float:
@@ -108,7 +116,7 @@ class AudioProcessor:
     @staticmethod
     def resample_audio(audio_data: np.ndarray, original_rate: int, target_rate: int) -> np.ndarray:
         """
-        Resample audio data to a new sample rate.
+        Resample audio data to a new sample rate with optimized performance.
 
         Args:
             audio_data: NumPy array of audio samples
@@ -123,38 +131,72 @@ class AudioProcessor:
             return audio_data
 
         try:
-            logger.info(f"Resampling audio from {original_rate}Hz to {target_rate}Hz")
+            # Try to use librosa's resampling which can be faster
+            try:
+                import librosa
+                logger.info(f"Resampling audio from {original_rate}Hz to {target_rate}Hz using librosa")
+                # Convert to float32 first for librosa (normalized to [-1, 1])
+                float_data = audio_data.astype(np.float32) / 32768.0
+                resampled_data = librosa.resample(
+                    float_data, 
+                    orig_sr=original_rate,
+                    target_sr=target_rate
+                )
+                # Convert back to int16 range if needed
+                return (resampled_data * 32768.0).astype(np.int16)
+            except ImportError:
+                # Fall back to scipy's resampling if librosa is not available
+                logger.info(f"Librosa not available, using scipy for resampling from {original_rate}Hz to {target_rate}Hz")
+                ratio = target_rate / original_rate
+                output_length = int(len(audio_data) * ratio)
+                resampled_data = signal.resample(audio_data, output_length)
+                return resampled_data
+        except Exception as e:
+            logger.error(f"Error resampling audio: {e}")
+            # Fall back to standard resampling
+            logger.info(f"Falling back to standard resampling from {original_rate}Hz to {target_rate}Hz")
             ratio = target_rate / original_rate
             output_length = int(len(audio_data) * ratio)
             resampled_data = signal.resample(audio_data, output_length)
             return resampled_data
-        except Exception as e:
-            logger.error(f"Error resampling audio: {e}")
-            return audio_data  # Return original on error
 
     @staticmethod
     def convert_to_whisper_format(audio_data: np.ndarray, original_rate: int) -> np.ndarray:
         """
-        Convert audio data to the format expected by Whisper.
+        Convert audio data to the format expected by Whisper with optimized processing.
+        
+        This method automatically handles resampling and normalization in an optimized way.
 
         Args:
             audio_data: NumPy array of audio samples
             original_rate: Original sample rate in Hz
 
         Returns:
-            Audio data in Whisper-compatible format
+            Audio data in Whisper-compatible format (float32, [-1.0, 1.0], 16kHz)
         """
         try:
-            # Resample if needed
             if original_rate != AudioProcessor.WHISPER_SAMPLE_RATE:
-                audio_data = AudioProcessor.resample_audio(
-                    audio_data, original_rate, AudioProcessor.WHISPER_SAMPLE_RATE
-                )
-
-            # Normalize to float32 in range [-1.0, 1.0]
-            audio_data = audio_data.astype(np.float32) / 32768.0
-
-            return audio_data
+                # First try librosa which returns already normalized data
+                try:
+                    import librosa
+                    # Resample and normalize in one step with librosa
+                    float_data = audio_data.astype(np.float32) / 32768.0
+                    whisper_data = librosa.resample(
+                        float_data,
+                        orig_sr=original_rate,
+                        target_sr=AudioProcessor.WHISPER_SAMPLE_RATE
+                    )
+                    return whisper_data
+                except ImportError:
+                    # Fall back to scipy's resampling + separate normalization
+                    resampled_data = AudioProcessor.resample_audio(
+                        audio_data, original_rate, AudioProcessor.WHISPER_SAMPLE_RATE
+                    )
+                    # Normalize to float32 in range [-1.0, 1.0]
+                    return resampled_data.astype(np.float32) / 32768.0
+            else:
+                # Just normalize without resampling
+                return audio_data.astype(np.float32) / 32768.0
         except Exception as e:
             logger.error(f"Error converting to Whisper format: {e}")
             # Try to recover with basic conversion if possible
@@ -167,8 +209,9 @@ class AudioProcessor:
     ) -> np.ndarray:
         """
         Process recorded audio frames for transcription with Whisper.
-
-        This is a high-level function that combines multiple processing steps.
+        
+        This is a high-level function that combines multiple processing steps
+        with optimized performance.
 
         Args:
             frames: List of audio frame bytes
@@ -178,10 +221,10 @@ class AudioProcessor:
             Processed audio data ready for Whisper transcription
         """
         try:
-            # Convert frames to numpy array
+            # Convert frames to numpy array using optimized method
             audio_data = AudioProcessor.frames_to_numpy(frames)
 
-            # Convert to Whisper format (resample and normalize)
+            # Convert to Whisper format (resample and normalize) with optimized processing
             processed_data = AudioProcessor.convert_to_whisper_format(
                 audio_data, original_rate
             )
@@ -192,3 +235,37 @@ class AudioProcessor:
             logger.error(f"Error processing audio for transcription: {e}")
             raise
 
+    @staticmethod
+    def save_to_wav(
+        audio_data: np.ndarray,
+        filename: str,
+        sample_rate: int,
+        channels: int = 1,
+        sample_width: int = 2
+    ) -> bool:
+        """
+        Save audio data to a WAV file.
+
+        Args:
+            audio_data: NumPy array of audio samples
+            filename: Output filename
+            sample_rate: Sample rate in Hz
+            channels: Number of audio channels
+            sample_width: Sample width in bytes
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            import wave
+            wf = wave.open(filename, 'wb')
+            wf.setnchannels(channels)
+            wf.setsampwidth(sample_width)
+            wf.setframerate(sample_rate)
+            wf.writeframes(audio_data.tobytes())
+            wf.close()
+            logger.info(f"Audio saved to {filename}")
+            return True
+        except Exception as e:
+            logger.error(f"Error saving audio to WAV file: {e}")
+            return False
