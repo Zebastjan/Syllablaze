@@ -288,6 +288,13 @@ def install_desktop_integration():
         # Make run script executable (now in blaze/ directory)
         run_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "blaze", "run-syllablaze.sh")
         os.chmod(run_script, 0o755)  # rwxr-xr-x
+
+        # Install D-Bus toggle script for KDE shortcuts
+        toggle_script_src = os.path.join(os.path.dirname(os.path.abspath(__file__)), "blaze", "toggle-syllablaze.sh")
+        toggle_script_dst = os.path.expanduser("~/.local/bin/toggle-syllablaze.sh")
+        shutil.copy2(toggle_script_src, toggle_script_dst)
+        os.chmod(toggle_script_dst, 0o755)  # rwxr-xr-x
+        print(f" Toggle script: {toggle_script_dst}")
         
         # Update desktop database
         try:

@@ -6,3 +6,5 @@ faster-whisper>=1.1.0
 keyboard
 psutil
 hf_transfer
+dbus-next
+qasync

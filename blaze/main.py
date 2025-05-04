@@ -17,6 +17,11 @@ from blaze.managers.lock_manager import LockManager
 from blaze.managers.audio_manager import AudioManager
 from blaze.managers.transcription_manager import TranscriptionManager
 
+import asyncio
+from dbus_next.service import ServiceInterface, method
+from dbus_next.aio import MessageBus
+import qasync
+
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -24,6 +29,16 @@ logger = logging.getLogger(__name__)
 # Audio error handling is now done in recorder.py
 # This comment is kept for documentation purposes
 
+class SyllaDBusService(ServiceInterface):
+    def __init__(self, tray_app):
+        super().__init__("org.kde.Syllablaze")
+        self.tray_app = tray_app
+        
+    @method()
+    def ToggleRecording(self) -> None:
+        """Toggle recording via D-Bus"""
+        logger.info("D-Bus ToggleRecording method called")
+        self.tray_app.toggle_recording()
 
 def check_dependencies():
     required_packages = ['faster_whisper', 'pyaudio', 'keyboard']
@@ -47,7 +62,6 @@ def check_dependencies():
         return False
         
     return True
-
 
 class ApplicationTrayIcon(QSystemTrayIcon):
     initialization_complete = pyqtSignal()
@@ -101,7 +115,7 @@ class ApplicationTrayIcon(QSystemTrayIcon):
             
         # Initialize tooltip with model information
         self.update_tooltip()
-            
+
     def setup_menu(self):
         menu = QMenu()
         
@@ -142,8 +156,10 @@ class ApplicationTrayIcon(QSystemTrayIcon):
         
         try:
             # Check if transcriber is properly initialized
-            if not self.recording and (not hasattr(self, 'transcription_manager') or not self.transcription_manager or
-                                      not hasattr(self.transcription_manager.transcriber, 'model') or not self.transcription_manager.transcriber.model):
+            if not self.recording and (not hasattr(self, 'transcription_manager') \
+                or not self.transcription_manager \
+                or not hasattr(self.transcription_manager.transcriber, 'model') \
+                or not self.transcription_manager.transcriber.model):
                 # Transcriber is not properly initialized, show a message
                 self.ui_manager.show_notification(
                     self,
@@ -317,7 +333,9 @@ class ApplicationTrayIcon(QSystemTrayIcon):
                         return
                 
                 # Check if transcriber is properly initialized
-                if hasattr(self, 'transcription_manager') and self.transcription_manager and hasattr(self.transcription_manager.transcriber, 'model') and self.transcription_manager.transcriber.model:
+                if hasattr(self, 'transcription_manager') and self.transcription_manager \
+                        and hasattr(self.transcription_manager.transcriber, 'model') \
+                        and self.transcription_manager.transcriber.model:
                     # Transcriber is properly initialized, proceed with recording
                     self.toggle_recording()
                 else:
@@ -418,7 +436,8 @@ class ApplicationTrayIcon(QSystemTrayIcon):
                 raise RuntimeError("Transcriber not initialized")
             logger.info(f"Transcriber ready: {self.transcription_manager}")
             
-            if not hasattr(self.transcription_manager.transcriber, 'model') or not self.transcription_manager.transcriber.model:
+            if not hasattr(self.transcription_manager.transcriber, 'model') \
+               or not self.transcription_manager.transcriber.model:
                 raise RuntimeError("Whisper model not loaded")
                 
             self.transcription_manager.transcribe_audio(normalized_audio_data)
@@ -536,76 +555,86 @@ def cleanup_lock_file():
 os.environ['GTK_MODULES'] = ''
 
 def main():
-    import sys
-    
-    # We won't use signal handlers since they don't seem to work with Qt
-    # Instead, we'll use a more direct approach
-    
-    try:
-        
-        # Check if already running
-        if not lock_manager.acquire_lock():
-            print("Syllablaze is already running. Only one instance is allowed.")
-            # Exit gracefully without trying to show a QMessageBox
-            return 1
-            
-        # Initialize QApplication after checking for another instance
-        app = QApplication(sys.argv)
-        setup_application_metadata()
-        
-        # Create UI manager
-        ui_manager = UIManager()
-        
-        # Show loading window first
-        loading_window = LoadingWindow()
-        loading_window.show()
-        app.processEvents()  # Force update of UI
-        ui_manager.update_loading_status(loading_window, "Checking system requirements...", 10)
-        
-        # Check if system tray is available
-        if not ApplicationTrayIcon.isSystemTrayAvailable():
-            ui_manager.show_error_message(
-                "Error",
-                "System tray is not available. Please ensure your desktop environment supports system tray icons."
-            )
-            return 1
-        
-        # Create tray icon but don't initialize yet
-        tray = ApplicationTrayIcon()
-        
-        # Connect loading window to tray initialization
-        tray.initialization_complete.connect(loading_window.close)
-        
-        # Check dependencies in background
-        ui_manager.update_loading_status(loading_window, "Checking dependencies...", 20)
-        if not check_dependencies():
-            return 1
-        
-        # Ensure the application doesn't quit when last window is closed
-        app.setQuitOnLastWindowClosed(False)
-        
-        # Initialize tray in background
-        QTimer.singleShot(100, lambda: initialize_tray(tray, loading_window, app, ui_manager))
-        
-        # Instead of using app.exec(), we'll use a custom event loop
-        # that allows us to check for keyboard interrupts
+    async def async_main():
         try:
-            # Start the Qt event loop
-            exit_code = app.exec()
-            # Clean up before exiting
+            # Check if already running (assuming lock_manager is defined elsewhere)
+            if not lock_manager.acquire_lock():
+                print("Syllablaze is already running. Only one instance is allowed.")
+                return 1
+            
+            # Initialize QApplication
+            # (Assuming setup_application_metadata is a function defined elsewhere)
+            setup_application_metadata()
+            
+            # Create UI manager (assuming UIManager is defined)
+            ui_manager = UIManager()
+            
+            # Show loading window (assuming LoadingWindow is defined)
+            loading_window = LoadingWindow()
+            loading_window.show()
+            app.processEvents()  # Force UI update
+            ui_manager.update_loading_status(loading_window, "Checking system requirements...", 10)
+            
+            # Check system tray availability (assuming ApplicationTrayIcon is defined)
+            if not ApplicationTrayIcon.isSystemTrayAvailable():
+                ui_manager.show_error_message(
+                    "Error",
+                    "System tray is not available. Please ensure your desktop environment supports system tray icons."
+                )
+                return 1
+            
+            # Create tray icon (assuming ApplicationTrayIcon is defined)
+            tray = ApplicationTrayIcon()
+            
+            # Connect loading window to tray initialization
+            tray.initialization_complete.connect(loading_window.close)
+            
+            # Check dependencies (assuming check_dependencies is defined)
+            ui_manager.update_loading_status(loading_window, "Checking dependencies...", 20)
+            if not check_dependencies():
+                return 1
+
+            # Prevent app from quitting when last window closes
+            app.setQuitOnLastWindowClosed(False)
+            
+            # Initialize tray asynchronously (assuming initialize_tray is an async function)
+            await initialize_tray(tray, loading_window, app, ui_manager)
+            
+            # Create a future for application exit
+            app_exit_future = asyncio.get_running_loop().create_future()
+            
+            def set_exit_result():
+                if not app_exit_future.done():
+                    app_exit_future.set_result(0)
+
+            app.aboutToQuit.connect(set_exit_result)
+            
+            # Wait for the application to exit
+            await app_exit_future
+
+            # Clean up (assuming cleanup_lock_file is defined)
             cleanup_lock_file()
-            return exit_code
+            return 0 
+
         except KeyboardInterrupt:
-            # This will catch Ctrl+C
+            # Handle Ctrl+C
             print("\nReceived Ctrl+C, exiting...")
             cleanup_lock_file()
             return 0
         
-    except Exception as e:
-        logger.exception("Failed to start application")
-        QMessageBox.critical(None, "Error",
-            f"Failed to start application: {str(e)}")
-        return 1
+        except Exception as e:
+            # Log error (assuming logger is defined, otherwise use print)
+            print(f"Failed to start application: {str(e)}")
+            return 1
+
+    # Set up QApplication and event loop
+    app = QApplication(sys.argv)
+    loop = qasync.QEventLoop(app)
+    asyncio.set_event_loop(loop)
+    
+    # Run the asynchronous logic
+    exit_code = loop.run_until_complete(async_main())
+    sys.exit(exit_code)
 
 def _initialize_tray_ui(tray, loading_window, app, ui_manager):
     """Initialize basic tray UI components"""
@@ -666,12 +695,24 @@ def _connect_signals(tray, loading_window, app, ui_manager):
     tray.transcription_manager.transcription_finished.connect(tray.handle_transcription_finished)
     tray.transcription_manager.transcription_error.connect(tray.handle_transcription_error)
 
-def initialize_tray(tray, loading_window, app, ui_manager):
+async def initialize_tray(tray, loading_window, app, ui_manager):
     """Initialize the application tray with all components"""
     try:
         # Initialize basic tray setup
         _initialize_tray_ui(tray, loading_window, app, ui_manager)
         
+        # Set up D-Bus service
+        ui_manager.update_loading_status(loading_window, "Setting up D-Bus service...", 15)
+        try:
+            # Create the service in a non-blocking way
+            service = SyllaDBusService(tray)
+            
+            # Directly await the setup
+            await setup_dbus(service)
+            
+        except Exception as e:
+            logger.error(f"D-Bus setup failed: {e}")
+
         # Initialize audio manager
         if not _initialize_audio_manager(tray, loading_window, app, ui_manager):
             loading_window.close()
@@ -702,16 +743,27 @@ def initialize_tray(tray, loading_window, app, ui_manager):
         loading_window.close()
         app.quit()
 
+async def setup_dbus(service):
+    """Set up the D-Bus service asynchronously"""
+    try:
+        bus = await MessageBus().connect()
+        bus.export('/org/kde/syllablaze', service)
+        await bus.request_name('org.kde.syllablaze')
+        logger.info("D-Bus service registered successfully")
+    except Exception as e:
+        logger.error(f"D-Bus setup failed: {e}")
+
 if __name__ == "__main__":
     # Global variable to store the tray recorder instance
     tray_recorder_instance = None
 
-def update_tray_tooltip():
-    """Update the tray tooltip"""
-    if tray_recorder_instance:
-        tray_recorder_instance.update_tooltip()
+    # Create QApplication first
+    app = QApplication(sys.argv)
 
-    if tray_recorder_instance:
-        tray_recorder_instance.update_tooltip()
+    # Setup QApplication with asyncio integration
+    loop = qasync.QEventLoop(app)
+    asyncio.set_event_loop(loop)
 
-    sys.exit(main())
+    # Start the application properly
+    with loop:
+        loop.run_until_complete(main())
