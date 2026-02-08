@@ -1,18 +1,30 @@
-# Syllablaze v0.4 beta
+# Syllablaze v0.5 - Actively Maintained Fork
 
-Real-time audio transcription app using OpenAI's Whisper.
+Real-time audio transcription app using OpenAI's Whisper with **working global keyboard shortcuts**.
 
-Originally created by Guilherme da Silveira as "Telly Spelly".
+> **✨ This is an actively maintained fork** combining the best features from:
+> - [Guilherme da Silveira's Telly Spelly](https://github.com/gbasilveira/telly-spelly) (original project)
+> - [PabloVitasso's Syllablaze](https://github.com/PabloVitasso/Syllablaze) (privacy improvements)
+> - New: Working global keyboard shortcuts for KDE Wayland
 
 ## Features
 
-- One-click recording from system tray
-- Live volume meter
-- Microphone selection
-- Auto clipboard copy
-- Native KDE integration
-- In-memory audio processing (no temporary files)
-- Direct 16kHz recording for improved privacy and reduced file size
+- **🎹 Global Keyboard Shortcuts** - Works system-wide on KDE Wayland, X11, and other desktop environments
+- 🎙️ One-click recording from system tray
+- 🔊 Live volume meter
+- 🎯 Microphone selection
+- 📋 Auto clipboard copy
+- 🎨 Native KDE integration
+- 🔒 In-memory audio processing (no temporary files)
+- ⚡ Direct 16kHz recording for improved privacy and reduced file size
+
+## What's New in v0.5
+
+- **✅ Working Global Keyboard Shortcuts**: True system-wide hotkeys using `pynput`
+- **✅ KDE Wayland Support**: Shortcuts work even when switching windows or using other apps
+- **✅ Single Toggle Shortcut**: Simplified UX - one key (Alt+Space default) to start/stop
+- **✅ Improved Stability**: Prevents recording during transcription
+- **✅ Better Window Management**: Progress window always appears on top
 
 ## What's New in v0.4 beta
 
