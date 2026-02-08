@@ -59,13 +59,13 @@ def test_calculate_volume():
     silence_volume = AudioProcessor.calculate_volume(silence)
     assert silence_volume == 0.0
     
-    # Test with maximum volume
-    max_volume = np.ones(1000, dtype=np.int16) * 32767  # Max value for int16
+    # Test with maximum volume (use float64 to avoid int16 overflow in squaring)
+    max_volume = np.ones(1000, dtype=np.float64) * 32767
     max_volume_level = AudioProcessor.calculate_volume(max_volume)
     assert max_volume_level > 0.9
-    
+
     # Test with medium volume
-    medium_volume = np.ones(1000, dtype=np.int16) * 16384  # Half of max value
+    medium_volume = np.ones(1000, dtype=np.float64) * 16384
     medium_volume_level = AudioProcessor.calculate_volume(medium_volume)
     assert 0.4 < medium_volume_level < 0.6
 
