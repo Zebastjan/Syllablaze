@@ -609,9 +609,159 @@ def cleanup_lock_file():
 os.environ["GTK_MODULES"] = ""
 
 
+def setup_cuda_libraries():
+    """
+    Detect and configure CUDA libraries for GPU acceleration.
+    If CUDA libraries are found but LD_LIBRARY_PATH is not set, restarts the process.
+    Returns True if GPU is available and configured, False otherwise.
+    """
+    import sys
+
+    # Check if we've already set up CUDA (to avoid infinite restart loop)
+    if os.environ.get("SYLLABLAZE_CUDA_SETUP") == "1":
+        # We've already restarted with CUDA paths
+        ld_path = os.environ.get("LD_LIBRARY_PATH", "")
+        logger.info(
+            f"✓ Running with CUDA libraries pre-configured (LD_LIBRARY_PATH has {len(ld_path)} chars)"
+        )
+
+        # Verify CUDA libraries are in the path
+        if "nvidia" in ld_path:
+            logger.info("✓ NVIDIA CUDA libraries are in LD_LIBRARY_PATH")
+        else:
+            logger.warning(
+                "⚠ NVIDIA libraries not found in LD_LIBRARY_PATH - GPU may not work"
+            )
+
+        # Try to detect GPU name for user message
+        try:
+            import torch
+
+            if torch.cuda.is_available():
+                print(
+                    f"🚀 GPU acceleration enabled using: {torch.cuda.get_device_name(0)}"
+                )
+            else:
+                print(f"🚀 GPU acceleration enabled with CUDA libraries")
+        except ImportError:
+            print(f"🚀 GPU acceleration enabled with CUDA libraries")
+
+        return True
+
+    try:
+        # First check if CUDA is available via torch
+        torch_available = False
+        cuda_device_name = None
+
+        try:
+            import torch
+
+            if torch.cuda.is_available():
+                torch_available = True
+                cuda_device_name = torch.cuda.get_device_name(0)
+                logger.info(f"✓ CUDA available via PyTorch: {cuda_device_name}")
+            else:
+                logger.info(
+                    "✗ CUDA not available via PyTorch - will check for CUDA libraries"
+                )
+        except ImportError:
+            logger.info("PyTorch not installed - checking for CUDA libraries directly")
+
+        # Try to find CUDA libraries in the pipx venv
+        venv_path = os.path.expanduser("~/.local/share/pipx/venvs/syllablaze")
+        python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
+
+        cuda_lib_paths = []
+
+        # Check for NVIDIA CUDA libraries in site-packages
+        site_packages = os.path.join(
+            venv_path, f"lib/python{python_version}/site-packages"
+        )
+
+        potential_paths = [
+            os.path.join(site_packages, "nvidia/cublas/lib"),
+            os.path.join(site_packages, "nvidia/cudnn/lib"),
+            os.path.join(site_packages, "nvidia/cuda_runtime/lib"),
+        ]
+
+        for path in potential_paths:
+            if os.path.exists(path):
+                cuda_lib_paths.append(path)
+                logger.info(
+                    f"✓ Found CUDA library: {os.path.basename(os.path.dirname(path))}"
+                )
+
+        if cuda_lib_paths:
+            # Check if LD_LIBRARY_PATH already contains our CUDA paths
+            current_ld_path = os.environ.get("LD_LIBRARY_PATH", "")
+            cuda_path_str = ":".join(cuda_lib_paths)
+
+            # If CUDA paths are not in LD_LIBRARY_PATH, we need to restart
+            if not any(path in current_ld_path for path in cuda_lib_paths):
+                logger.info("🔄 Restarting with CUDA library paths...")
+                print("🔄 Detected GPU, restarting with CUDA support...")
+
+                # Set up environment for restart
+                new_env = os.environ.copy()
+                if current_ld_path:
+                    new_env["LD_LIBRARY_PATH"] = f"{cuda_path_str}:{current_ld_path}"
+                else:
+                    new_env["LD_LIBRARY_PATH"] = cuda_path_str
+                new_env["SYLLABLAZE_CUDA_SETUP"] = "1"
+
+                # Restart the process with the new environment
+                # Use the original argv to preserve the script name
+                args = [sys.executable] + sys.argv
+                logger.info(f"Restarting with args: {args}")
+                os.execve(sys.executable, args, new_env)
+                # execve never returns, but just in case:
+                sys.exit(0)
+
+            logger.info(f"✓ CUDA libraries configured for GPU acceleration")
+
+            # Print user-friendly message
+            if cuda_device_name:
+                print(f"🚀 GPU acceleration enabled using: {cuda_device_name}")
+            else:
+                print(f"🚀 GPU acceleration enabled with CUDA libraries")
+
+            return True
+        else:
+            logger.info("✗ No CUDA libraries found in expected locations")
+
+            if not torch_available:
+                print("⚠️  No GPU detected. Running in CPU mode (slower).")
+                print(
+                    "   To enable GPU: Install CUDA-enabled PyTorch and NVIDIA libraries"
+                )
+
+            return False
+
+    except Exception as e:
+        logger.warning(f"Error setting up CUDA: {e}")
+        print(f"⚠️  Could not configure GPU: {e}")
+        print("   Falling back to CPU mode")
+        return False
+
+
 def main():
     async def async_main():
         try:
+            # Setup CUDA libraries if available
+            print("Syllablaze - Initializing...")
+            gpu_available = setup_cuda_libraries()
+
+            # Update settings to use GPU if available
+            settings = Settings()
+            if gpu_available:
+                settings.set("device", "cuda")
+                settings.set(
+                    "compute_type", "float16"
+                )  # Use float16 for better GPU performance
+            else:
+                settings.set("device", "cpu")
+                settings.set("compute_type", "float32")
+
             # Check if already running (assuming lock_manager is defined elsewhere)
             if not lock_manager.acquire_lock():
                 print("Syllablaze is already running. Only one instance is allowed.")

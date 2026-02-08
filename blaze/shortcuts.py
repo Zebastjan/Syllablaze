@@ -1,4 +1,4 @@
-from PyQt6.QtCore import QObject, pyqtSignal, QMetaObject, Qt, Q_ARG, pyqtSlot
+from PyQt6.QtCore import QObject, pyqtSignal, QMetaObject, Qt, Q_ARG, pyqtSlot, QTimer
 import logging
 from pynput import keyboard
 from pynput.keyboard import Key, KeyCode
@@ -16,6 +16,12 @@ class GlobalShortcuts(QObject):
         self.hotkey_combination = None
         self._last_trigger_time = 0
         self._debounce_ms = 300  # Prevent multiple triggers within 300ms
+        self._shortcut_key = "Alt+Space"  # Store the shortcut for restart
+
+        # Health check timer to verify listener is still running
+        self._health_check_timer = QTimer()
+        self._health_check_timer.timeout.connect(self._check_listener_health)
+        self._health_check_timer.setInterval(5000)  # Check every 5 seconds
 
     def setup_shortcuts(self, toggle_key="Alt+Space"):
         """Setup global keyboard shortcut using pynput
@@ -24,6 +30,9 @@ class GlobalShortcuts(QObject):
             toggle_key: Key combination string (e.g., "Ctrl+Alt+R", "Alt+Space", "Meta+Space")
         """
         try:
+            # Store the shortcut key for potential restarts
+            self._shortcut_key = toggle_key
+
             # Remove any existing shortcuts
             self.remove_shortcuts()
 
@@ -43,6 +52,10 @@ class GlobalShortcuts(QObject):
             import time
 
             time.sleep(0.05)  # 50ms should be enough
+
+            # Start health check timer
+            if not self._health_check_timer.isActive():
+                self._health_check_timer.start()
 
             logger.info(f"Global shortcut registered: {toggle_key}")
             return True
@@ -99,6 +112,12 @@ class GlobalShortcuts(QObject):
     def _on_press(self, key):
         """Called when a key is pressed"""
         try:
+            # Check if listener is still running
+            if self.listener and not self.listener.is_alive():
+                logger.warning("Keyboard listener died, attempting to restart...")
+                self.setup_shortcuts()
+                return
+
             # Normalize the key
             if hasattr(key, "vk") and key.vk:
                 # Use the virtual key code for comparison
@@ -126,6 +145,12 @@ class GlobalShortcuts(QObject):
 
         except Exception as e:
             logger.error(f"Error in key press handler: {e}")
+            # Try to restart the listener if an error occurs
+            logger.info("Attempting to restart keyboard listener due to error...")
+            try:
+                self.setup_shortcuts()
+            except Exception as restart_error:
+                logger.error(f"Failed to restart listener: {restart_error}")
 
     def _on_release(self, key):
         """Called when a key is released"""
@@ -187,8 +212,24 @@ class GlobalShortcuts(QObject):
         """Emit the trigger signal (called in Qt main thread)"""
         self.toggle_recording_triggered.emit()
 
+    def _check_listener_health(self):
+        """Periodically check if the keyboard listener is still alive"""
+        try:
+            if self.listener and not self.listener.is_alive():
+                logger.warning("Keyboard listener is not alive, restarting...")
+                self.setup_shortcuts(self._shortcut_key)
+            elif not self.listener:
+                logger.warning("Keyboard listener is None, restarting...")
+                self.setup_shortcuts(self._shortcut_key)
+        except Exception as e:
+            logger.error(f"Error checking listener health: {e}")
+
     def remove_shortcuts(self):
         """Remove existing shortcuts"""
+        # Stop health check timer
+        if self._health_check_timer.isActive():
+            self._health_check_timer.stop()
+
         if self.listener:
             try:
                 self.listener.stop()
