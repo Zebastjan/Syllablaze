@@ -116,10 +116,18 @@ class WhisperTranscriber(QObject):
         """Load the Whisper model based on current settings"""
         try:
             model_name = self.settings.get('model', DEFAULT_WHISPER_MODEL)
-            
+
             # Store the current model name for reference
             self.current_model_name = model_name
-            
+
+            # Explicitly release old model resources (CTranslate2 semaphores, etc.)
+            if self.model is not None:
+                logger.info("Releasing previous model resources before loading new model")
+                del self.model
+                self.model = None
+                import gc
+                gc.collect()
+
             # Load the model using the model manager
             self.model = self.model_manager.load_model(model_name)
             

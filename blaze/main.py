@@ -35,6 +35,15 @@ logger = logging.getLogger(__name__)
 # Audio error handling is now done in recorder.py
 # This comment is kept for documentation purposes
 
+# Global reference to the tray icon instance, used by update_tray_tooltip()
+tray_recorder_instance = None
+
+
+def update_tray_tooltip():
+    """Update the tray tooltip with current model info"""
+    if tray_recorder_instance:
+        tray_recorder_instance.update_tooltip()
+
 
 class SyllaDBusService(ServiceInterface):
     def __init__(self, tray_app):
@@ -980,9 +989,6 @@ async def setup_dbus(service):
 
 
 if __name__ == "__main__":
-    # Global variable to store the tray recorder instance
-    tray_recorder_instance = None
-
     # Create QApplication first
     app = QApplication(sys.argv)
 

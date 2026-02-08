@@ -186,21 +186,20 @@ class SettingsWindow(QWidget):
         try:
             # Set the language
             self.settings.set('language', language_code)
-            
-            # Update any active transcriber instances
-            app = QApplication.instance()
-            for widget in app.topLevelWidgets():
-                if hasattr(widget, 'transcriber') and widget.transcriber:
-                    widget.transcriber.update_language(language_code)
-            
-            # Import and use the update_tray_tooltip function
+
+            # Update transcriber via the global tray instance
+            from blaze.main import tray_recorder_instance
+            if tray_recorder_instance and hasattr(tray_recorder_instance, 'transcription_manager'):
+                tm = tray_recorder_instance.transcription_manager
+                if tm:
+                    tm.update_language(language_code)
+
+            # Update tray tooltip
             from blaze.main import update_tray_tooltip
             update_tray_tooltip()
-            
-            # Log confirmation that the change was successful
+
             logger.info(f"Language successfully changed to: {language_name} ({language_code})")
-            print(f"Language successfully changed to: {language_name} ({language_code})", flush=True)
-        except ValueError as e:
+        except Exception as e:
             logger.error(f"Failed to set language: {e}")
             QMessageBox.warning(self, "Error", str(e))
 
@@ -285,32 +284,28 @@ class SettingsWindow(QWidget):
         """Handle model activation from the table"""
         if hasattr(self, 'current_model') and model_name == self.current_model:
             logger.info(f"Model {model_name} is already active, no change needed")
-            print(f"Model {model_name} is already active, no change needed")
             return
-            
+
         try:
             # Set the model
             self.settings.set('model', model_name)
             self.current_model = model_name
-            
-            # No modal dialog needed
-            
-            # Update any active transcriber instances
-            app = QApplication.instance()
-            for widget in app.topLevelWidgets():
-                if hasattr(widget, 'transcriber') and widget.transcriber:
-                    widget.transcriber.update_model(model_name)
-            
-            # Import and use the update_tray_tooltip function
+
+            # Update transcriber via the global tray instance
+            from blaze.main import tray_recorder_instance
+            if tray_recorder_instance and hasattr(tray_recorder_instance, 'transcription_manager'):
+                tm = tray_recorder_instance.transcription_manager
+                if tm:
+                    tm.update_model(model_name)
+
+            # Update tray tooltip
             from blaze.main import update_tray_tooltip
             update_tray_tooltip()
-            
-            # Log confirmation that the change was successful
+
             logger.info(f"Model successfully changed to: {model_name}")
-            print(f"Model successfully changed to: {model_name}")
-                    
+
             self.initialization_complete.emit()
-        except ValueError as e:
+        except Exception as e:
             logger.error(f"Failed to set model: {e}")
             QMessageBox.warning(self, "Error", str(e))
 

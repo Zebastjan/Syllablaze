@@ -294,7 +294,15 @@ class TranscriptionManager(QObject):
                 if self.transcriber.worker.isRunning():
                     logger.info("Waiting for transcription worker to finish...")
                     self.transcriber.worker.wait(5000)  # Wait up to 5 seconds
-            
+
+            # Explicitly release model resources (CTranslate2 semaphores, etc.)
+            if hasattr(self.transcriber, 'model') and self.transcriber.model is not None:
+                logger.info("Releasing Whisper model resources")
+                del self.transcriber.model
+                self.transcriber.model = None
+                import gc
+                gc.collect()
+
             # Clean up transcriber
             self.transcriber = None
             logger.info("Transcription manager cleaned up")
