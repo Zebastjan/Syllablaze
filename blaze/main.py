@@ -876,6 +876,11 @@ def main():
                 logger.debug(f"Suppressed shutdown error: {exception}")
                 return
 
+        # Also suppress "Task was destroyed but it is pending" messages during shutdown
+        if "Task was destroyed but it is pending" in message:
+            logger.debug(f"Suppressed shutdown message: {message}")
+            return
+
         # For other exceptions, log them normally
         if exception:
             logger.error(
