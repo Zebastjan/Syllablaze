@@ -8,3 +8,4 @@ psutil
 hf_transfer
 dbus-next
 qasync
+pynput
