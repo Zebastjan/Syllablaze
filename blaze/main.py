@@ -825,7 +825,14 @@ def main():
             app.aboutToQuit.connect(set_exit_result)
 
             # Wait for the application to exit
-            await app_exit_future
+            try:
+                await app_exit_future
+            except RuntimeError as e:
+                # Handle case where event loop stops during await
+                if "is not the running loop" in str(e):
+                    logger.info("Event loop stopped during shutdown await")
+                else:
+                    raise
 
             # Clean up (assuming cleanup_lock_file is defined)
             cleanup_lock_file()
@@ -847,8 +854,50 @@ def main():
     loop = qasync.QEventLoop(app)
     asyncio.set_event_loop(loop)
 
+    # Suppress qasync's noisy error logging during shutdown
+    import logging
+
+    qasync_logger = logging.getLogger("qasync")
+    qasync_logger.setLevel(logging.CRITICAL)  # Only show critical errors, not warnings
+
+    # Set custom exception handler to suppress shutdown-related errors
+    def custom_exception_handler(loop, context):
+        """Custom exception handler that suppresses expected shutdown errors"""
+        exception = context.get("exception")
+        message = context.get("message", "")
+
+        # Suppress errors that occur during normal shutdown
+        if isinstance(exception, RuntimeError):
+            if "is not the running loop" in str(exception):
+                # This happens during shutdown when callbacks try to run after loop stops
+                logger.debug(f"Suppressed shutdown error: {exception}")
+                return
+            if "Event loop stopped" in str(exception):
+                logger.debug(f"Suppressed shutdown error: {exception}")
+                return
+
+        # For other exceptions, log them normally
+        if exception:
+            logger.error(
+                f"Unhandled exception in event loop: {exception}", exc_info=exception
+            )
+        else:
+            logger.error(f"Unhandled error in event loop: {message}")
+
+    loop.set_exception_handler(custom_exception_handler)
+
     # Run the asynchronous logic
-    exit_code = loop.run_until_complete(async_main())
+    try:
+        exit_code = loop.run_until_complete(async_main())
+    except RuntimeError as e:
+        # Handle graceful shutdown when event loop is already stopped
+        if "Event loop stopped before Future completed" in str(e):
+            logger.info("Event loop stopped during shutdown - this is normal")
+            exit_code = 0
+        else:
+            logger.error(f"Runtime error during event loop: {e}")
+            exit_code = 1
+
     sys.exit(exit_code)
 
 
