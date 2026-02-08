@@ -1,7 +1,7 @@
 import os
 import sys
 from PyQt6.QtWidgets import QApplication, QMessageBox, QSystemTrayIcon, QMenu
-from PyQt6.QtCore import QTimer, QCoreApplication
+from PyQt6.QtCore import QCoreApplication
 from PyQt6.QtGui import QIcon, QAction
 import logging
 from blaze.settings_window import SettingsWindow
@@ -413,9 +413,6 @@ class ApplicationTrayIcon(QSystemTrayIcon):
             # Explicitly quit the application
             QApplication.instance().quit()
 
-            # Force exit after a short delay to ensure cleanup
-            QTimer.singleShot(500, lambda: sys.exit(0))
-
         except Exception as e:
             logger.error(f"Error during application shutdown: {e}")
             # Force exit if there was an error
@@ -642,9 +639,9 @@ def setup_cuda_libraries():
                     f"🚀 GPU acceleration enabled using: {torch.cuda.get_device_name(0)}"
                 )
             else:
-                print(f"🚀 GPU acceleration enabled with CUDA libraries")
+                print("🚀 GPU acceleration enabled with CUDA libraries")
         except ImportError:
-            print(f"🚀 GPU acceleration enabled with CUDA libraries")
+            print("🚀 GPU acceleration enabled with CUDA libraries")
 
         return True
 
@@ -717,13 +714,13 @@ def setup_cuda_libraries():
                 # execve never returns, but just in case:
                 sys.exit(0)
 
-            logger.info(f"✓ CUDA libraries configured for GPU acceleration")
+            logger.info("✓ CUDA libraries configured for GPU acceleration")
 
             # Print user-friendly message
             if cuda_device_name:
                 print(f"🚀 GPU acceleration enabled using: {cuda_device_name}")
             else:
-                print(f"🚀 GPU acceleration enabled with CUDA libraries")
+                print("🚀 GPU acceleration enabled with CUDA libraries")
 
             return True
         else:

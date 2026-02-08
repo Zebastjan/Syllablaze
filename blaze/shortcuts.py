@@ -1,4 +1,4 @@
-from PyQt6.QtCore import QObject, pyqtSignal, QMetaObject, Qt, Q_ARG, pyqtSlot, QTimer
+from PyQt6.QtCore import QObject, pyqtSignal, QMetaObject, Qt, pyqtSlot, QTimer
 import logging
 from pynput import keyboard
 from pynput.keyboard import Key, KeyCode
