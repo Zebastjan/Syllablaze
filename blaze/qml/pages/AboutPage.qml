@@ -70,6 +70,7 @@ ColumnLayout {
     // Features card
     Kirigami.Card {
         Layout.fillWidth: true
+        Layout.maximumWidth: parent.width - Kirigami.Units.largeSpacing * 2
 
         header: Kirigami.Heading {
             text: "Features"
@@ -80,6 +81,7 @@ ColumnLayout {
 
         contentItem: ColumnLayout {
             spacing: Kirigami.Units.smallSpacing
+            Layout.fillWidth: true
 
             Repeater {
                 model: [
@@ -93,6 +95,7 @@ ColumnLayout {
                 ]
 
                 delegate: RowLayout {
+                    Layout.fillWidth: true
                     spacing: Kirigami.Units.smallSpacing
 
                     Kirigami.Icon {
@@ -105,6 +108,7 @@ ColumnLayout {
                     QQC2.Label {
                         text: modelData
                         Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
                     }
                 }
             }
@@ -114,6 +118,7 @@ ColumnLayout {
     // Links
     RowLayout {
         Layout.fillWidth: true
+        Layout.topMargin: Kirigami.Units.largeSpacing
         spacing: Kirigami.Units.largeSpacing
 
         QQC2.Button {

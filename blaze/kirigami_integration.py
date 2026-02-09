@@ -283,6 +283,7 @@ def show_kirigami_settings():
     """Display Kirigami settings window (for testing)."""
     import sys
     from PyQt6.QtWidgets import QApplication
+    from PyQt6.QtCore import QCoreApplication
 
     # Set up logging
     logging.basicConfig(
@@ -291,6 +292,16 @@ def show_kirigami_settings():
     )
 
     app = QApplication(sys.argv)
+
+    # Use separate settings namespace for testing to avoid affecting running app
+    QCoreApplication.setOrganizationName("KDE-Testing")
+    QCoreApplication.setApplicationName("Syllablaze-Kirigami-Test")
+
+    logger.info("=" * 60)
+    logger.info("KIRIGAMI TEST MODE - Using isolated settings")
+    logger.info("This will NOT affect your running Syllablaze instance")
+    logger.info("=" * 60)
+
     window = KirigamiSettingsWindow()
     window.show()
 
