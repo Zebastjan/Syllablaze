@@ -63,7 +63,13 @@ ColumnLayout {
                 text: "Configure in System Settings"
                 icon.name: "configure-shortcuts"
                 onClicked: {
-                    actionsBridge.openSystemSettings()
+                    console.log("System Settings button clicked")
+                    try {
+                        actionsBridge.openSystemSettings()
+                        console.log("openSystemSettings() called successfully")
+                    } catch (error) {
+                        console.error("Error calling openSystemSettings():", error)
+                    }
                 }
             }
         }

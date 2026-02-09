@@ -70,7 +70,6 @@ ColumnLayout {
     // Features card
     Kirigami.Card {
         Layout.fillWidth: true
-        Layout.maximumWidth: parent.width - Kirigami.Units.largeSpacing * 2
 
         header: Kirigami.Heading {
             text: "Features"
@@ -79,38 +78,45 @@ ColumnLayout {
             topPadding: Kirigami.Units.largeSpacing
         }
 
-        contentItem: ColumnLayout {
-            spacing: Kirigami.Units.smallSpacing
-            Layout.fillWidth: true
-            Layout.margins: Kirigami.Units.largeSpacing
-            Layout.bottomMargin: Kirigami.Units.largeSpacing * 2
+        contentItem: Item {
+            implicitHeight: featuresList.implicitHeight + Kirigami.Units.largeSpacing * 2
+            implicitWidth: featuresList.implicitWidth
 
-            Repeater {
-                model: [
-                    "Real-time audio recording and transcription",
-                    "Multiple Whisper model support",
-                    "GPU acceleration (CUDA)",
-                    "Native KDE global shortcuts",
-                    "Automatic clipboard integration",
-                    "Voice Activity Detection (VAD)",
-                    "Multi-language support"
-                ]
+            ColumnLayout {
+                id: featuresList
+                anchors {
+                    fill: parent
+                    margins: Kirigami.Units.largeSpacing
+                }
+                spacing: Kirigami.Units.smallSpacing
 
-                delegate: RowLayout {
-                    Layout.fillWidth: true
-                    spacing: Kirigami.Units.smallSpacing
+                Repeater {
+                    model: [
+                        "Real-time audio recording and transcription",
+                        "Multiple Whisper model support",
+                        "GPU acceleration (CUDA)",
+                        "Native KDE global shortcuts",
+                        "Automatic clipboard integration",
+                        "Voice Activity Detection (VAD)",
+                        "Multi-language support"
+                    ]
 
-                    Kirigami.Icon {
-                        source: "emblem-checked"
-                        Layout.preferredWidth: Kirigami.Units.iconSizes.small
-                        Layout.preferredHeight: Kirigami.Units.iconSizes.small
-                        color: Kirigami.Theme.positiveTextColor
-                    }
-
-                    QQC2.Label {
-                        text: modelData
+                    delegate: RowLayout {
                         Layout.fillWidth: true
-                        wrapMode: Text.WordWrap
+                        spacing: Kirigami.Units.smallSpacing
+
+                        Kirigami.Icon {
+                            source: "emblem-checked"
+                            Layout.preferredWidth: Kirigami.Units.iconSizes.small
+                            Layout.preferredHeight: Kirigami.Units.iconSizes.small
+                            color: Kirigami.Theme.positiveTextColor
+                        }
+
+                        QQC2.Label {
+                            text: modelData
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
+                        }
                     }
                 }
             }

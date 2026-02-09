@@ -172,9 +172,19 @@ class ActionsBridge(QObject):
     def openSystemSettings(self):
         """Open KDE System Settings directly to Syllablaze shortcut."""
         from PyQt6.QtCore import QProcess
-        logger.info("Opening KDE System Settings (Syllablaze shortcut)")
-        # Use kcmshell6 with search parameter to jump directly to Syllablaze
-        QProcess.startDetached("kcmshell6", ["kcm_keys", "--args", "Syllablaze"])
+        logger.info("=" * 60)
+        logger.info("openSystemSettings() called from QML")
+        logger.info("Launching: kcmshell6 kcm_keys --args Syllablaze")
+        logger.info("=" * 60)
+
+        # Try kcmshell6 first (KDE 6)
+        success = QProcess.startDetached("kcmshell6", ["kcm_keys", "--args", "Syllablaze"])
+        if success:
+            logger.info("Successfully launched kcmshell6")
+        else:
+            # Fallback to systemsettings
+            logger.warning("kcmshell6 failed, trying systemsettings")
+            QProcess.startDetached("systemsettings", ["kcm_keys"])
 
 
 class KirigamiSettingsWindow(QWidget):
