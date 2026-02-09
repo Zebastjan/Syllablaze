@@ -421,25 +421,32 @@ class WhisperModelManager:
 
             # If CTranslate2 catalog approach didn't work, use the standard approach
             if model_type == "distil":
-                # For Distil-Whisper models, we need to use the repo_id
                 repo_id = model_info.get("repo_id")
                 if not repo_id:
                     error_msg = f"Repository ID not found for Distil-Whisper model '{model_name}'"
                     logger.error(error_msg)
                     raise ValueError(error_msg)
 
-                logger.info(
-                    f"Loading Distil-Whisper model: {model_name} (repo_id: {repo_id})"
-                )
-                # Always use local_files_only=False for distil models
-                # WhisperModel will automatically use the cached version if available
-                model = WhisperModel(
-                    repo_id,
-                    device=device,
-                    compute_type=ct,
-                    download_root=models_dir,
-                    local_files_only=False,  # Let it find cached version automatically
-                )
+                # Check for a local copy first (downloaded by snapshot_download)
+                local_path = self.get_model_path(model_name)
+                if os.path.isdir(local_path):
+                    logger.info(
+                        f"Loading Distil-Whisper model from local path: {local_path}"
+                    )
+                    model = WhisperModel(
+                        local_path, device=device, compute_type=ct
+                    )
+                else:
+                    logger.info(
+                        f"Loading Distil-Whisper model from repo: {repo_id}"
+                    )
+                    model = WhisperModel(
+                        repo_id,
+                        device=device,
+                        compute_type=ct,
+                        download_root=models_dir,
+                        local_files_only=False,
+                    )
             else:
                 # For standard models, allow automatic downloading from Hugging Face Hub
                 logger.info(f"Loading standard model: {model_name}")

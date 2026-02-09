@@ -1,9 +1,52 @@
-from PyQt6.QtCore import QObject, pyqtSignal, QMetaObject, Qt, pyqtSlot, QTimer
+from PyQt6.QtCore import QObject, pyqtSignal
+from PyQt6.QtGui import QKeySequence
 import logging
-from pynput import keyboard
-from pynput.keyboard import Key, KeyCode
 
 logger = logging.getLogger(__name__)
+
+# kglobalaccel D-Bus constants
+KGLOBALACCEL_BUS_NAME = "org.kde.kglobalaccel"
+KGLOBALACCEL_OBJECT_PATH = "/kglobalaccel"
+KGLOBALACCEL_IFACE = "org.kde.KGlobalAccel"
+COMPONENT_IFACE = "org.kde.kglobalaccel.Component"
+
+# Qt modifier and key constants (fallback for _shortcut_to_qt_int)
+_MODIFIER_MAP = {
+    "ctrl": 0x04000000,
+    "alt": 0x08000000,
+    "shift": 0x02000000,
+    "meta": 0x10000000,
+}
+
+_KEY_MAP = {
+    "space": 0x20,
+    "enter": 0x01000004,
+    "return": 0x01000004,
+    "tab": 0x01000001,
+    "escape": 0x01000000,
+    "backspace": 0x01000003,
+    "delete": 0x01000007,
+    "home": 0x01000010,
+    "end": 0x01000011,
+    "pageup": 0x01000016,
+    "pagedown": 0x01000017,
+    "up": 0x01000013,
+    "down": 0x01000015,
+    "left": 0x01000012,
+    "right": 0x01000014,
+}
+
+# F1-F12
+for _i in range(1, 13):
+    _KEY_MAP[f"f{_i}"] = 0x01000030 + _i - 1
+
+
+def _action_id():
+    """Return the 4-element action ID list used by kglobalaccel."""
+    return [
+        "org.kde.syllablaze", "ToggleRecording",
+        "Syllablaze", "Toggle Recording",
+    ]
 
 
 class GlobalShortcuts(QObject):
@@ -11,239 +54,162 @@ class GlobalShortcuts(QObject):
 
     def __init__(self):
         super().__init__()
-        self.listener = None
-        self.current_keys = set()
-        self.hotkey_combination = None
-        self._last_trigger_time = 0
-        self._debounce_ms = 300  # Prevent multiple triggers within 300ms
-        self._shortcut_key = "Alt+Space"  # Store the shortcut for restart
+        self._bus = None
+        self._kglobalaccel_iface = None
+        self._current_display = None
 
-        # Health check timer to verify listener is still running
-        self._health_check_timer = QTimer()
-        self._health_check_timer.timeout.connect(self._check_listener_health)
-        self._health_check_timer.setInterval(5000)  # Check every 5 seconds
+    async def setup_shortcuts(self, bus, toggle_key="Alt+Space"):
+        """Register shortcut with KDE kglobalaccel via D-Bus.
 
-    def setup_shortcuts(self, toggle_key="Alt+Space"):
-        """Setup global keyboard shortcut using pynput
+        Sets toggle_key as the default shortcut. If the user has already
+        customized the shortcut in KDE System Settings, their choice is
+        preserved (we only set the default, not the active shortcut).
 
         Args:
-            toggle_key: Key combination string (e.g., "Ctrl+Alt+R", "Alt+Space", "Meta+Space")
+            bus: A connected dbus_next.aio.MessageBus instance.
+            toggle_key: Default key combination string (e.g. "Alt+Space").
+
+        Returns:
+            True if successful, False otherwise
         """
+        self._bus = bus
+        action_id = _action_id()
+
         try:
-            # Store the shortcut key for potential restarts
-            self._shortcut_key = toggle_key
-
-            # Remove any existing shortcuts
-            self.remove_shortcuts()
-
-            # Parse the key combination
-            self.hotkey_combination = self._parse_key_combination(toggle_key)
-            if not self.hotkey_combination:
-                logger.error(f"Failed to parse key combination: {toggle_key}")
-                return False
-
-            # Start keyboard listener
-            self.listener = keyboard.Listener(
-                on_press=self._on_press, on_release=self._on_release
+            introspection = await bus.introspect(
+                KGLOBALACCEL_BUS_NAME, KGLOBALACCEL_OBJECT_PATH
             )
-            self.listener.start()
+            proxy = bus.get_proxy_object(
+                KGLOBALACCEL_BUS_NAME, KGLOBALACCEL_OBJECT_PATH, introspection
+            )
+            iface = proxy.get_interface(KGLOBALACCEL_IFACE)
+            self._kglobalaccel_iface = iface
 
-            # Give the listener a moment to fully initialize
-            import time
+            key_int = self._shortcut_to_qt_int(toggle_key)
 
-            time.sleep(0.05)  # 50ms should be enough
+            # Register the action and set the DEFAULT shortcut only.
+            # Flag 0x02 = set default. We do NOT call with 0x00 (set active)
+            # so that user customizations from KDE System Settings are preserved.
+            await iface.call_do_register(action_id)
+            await iface.call_set_shortcut(action_id, [key_int], 0x02)
 
-            # Start health check timer
-            if not self._health_check_timer.isActive():
-                self._health_check_timer.start()
+            # Query the actual active shortcut (may differ from default
+            # if user customized it in KDE System Settings)
+            current_keys = await iface.call_shortcut(action_id)
+            if current_keys and len(current_keys) > 0 and current_keys[0] != 0:
+                seq = QKeySequence(current_keys[0])
+                self._current_display = seq.toString() or toggle_key
+            else:
+                self._current_display = toggle_key
 
-            logger.info(f"Global shortcut registered: {toggle_key}")
+            logger.info(
+                "kglobalaccel: registered action, default=%s, active=%s",
+                toggle_key, self._current_display
+            )
+
+            # Subscribe to the activation signal on the component path
+            await self._subscribe_to_signal(bus, iface)
+
             return True
 
         except Exception as e:
-            logger.error(f"Failed to register global shortcut: {e}")
+            logger.error(f"kglobalaccel: failed to register shortcut: {e}")
+            self._kglobalaccel_iface = None
             return False
 
-    def _parse_key_combination(self, key_string):
-        """Parse Qt-style key combination string
+    async def _subscribe_to_signal(self, bus, iface):
+        """Subscribe to globalShortcutPressed on our component."""
+        try:
+            component_path = await iface.call_get_component(
+                "org.kde.syllablaze"
+            )
+            logger.info(f"kglobalaccel: component path: {component_path}")
 
-        Supports format: "Ctrl+Alt+R", "Meta+Space", "Alt+Space"
+            comp_introspection = await bus.introspect(
+                KGLOBALACCEL_BUS_NAME, component_path
+            )
+            comp_proxy = bus.get_proxy_object(
+                KGLOBALACCEL_BUS_NAME, component_path, comp_introspection
+            )
+            comp_iface = comp_proxy.get_interface(COMPONENT_IFACE)
+            comp_iface.on_global_shortcut_pressed(self._on_shortcut_pressed)
+            logger.info("kglobalaccel: subscribed to globalShortcutPressed")
+
+        except Exception as e:
+            logger.warning(f"kglobalaccel: signal subscription failed: {e}")
+
+    def _on_shortcut_pressed(self, component, shortcut, timestamp):
+        """Called when KDE fires globalShortcutPressed on our component."""
+        logger.info(
+            f"kglobalaccel: shortcut pressed: {shortcut}"
+        )
+        if shortcut == "ToggleRecording":
+            self.toggle_recording_triggered.emit()
+
+    async def query_current_shortcut(self):
+        """Query kglobalaccel for the current active shortcut display string.
+
+        Returns the human-readable shortcut string, or None if unavailable.
         """
-        # Normalize to lowercase and remove angle brackets if present
-        key_string = key_string.lower().strip().replace("<", "").replace(">", "")
+        if not self._kglobalaccel_iface:
+            return self._current_display
 
-        # Convert Qt style to pynput style
-        key_string = key_string.replace("ctrl", "ctrl")
-        key_string = key_string.replace("alt", "alt")
-        key_string = key_string.replace("shift", "shift")
-        key_string = key_string.replace("meta", "cmd")  # Meta = Super/Windows/Cmd key
-        key_string = key_string.replace("super", "cmd")
-
-        # Split by + to get individual keys
-        parts = [p.strip() for p in key_string.split("+")]
-
-        keys = set()
-        for part in parts:
-            # Map common key names to pynput Key enum
-            if part in ["ctrl", "control"]:
-                keys.add(Key.ctrl_l)  # Use left ctrl
-            elif part in ["alt"]:
-                keys.add(Key.alt_l)  # Use left alt
-            elif part in ["shift"]:
-                keys.add(Key.shift_l)  # Use left shift
-            elif part in ["cmd", "win", "windows", "super"]:
-                keys.add(Key.cmd)  # Super/Windows/Meta key
-            elif part == "space":
-                keys.add(Key.space)
-            elif part == "enter" or part == "return":
-                keys.add(Key.enter)
-            elif part == "tab":
-                keys.add(Key.tab)
-            elif part == "esc" or part == "escape":
-                keys.add(Key.esc)
-            elif len(part) == 1:
-                # Single character key
-                keys.add(KeyCode.from_char(part))
-            else:
-                logger.warning(f"Unknown key: {part}")
-
-        return keys if keys else None
-
-    def _on_press(self, key):
-        """Called when a key is pressed"""
         try:
-            # Check if listener is still running
-            if self.listener and not self.listener.is_alive():
-                logger.warning("Keyboard listener died, attempting to restart...")
-                self.setup_shortcuts()
-                return
+            action_id = _action_id()
+            keys = await self._kglobalaccel_iface.call_shortcut(action_id)
+            if keys and len(keys) > 0 and keys[0] != 0:
+                seq = QKeySequence(keys[0])
+                display = seq.toString()
+                if display:
+                    self._current_display = display
+                    return display
+        except Exception as e:
+            logger.warning(f"kglobalaccel: failed to query shortcut: {e}")
 
-            # Normalize the key
-            if hasattr(key, "vk") and key.vk:
-                # Use the virtual key code for comparison
-                normalized_key = key
-            else:
-                normalized_key = key
+        return self._current_display
 
-            self.current_keys.add(normalized_key)
+    @property
+    def current_shortcut_display(self):
+        """Last known human-readable shortcut string."""
+        return self._current_display
 
-            # Check if current keys match hotkey combination
-            if self.hotkey_combination and self._keys_match():
-                # Debounce: prevent multiple triggers in quick succession
-                import time
+    @staticmethod
+    def _shortcut_to_qt_int(key_string):
+        """Convert a shortcut string like 'Alt+Space' to a Qt key integer.
 
-                current_time = time.time() * 1000  # Convert to milliseconds
-                if current_time - self._last_trigger_time < self._debounce_ms:
-                    return
-                self._last_trigger_time = current_time
-
-                logger.info("Global hotkey activated!")
-                # Emit signal in the main Qt thread to avoid blocking
-                QMetaObject.invokeMethod(
-                    self, "_emit_trigger_signal", Qt.ConnectionType.QueuedConnection
+        Uses Qt's QKeySequence for correct mapping, with manual fallback.
+        """
+        try:
+            key_sequence = QKeySequence(key_string)
+            if not key_sequence.isEmpty():
+                qt_key = key_sequence[0]
+                key_int = qt_key.toCombined()
+                logger.debug(
+                    f"_shortcut_to_qt_int: {key_string} -> "
+                    f"{hex(key_int)} via QKeySequence"
                 )
-
+                return key_int
         except Exception as e:
-            logger.error(f"Error in key press handler: {e}")
-            # Try to restart the listener if an error occurs
-            logger.info("Attempting to restart keyboard listener due to error...")
-            try:
-                self.setup_shortcuts()
-            except Exception as restart_error:
-                logger.error(f"Failed to restart listener: {restart_error}")
+            logger.warning(
+                f"_shortcut_to_qt_int: QKeySequence failed: {e}"
+            )
 
-    def _on_release(self, key):
-        """Called when a key is released"""
-        try:
-            # Remove from current keys
-            if hasattr(key, "vk") and key.vk:
-                normalized_key = key
+        # Fallback to manual parsing
+        parts = [p.strip().lower() for p in key_string.split("+")]
+        result = 0
+        for part in parts:
+            if part in _MODIFIER_MAP:
+                result |= _MODIFIER_MAP[part]
+            elif part in _KEY_MAP:
+                result |= _KEY_MAP[part]
+            elif len(part) == 1 and part.isascii():
+                result |= ord(part.upper())
             else:
-                normalized_key = key
-
-            self.current_keys.discard(normalized_key)
-
-        except Exception as e:
-            logger.error(f"Error in key release handler: {e}")
-
-    def _keys_match(self):
-        """Check if currently pressed keys match the hotkey combination"""
-        if not self.hotkey_combination:
-            return False
-
-        # For each key in the hotkey combination, check if it or its equivalent is pressed
-        for required_key in self.hotkey_combination:
-            found = False
-
-            for pressed_key in self.current_keys:
-                if self._keys_equivalent(required_key, pressed_key):
-                    found = True
-                    break
-
-            if not found:
-                return False
-
-        # Also check we don't have extra keys pressed (exact match)
-        if len(self.current_keys) != len(self.hotkey_combination):
-            return False
-
-        return True
-
-    def _keys_equivalent(self, key1, key2):
-        """Check if two keys are equivalent (handles left/right modifiers)"""
-        # Direct match
-        if key1 == key2:
-            return True
-
-        # Check for left/right modifier equivalence
-        equivalents = {
-            Key.ctrl_l: Key.ctrl_r,
-            Key.ctrl_r: Key.ctrl_l,
-            Key.alt_l: Key.alt_r,
-            Key.alt_r: Key.alt_l,
-            Key.shift_l: Key.shift_r,
-            Key.shift_r: Key.shift_l,
-        }
-
-        return equivalents.get(key1) == key2
-
-    @pyqtSlot()
-    def _emit_trigger_signal(self):
-        """Emit the trigger signal (called in Qt main thread)"""
-        self.toggle_recording_triggered.emit()
-
-    def _check_listener_health(self):
-        """Periodically check if the keyboard listener is still alive"""
-        try:
-            if self.listener and not self.listener.is_alive():
-                logger.warning("Keyboard listener is not alive, restarting...")
-                self.setup_shortcuts(self._shortcut_key)
-            elif not self.listener:
-                logger.warning("Keyboard listener is None, restarting...")
-                self.setup_shortcuts(self._shortcut_key)
-        except Exception as e:
-            logger.error(f"Error checking listener health: {e}")
+                logger.warning(
+                    f"_shortcut_to_qt_int: unknown key '{part}'"
+                )
+        return result
 
     def remove_shortcuts(self):
-        """Remove existing shortcuts"""
-        # Stop health check timer
-        if self._health_check_timer.isActive():
-            self._health_check_timer.stop()
-
-        if self.listener:
-            try:
-                self.listener.stop()
-                # Give the listener thread time to fully stop
-                import time
-
-                time.sleep(0.1)
-                self.listener = None
-                logger.info("Global shortcuts removed")
-            except Exception as e:
-                logger.error(f"Error removing shortcuts: {e}")
-
-        self.current_keys.clear()
-        self.hotkey_combination = None
-
-    def __del__(self):
-        self.remove_shortcuts()
+        """No-op. kglobalaccel persists shortcuts across sessions."""
+        pass

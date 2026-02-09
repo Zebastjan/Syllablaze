@@ -52,6 +52,9 @@ VALID_LANGUAGES = {
     # Add more languages as needed
 }
 
+# Default keyboard shortcut
+DEFAULT_SHORTCUT = "Alt+Space"
+
 # Lock file configuration - path where the application lock file will be stored
 # This is just the path string, not the actual file handle
 LOCK_FILE_PATH = os.path.expanduser("~/.cache/syllablaze/syllablaze.lock")

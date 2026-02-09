@@ -14,6 +14,7 @@ from blaze.constants import (
     APP_NAME,
     APP_VERSION,
     DEFAULT_WHISPER_MODEL,
+    DEFAULT_SHORTCUT,
     ORG_NAME,
     VALID_LANGUAGES,
     LOCK_FILE_PATH,
@@ -138,9 +139,8 @@ class ApplicationTrayIcon(QSystemTrayIcon):
         # Create menu
         self.setup_menu()
 
-        # Setup global shortcuts
-        if not self.shortcuts.setup_shortcuts():
-            logger.warning("Failed to register global shortcuts")
+        # Setup global shortcuts with saved preference
+        # Note: Shortcuts are set up after D-Bus is connected in the main async flow
 
         # Initialize tooltip with model information
         self.update_tooltip()
@@ -948,8 +948,9 @@ def _initialize_transcription_manager(tray, loading_window, app, ui_manager):
     if not tray.transcription_manager.initialize():
         ui_manager.show_warning_message(
             "No Models Downloaded",
-            "No Whisper models are downloaded. The application will start, but you will need to download a model before you can use transcription.\n\n"
-            "Please go to Settings to download a model.",
+            "No Whisper models are downloaded. The application will start, "
+            "but you will need to download a model before you can use "
+            "transcription.\n\nPlease go to Settings to download a model.",
         )
 
     return True
@@ -995,11 +996,29 @@ async def initialize_tray(tray, loading_window, app, ui_manager):
             # Create the service in a non-blocking way
             service = SyllaDBusService(tray)
 
-            # Directly await the setup
-            await setup_dbus(service)
+            # Setup D-Bus and get bus connection for shortcuts
+            bus = await setup_dbus(service)
 
         except Exception as e:
             logger.error(f"D-Bus setup failed: {e}")
+            bus = None
+
+        # Setup global shortcuts with D-Bus (kglobalaccel)
+        if bus:
+            ui_manager.update_loading_status(
+                loading_window, "Setting up keyboard shortcuts...", 12
+            )
+            saved_shortcut = Settings().get("shortcut", DEFAULT_SHORTCUT)
+            try:
+                success = await tray.shortcuts.setup_shortcuts(bus, saved_shortcut)
+                if success:
+                    logger.info(f"Global shortcuts registered: {saved_shortcut}")
+                else:
+                    logger.warning("Failed to register global shortcuts with KDE")
+            except Exception as e:
+                logger.warning(f"Failed to register global shortcuts: {e}")
+        else:
+            logger.warning("No D-Bus connection - shortcuts not registered")
 
         # Initialize audio manager
         if not _initialize_audio_manager(tray, loading_window, app, ui_manager):
@@ -1038,8 +1057,10 @@ async def setup_dbus(service):
         bus.export("/org/kde/syllablaze", service)
         await bus.request_name("org.kde.syllablaze")
         logger.info("D-Bus service registered successfully")
+        return bus
     except Exception as e:
         logger.error(f"D-Bus setup failed: {e}")
+        return None
 
 
 if __name__ == "__main__":

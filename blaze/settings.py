@@ -2,7 +2,8 @@ from PyQt6.QtCore import QSettings
 from blaze.constants import (
     APP_NAME, VALID_LANGUAGES,
     SAMPLE_RATE_MODE_WHISPER, SAMPLE_RATE_MODE_DEVICE, DEFAULT_SAMPLE_RATE_MODE,
-    DEFAULT_COMPUTE_TYPE, DEFAULT_DEVICE, DEFAULT_BEAM_SIZE, DEFAULT_VAD_FILTER, DEFAULT_WORD_TIMESTAMPS
+    DEFAULT_COMPUTE_TYPE, DEFAULT_DEVICE, DEFAULT_BEAM_SIZE, DEFAULT_VAD_FILTER, DEFAULT_WORD_TIMESTAMPS,
+    DEFAULT_SHORTCUT
 )
 import logging
 
@@ -79,7 +80,11 @@ class Settings:
             if isinstance(value, str):
                 return value.lower() in ['true', '1', 'yes']
             return bool(value)
-        
+        elif key == 'shortcut':
+            if not value or not isinstance(value, str) or not value.strip():
+                return DEFAULT_SHORTCUT
+            return value
+
         # Log the settings access for important settings
         if key in ['model', 'language', 'sample_rate_mode', 'compute_type', 'device', 'beam_size', 'vad_filter', 'word_timestamps']:
             logger.info(f"Setting accessed: {key} = {value}")
@@ -116,7 +121,12 @@ class Settings:
             value = bool(value)
         elif key == 'word_timestamps':
             value = bool(value)
-        
+        elif key == 'shortcut':
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"Invalid shortcut: {value}")
+            if '+' not in value and len(value) > 1:
+                raise ValueError(f"Invalid shortcut format: {value}. Use format like 'Alt+Space'")
+
         # Get the old value for logging
         old_value = self.get(key)
         
