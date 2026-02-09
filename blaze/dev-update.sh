@@ -2,6 +2,7 @@
 
 # Script to update installed Syllablaze with current repository files
 # This is for development purposes only
+# Supports branch-specific deploys: main -> syllablaze, kirigami-rewrite -> syllablaze-dev
 shopt -s nullglob  # Handle empty globs gracefully
 
 PY_FILES=(
@@ -9,14 +10,25 @@ PY_FILES=(
   ./blaze/*.py
 )
 
-SUB_DIRS=("ui" "utils" "managers")
+SUB_DIRS=("ui" "utils" "managers" "qml")
 RUN_SCRIPT="./run-syllablaze.sh"
 
+# Detect current branch and set target package
+BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "main")
+if [ "$BRANCH" = "kirigami-rewrite" ]; then
+    PACKAGE_NAME="syllablaze-dev"
+    echo "🔧 Development branch detected: deploying to $PACKAGE_NAME"
+else
+    PACKAGE_NAME="syllablaze"
+    echo "📦 Stable branch detected: deploying to $PACKAGE_NAME"
+fi
+
 # Find the installed package directory
-INSTALL_DIR=$(find ~/.local/share/pipx/venvs/syllablaze/lib/python* -type d -name "blaze" 2>/dev/null)
+INSTALL_DIR=$(find ~/.local/share/pipx/venvs/$PACKAGE_NAME/lib/python* -type d -name "blaze" 2>/dev/null | head -1)
 
 if [ -z "$INSTALL_DIR" ]; then
-    echo "Error: Could not find installed Syllablaze package directory"
+    echo "Error: Could not find installed $PACKAGE_NAME package directory"
+    echo "Hint: Install $PACKAGE_NAME first with 'pipx install -e .'"
     exit 1
 fi
 
@@ -74,7 +86,15 @@ done
 
 # Copy files from subdirectories
 for dir in "${SUB_DIRS[@]}"; do
-    cp -v "./blaze/$dir"/*.py "$INSTALL_DIR/$dir/"
+    if [ "$dir" = "qml" ]; then
+        # Copy QML files recursively (includes test/ subdirectories)
+        if [ -d "./blaze/qml" ]; then
+            cp -rv "./blaze/qml"/* "$INSTALL_DIR/qml/" 2>/dev/null || true
+        fi
+    else
+        # Copy Python files only for non-QML directories
+        cp -v "./blaze/$dir"/*.py "$INSTALL_DIR/$dir/" 2>/dev/null || true
+    fi
 done
 
 # Make the script executable if it exists
@@ -85,8 +105,8 @@ if [ -f "$RUN_SCRIPT" ]; then
 fi
 
 echo "Update complete!"
-echo "You can now run 'syllablaze' to use the updated version"
+echo "You can now run '$PACKAGE_NAME' to use the updated version"
 
 # Run the application by default
-echo "Starting Syllablaze..."
-syllablaze
+echo "Starting $PACKAGE_NAME..."
+$PACKAGE_NAME
