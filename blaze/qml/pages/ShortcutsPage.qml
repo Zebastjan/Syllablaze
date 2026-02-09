@@ -7,7 +7,13 @@ ColumnLayout {
     spacing: Kirigami.Units.largeSpacing
 
     Component.onCompleted: {
-        shortcutLabel.text = settingsBridge.getShortcut()
+        var shortcut = settingsBridge.getShortcut()
+        console.log("Loaded shortcut:", shortcut)
+        if (shortcut && shortcut !== "") {
+            shortcutLabel.text = shortcut
+        } else {
+            shortcutLabel.text = "Alt+Space"
+        }
     }
 
     // Page header

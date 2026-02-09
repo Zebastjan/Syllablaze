@@ -82,6 +82,8 @@ ColumnLayout {
         contentItem: ColumnLayout {
             spacing: Kirigami.Units.smallSpacing
             Layout.fillWidth: true
+            Layout.margins: Kirigami.Units.largeSpacing
+            Layout.bottomMargin: Kirigami.Units.largeSpacing * 2
 
             Repeater {
                 model: [

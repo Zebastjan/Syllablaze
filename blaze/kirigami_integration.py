@@ -131,7 +131,9 @@ class SettingsBridge(QObject):
 
     @pyqtSlot(result=str)
     def getShortcut(self):
-        return self.settings.get('shortcut', DEFAULT_SHORTCUT)
+        shortcut = self.settings.get('shortcut', DEFAULT_SHORTCUT)
+        logger.debug(f"getShortcut() returning: {shortcut}")
+        return shortcut if shortcut else DEFAULT_SHORTCUT
 
     # === Data providers ===
 
@@ -168,10 +170,11 @@ class ActionsBridge(QObject):
 
     @pyqtSlot()
     def openSystemSettings(self):
-        """Open KDE System Settings to shortcuts page."""
+        """Open KDE System Settings directly to Syllablaze shortcut."""
         from PyQt6.QtCore import QProcess
-        logger.info("Opening KDE System Settings (shortcuts)")
-        QProcess.startDetached("systemsettings", ["kcm_keys"])
+        logger.info("Opening KDE System Settings (Syllablaze shortcut)")
+        # Use kcmshell6 with search parameter to jump directly to Syllablaze
+        QProcess.startDetached("kcmshell6", ["kcm_keys", "--args", "Syllablaze"])
 
 
 class KirigamiSettingsWindow(QWidget):
