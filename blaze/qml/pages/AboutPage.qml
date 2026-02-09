@@ -47,12 +47,12 @@ ColumnLayout {
                     Layout.fillWidth: true
 
                     Kirigami.Heading {
-                        text: "Syllablaze"
+                        text: APP_NAME
                         level: 1
                     }
 
                     QQC2.Label {
-                        text: "Version 0.5"
+                        text: "Version " + APP_VERSION
                         color: Kirigami.Theme.disabledTextColor
                     }
 
@@ -120,7 +120,7 @@ ColumnLayout {
             text: "GitHub Repository"
             icon.name: "internet-services"
             onClicked: {
-                Qt.openUrlExternally("https://github.com/Zebastjan/Syllablaze")
+                actionsBridge.openUrl(GITHUB_REPO_URL)
             }
         }
 
@@ -128,7 +128,7 @@ ColumnLayout {
             text: "Report Issue"
             icon.name: "tools-report-bug"
             onClicked: {
-                Qt.openUrlExternally("https://github.com/Zebastjan/Syllablaze/issues")
+                actionsBridge.openUrl(GITHUB_REPO_URL + "/issues")
             }
         }
     }

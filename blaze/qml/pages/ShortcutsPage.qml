@@ -6,6 +6,10 @@ import org.kde.kirigami as Kirigami
 ColumnLayout {
     spacing: Kirigami.Units.largeSpacing
 
+    Component.onCompleted: {
+        shortcutLabel.text = settingsBridge.getShortcut()
+    }
+
     // Page header
     Kirigami.Heading {
         text: "Keyboard Shortcuts"
@@ -42,6 +46,7 @@ ColumnLayout {
                 radius: 4
 
                 QQC2.Label {
+                    id: shortcutLabel
                     anchors.centerIn: parent
                     text: "Alt+Space"
                     font.bold: true
@@ -52,7 +57,7 @@ ColumnLayout {
                 text: "Configure in System Settings"
                 icon.name: "configure-shortcuts"
                 onClicked: {
-                    // TODO: Open systemsettings kcm_keys
+                    actionsBridge.openSystemSettings()
                 }
             }
         }

@@ -6,6 +6,16 @@ import org.kde.kirigami as Kirigami
 ColumnLayout {
     spacing: Kirigami.Units.largeSpacing
 
+    Component.onCompleted: {
+        // Load current settings
+        var currentMode = settingsBridge.getSampleRateMode()
+        if (currentMode === "whisper") {
+            sampleRateCombo.currentIndex = 0
+        } else {
+            sampleRateCombo.currentIndex = 1
+        }
+    }
+
     // Page header
     Kirigami.Heading {
         text: "Audio Settings"
@@ -30,15 +40,31 @@ ColumnLayout {
         Layout.fillWidth: true
 
         QQC2.ComboBox {
+            id: deviceCombo
             Kirigami.FormData.label: "Input Device:"
-            model: ["Default Microphone"]
-            // TODO: Populate from Python audio manager
+            model: settingsBridge.getAudioDevices()
+            textRole: "name"
+            valueRole: "index"
+
+            onActivated: {
+                var device = model[currentIndex]
+                settingsBridge.setMicIndex(device.index)
+            }
         }
 
         QQC2.ComboBox {
+            id: sampleRateCombo
             Kirigami.FormData.label: "Sample Rate:"
             model: ["16kHz - best for Whisper", "Default for device"]
             currentIndex: 0
+
+            onActivated: {
+                if (currentIndex === 0) {
+                    settingsBridge.setSampleRateMode("whisper")
+                } else {
+                    settingsBridge.setSampleRateMode("device")
+                }
+            }
         }
     }
 
