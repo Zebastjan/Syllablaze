@@ -67,7 +67,7 @@
 ## How to Test
 
 ```bash
-# Standalone test (isolated)
+# Standalone test (isolated - uses separate QSettings)
 ./test_kirigami.sh
 
 # Deploy to syllablaze-dev
@@ -76,6 +76,8 @@
 # Run dev version
 syllablaze-dev
 ```
+
+**Note**: The test script (`./test_kirigami.sh`) uses isolated QSettings (organization: "KDE-Testing") so it won't interfere with your running Syllablaze instance.
 
 ## Architecture
 
