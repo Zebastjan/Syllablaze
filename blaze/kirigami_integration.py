@@ -78,8 +78,11 @@ class KirigamiSettingsWindow(QWidget):
         if root_context:
             root_context.setContextProperty("settingsBridge", self.settings_bridge)
 
-        # Load simpler QML file for testing
-        qml_path = os.path.abspath("blaze/qml/TestSettings.qml")
+        # Load Kirigami settings window
+        qml_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "qml/SyllablazeSettings.qml"
+        )
         print(f"Loading QML from: {qml_path}")
         self.engine.load(QUrl.fromLocalFile(qml_path))
 
