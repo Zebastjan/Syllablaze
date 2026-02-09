@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import QApplication, QMessageBox, QSystemTrayIcon, QMenu
 from PyQt6.QtCore import QCoreApplication
 from PyQt6.QtGui import QIcon, QAction
 import logging
-from blaze.settings_window import SettingsWindow
+from blaze.kirigami_integration import KirigamiSettingsWindow as SettingsWindow
 from blaze.progress_window import ProgressWindow
 from blaze.loading_window import LoadingWindow
 from PyQt6.QtCore import pyqtSignal
