@@ -76,7 +76,36 @@ ApplicationTrayIcon (main.py) - orchestrator
 - Settings persisted via QSettings (`blaze/settings.py`)
 - Constants (app version, sample rates, defaults) in `blaze/constants.py`
 
-**UI windows** are separate classes: `SettingsWindow`, `ProgressWindow`, `LoadingWindow`, `ProcessingWindow`, `VolumeMeter`.
+**UI windows** are separate classes: `KirigamiSettingsWindow` (QML-based), `ProgressWindow`, `LoadingWindow`, `ProcessingWindow`, `VolumeMeter`.
+
+## UI Architecture
+
+Settings window uses **Kirigami QML UI** (`blaze/kirigami_integration.py`):
+- Modern KDE Plasma styling matching the desktop environment
+- QML pages in `blaze/qml/pages/` (Models, Audio, Transcription, Shortcuts, About)
+- Python-QML bridge via `SettingsBridge` for bidirectional communication
+- Display scaling support via `devicePixelRatio` detection
+- Replaces old PyQt6 widget UI (removed in commit 0031ca5)
+
+## Development Workflow
+
+Use standard git branch workflow:
+- `main` branch = stable production version
+- Feature branches = development work
+- Editable pipx install picks up changes immediately
+- Switch branches and restart app to test different versions
+
+```bash
+# Work on feature
+git checkout feature-branch
+pkill syllablaze
+syllablaze
+
+# Test stable
+git checkout main
+pkill syllablaze
+syllablaze
+```
 
 ## Key Dependencies
 
