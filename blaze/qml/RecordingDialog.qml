@@ -5,8 +5,9 @@ ApplicationWindow {
     id: root
     title: "Syllablaze Recording"
 
-    // Borderless window properties
+    // Borderless window properties with transparency
     flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool
+    color: "transparent"
 
     // Circular window dimensions
     width: 200
@@ -36,45 +37,76 @@ ApplicationWindow {
         }
     }
 
-    // Glowing volume ring (only visible when recording)
+    // Radial gradient volume visualization (only visible when recording)
     Rectangle {
-        id: volumeRing
+        id: volumeVisualization
         anchors.centerIn: parent
-        width: iconContainer.width + 40 + (audioBridge.currentVolume * 40)  // Grow with volume
+        width: iconContainer.width + 60 + (audioBridge.currentVolume * 60)  // Grow with volume
         height: width
         radius: width / 2
-        color: "transparent"
-        border.width: 3 + (audioBridge.currentVolume * 10)  // 3-13px based on volume
-        border.color: Qt.rgba(0.937, 0.161, 0.161, 0.3 + audioBridge.currentVolume * 0.7)  // Red with varying opacity
         visible: audioBridge.isRecording
 
-        Behavior on border.width {
-            NumberAnimation { duration: 100 }
+        // Color based on volume level
+        // Green: 0-60% (good), Yellow: 60-85% (high), Red: 85-100% (peaking)
+        property color volumeColor: {
+            if (audioBridge.currentVolume < 0.6) {
+                // Green for good range
+                return Qt.rgba(0.2, 0.8, 0.2, 0.6 + audioBridge.currentVolume * 0.4)
+            } else if (audioBridge.currentVolume < 0.85) {
+                // Yellow/Orange for high
+                return Qt.rgba(1.0, 0.7, 0.0, 0.7 + audioBridge.currentVolume * 0.3)
+            } else {
+                // Red for peaking
+                return Qt.rgba(1.0, 0.2, 0.0, 0.8 + audioBridge.currentVolume * 0.2)
+            }
+        }
+
+        gradient: Gradient {
+            GradientStop {
+                position: 0.0
+                color: Qt.rgba(0, 0, 0, 0)  // Transparent center
+            }
+            GradientStop {
+                position: 0.7
+                color: Qt.rgba(0, 0, 0, 0)  // Transparent most of the way
+            }
+            GradientStop {
+                position: 0.85
+                color: volumeVisualization.volumeColor
+            }
+            GradientStop {
+                position: 1.0
+                color: volumeVisualization.volumeColor
+            }
         }
 
         Behavior on width {
-            NumberAnimation { duration: 100 }
+            NumberAnimation { duration: 80; easing.type: Easing.OutCubic }
         }
 
-        Behavior on border.color {
+        Behavior on volumeColor {
             ColorAnimation { duration: 100 }
         }
     }
 
-    // Additional outer glow ring (simpler alternative to Glow effect)
+    // Outer ring for additional visual feedback
     Rectangle {
-        id: outerGlowRing
+        id: outerRing
         anchors.centerIn: parent
-        width: volumeRing.width + 10
+        width: volumeVisualization.width + 8
         height: width
         radius: width / 2
         color: "transparent"
-        border.width: 2
-        border.color: Qt.rgba(0.937, 0.161, 0.161, 0.2 + audioBridge.currentVolume * 0.3)
+        border.width: 2 + (audioBridge.currentVolume * 3)  // 2-5px based on volume
+        border.color: volumeVisualization.volumeColor
         visible: audioBridge.isRecording
 
         Behavior on width {
-            NumberAnimation { duration: 100 }
+            NumberAnimation { duration: 80; easing.type: Easing.OutCubic }
+        }
+
+        Behavior on border.width {
+            NumberAnimation { duration: 80 }
         }
 
         Behavior on border.color {
@@ -139,25 +171,31 @@ ApplicationWindow {
         id: mouseHandler
         anchors.fill: parent
 
-        property point clickPos: Qt.point(0, 0)
+        property point dragStartPos: Qt.point(0, 0)
+        property point windowStartPos: Qt.point(0, 0)
         property bool isDragging: false
+        property int dragThreshold: 5
 
         acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
 
         onPressed: (mouse) => {
-            clickPos = Qt.point(mouse.x, mouse.y)
+            dragStartPos = Qt.point(mouse.x, mouse.y)
+            windowStartPos = Qt.point(root.x, root.y)
             isDragging = false
         }
 
         onPositionChanged: (mouse) => {
-            // If moved more than threshold, it's a drag
-            var dx = mouse.x - clickPos.x
-            var dy = mouse.y - clickPos.y
-            if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+            // Calculate total movement from start
+            var dx = mouse.x - dragStartPos.x
+            var dy = mouse.y - dragStartPos.y
+            var distance = Math.sqrt(dx * dx + dy * dy)
+
+            // If moved more than threshold, start dragging
+            if (distance > dragThreshold) {
                 isDragging = true
-                // Manual drag
-                root.x += dx
-                root.y += dy
+                // Move window relative to original position
+                root.x = windowStartPos.x + dx
+                root.y = windowStartPos.y + dy
             }
         }
 
@@ -173,7 +211,7 @@ ApplicationWindow {
                     dialogBridge.openClipboard()
                 }
                 else if (mouse.button === Qt.RightButton) {
-                    console.log("Right click - show settings menu")
+                    console.log("Right click - show context menu")
                     contextMenu.popup()
                 }
             }

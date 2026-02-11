@@ -227,24 +227,66 @@ class RecordingDialogManager(QObject):
         self.hide()
 
     def _on_open_clipboard(self):
-        """Open KDE clipboard manager via D-Bus"""
+        """Open KDE clipboard manager via D-Bus or show clipboard content"""
         import subprocess
+        from PyQt6.QtWidgets import QApplication
+
+        logger.info("Attempting to open clipboard manager...")
 
         try:
-            # Try Klipper (KDE default clipboard manager)
-            subprocess.Popen([
-                "qdbus",
-                "org.kde.klipper",
-                "/klipper",
-                "org.kde.klipper.klipper.showKlipperManuallyInvokeActionMenu"
-            ])
-            logger.info("Opened Klipper clipboard manager")
+            # Method 1: Try Klipper via qdbus (KDE)
+            result = subprocess.run(
+                ["qdbus", "org.kde.klipper", "/klipper",
+                 "org.kde.klipper.klipper.showKlipperManuallyInvokeActionMenu"],
+                capture_output=True,
+                timeout=2
+            )
+            if result.returncode == 0:
+                logger.info("Opened Klipper clipboard manager via qdbus")
+                return
+            else:
+                logger.warning(f"Klipper qdbus failed: {result.stderr.decode()}")
         except FileNotFoundError:
-            logger.warning("Klipper not found - qdbus command unavailable")
-            # Try alternative: show popup with message
-            try:
-                subprocess.Popen(["xdg-open", "clipboard://"])
-            except Exception:
-                logger.warning("No clipboard manager found")
+            logger.warning("qdbus command not found")
+        except subprocess.TimeoutExpired:
+            logger.warning("Klipper qdbus timeout")
         except Exception as e:
-            logger.error(f"Failed to open clipboard manager: {e}")
+            logger.warning(f"Klipper qdbus error: {e}")
+
+        try:
+            # Method 2: Try klipper directly
+            subprocess.Popen(["klipper"])
+            logger.info("Launched Klipper directly")
+            return
+        except FileNotFoundError:
+            logger.warning("Klipper executable not found")
+        except Exception as e:
+            logger.warning(f"Failed to launch Klipper: {e}")
+
+        try:
+            # Method 3: Try plasma clipboard applet
+            subprocess.Popen(["qdbus", "org.kde.plasmashell", "/PlasmaShell",
+                            "org.kde.PlasmaShell.evaluateScript",
+                            "const clipboardApplet = desktops().map(d => d.widgets('org.kde.plasma.clipboard')).flat()[0]; if (clipboardApplet) clipboardApplet.showPopup();"])
+            logger.info("Triggered Plasma clipboard applet")
+            return
+        except Exception as e:
+            logger.warning(f"Failed to trigger Plasma clipboard: {e}")
+
+        # Method 4: Fallback - show current clipboard content as notification
+        try:
+            clipboard = QApplication.clipboard()
+            text = clipboard.text()
+            if text:
+                logger.info(f"Clipboard content: {text[:100]}...")
+                # Show notification with clipboard content
+                from PyQt6.QtWidgets import QMessageBox
+                msg = QMessageBox()
+                msg.setWindowTitle("Clipboard Content")
+                msg.setText(f"Current clipboard:\n\n{text[:200]}{'...' if len(text) > 200 else ''}")
+                msg.setIcon(QMessageBox.Icon.Information)
+                msg.exec()
+            else:
+                logger.info("Clipboard is empty")
+        except Exception as e:
+            logger.error(f"Failed to access clipboard: {e}")
