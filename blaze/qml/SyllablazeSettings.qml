@@ -6,10 +6,72 @@ import org.kde.kirigami as Kirigami
 Kirigami.ApplicationWindow {
     id: root
     title: "Syllablaze Settings"
-    width: 900
-    height: 600
-    minimumWidth: 750
-    minimumHeight: 500
+    visible: false  // Start hidden, show() will make it visible
+
+    // Scale based on 4K baseline (3840×2160 → 900×616)
+    Component.onCompleted: {
+        var screenWidth = 1920  // Default fallback
+        var screenHeight = 1080
+        var logicalWidth = screenWidth
+        var logicalHeight = screenHeight
+        var devicePixelRatio = 1.0
+
+        var screen = Qt.application.screens && Qt.application.screens[0]
+        if (screen && screen.width && screen.height) {
+            // Get logical screen dimensions
+            if (screen.availableGeometry && screen.availableGeometry.width) {
+                logicalWidth = screen.availableGeometry.width
+                logicalHeight = screen.availableGeometry.height
+            } else if (screen.desktopAvailableWidth && screen.desktopAvailableHeight) {
+                logicalWidth = screen.desktopAvailableWidth
+                logicalHeight = screen.desktopAvailableHeight
+            } else {
+                logicalWidth = screen.width
+                logicalHeight = screen.height
+            }
+
+            // Get device pixel ratio to convert logical → physical resolution
+            if (screen.devicePixelRatio) {
+                devicePixelRatio = screen.devicePixelRatio
+            }
+
+            // Calculate PHYSICAL screen resolution (accounting for display scaling)
+            screenWidth = Math.round(logicalWidth * devicePixelRatio)
+            screenHeight = Math.round(logicalHeight * devicePixelRatio)
+
+            console.log("Display scaling detected:",
+                        "Logical:", logicalWidth, "×", logicalHeight,
+                        "DPR:", devicePixelRatio.toFixed(2),
+                        "Physical:", screenWidth, "×", screenHeight)
+        } else {
+            console.log("No screen info available, using default 1920×1080")
+        }
+
+        // Baseline: 900×616 looks perfect on 4K (3840×2160)
+        var baseWidth = 900
+        var baseHeight = 616
+        var baseScreenWidth = 3840
+        var baseScreenHeight = 2160
+
+        // Scale proportionally to PHYSICAL screen resolution
+        var scaleFactor = Math.min(screenWidth / baseScreenWidth, screenHeight / baseScreenHeight)
+        var targetWidth = Math.round(baseWidth * scaleFactor)
+        var targetHeight = Math.round(baseHeight * scaleFactor)
+
+        // Clamp to reasonable bounds
+        width = Math.max(600, Math.min(1200, targetWidth))
+        height = Math.max(400, Math.min(900, targetHeight))
+
+        console.log("Window sizing: Physical screen", screenWidth, "×", screenHeight,
+                    "→ Scale factor:", scaleFactor.toFixed(2),
+                    "→ Window:", width, "×", height)
+    }
+
+    // Allow resizing within reasonable bounds
+    minimumWidth: 600
+    minimumHeight: 400
+    maximumWidth: 1200
+    maximumHeight: 900
 
     pageStack.initialPage: Kirigami.ScrollablePage {
         id: mainPage
@@ -24,7 +86,7 @@ Kirigami.ApplicationWindow {
                 Layout.fillHeight: true
                 Layout.preferredWidth: 220
                 color: Kirigami.Theme.backgroundColor
-                border.color: Kirigami.Theme.separatorColor
+                border.color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.2)
                 border.width: 1
 
                 ColumnLayout {
@@ -161,7 +223,13 @@ Kirigami.ApplicationWindow {
                         }
 
                         onClicked: {
-                            // TODO: Open KDE System Settings
+                            console.log("Sidebar System Settings button clicked")
+                            try {
+                                actionsBridge.openSystemSettings()
+                                console.log("openSystemSettings() called successfully")
+                            } catch (error) {
+                                console.error("Error calling openSystemSettings():", error)
+                            }
                         }
                     }
                 }

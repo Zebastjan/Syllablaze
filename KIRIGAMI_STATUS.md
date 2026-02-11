@@ -44,6 +44,39 @@
 - Report Issue button (working)
 - Professional card layout
 
+## ⚠️ Known Issue: Kirigami Module Loading
+
+**Status**: Kirigami UI works in test mode but not in pipx-installed app
+
+**Root Cause**: PyQt6 installed via pipx includes its own bundled Qt6 libraries (PyQt6-Qt6) that don't include Kirigami QML modules. System Kirigami is installed for system Qt6, creating a mismatch.
+
+**Workarounds**:
+1. **Use test script** (recommended for development):
+   ```bash
+   ./test_kirigami.sh
+   ```
+   - Uses system Python + system PyQt6 + system Qt6
+   - Has access to system Kirigami modules
+   - Isolated settings (won't affect running app)
+
+2. **Run directly with system Python**:
+   ```bash
+   python3 -m blaze.main
+   ```
+   - Uses system PyQt6 and Kirigami
+   - Shares settings with production app
+
+**Attempted Solutions** (did not work):
+- Setting QML2_IMPORT_PATH environment variable
+- Calling engine.addImportPath() programmatically
+- Symlinking system Kirigami modules into venv Qt directory
+  (Kirigami has C++ plugin dependencies that can't just be symlinked)
+
+**Proper Solution** (TODO):
+- Modify install.py to use pipx `--system-site-packages` flag
+- Skip installing PyQt6 in venv, use system PyQt6 instead
+- This gives access to system Qt6 and all KDE modules
+
 ## 🚧 TODO / Known Limitations
 
 ### Models Page
@@ -56,13 +89,15 @@
 - Need to integrate with actual PyAudio device list from settings_window.py
 - _populate_mic_list() logic needs porting to bridge
 
-### Testing Needed
-- [ ] Deploy with `./blaze/dev-update.sh` → `syllablaze-dev`
-- [ ] Verify settings persist across restarts
-- [ ] Test System Settings button opens correct KCM
-- [ ] Test GitHub buttons open browser
-- [ ] Verify all controls read current values on startup
-- [ ] Test changing settings and verify they apply to app
+### Testing Status
+- [x] **System Settings button** (sidebar footer) - Opens kcmshell6 successfully
+- [x] **About page layout** - All 7 features properly contained in card
+- [x] Settings persist across restarts (verified in test mode)
+- [x] GitHub buttons open browser correctly
+- [x] Controls read current values on startup
+- [x] Settings changes save and apply correctly
+- [ ] Deploy to syllablaze-dev (blocked by Kirigami module issue)
+- [ ] Full integration testing with production app
 
 ## How to Test
 

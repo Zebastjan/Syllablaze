@@ -70,6 +70,7 @@ ColumnLayout {
     // Features card
     Kirigami.Card {
         Layout.fillWidth: true
+        Layout.preferredHeight: 300
 
         header: Kirigami.Heading {
             text: "Features"
@@ -78,16 +79,11 @@ ColumnLayout {
             topPadding: Kirigami.Units.largeSpacing
         }
 
-        contentItem: Item {
-            implicitHeight: featuresList.implicitHeight + Kirigami.Units.largeSpacing * 2
-            implicitWidth: featuresList.implicitWidth
+        contentItem: QQC2.ScrollView {
+            QQC2.ScrollBar.horizontal.policy: QQC2.ScrollBar.AlwaysOff
 
             ColumnLayout {
-                id: featuresList
-                anchors {
-                    fill: parent
-                    margins: Kirigami.Units.largeSpacing
-                }
+                width: parent.width
                 spacing: Kirigami.Units.smallSpacing
 
                 Repeater {
@@ -103,6 +99,10 @@ ColumnLayout {
 
                     delegate: RowLayout {
                         Layout.fillWidth: true
+                        Layout.leftMargin: Kirigami.Units.largeSpacing
+                        Layout.rightMargin: Kirigami.Units.largeSpacing
+                        Layout.topMargin: index === 0 ? Kirigami.Units.smallSpacing : 0
+                        Layout.bottomMargin: index === 6 ? Kirigami.Units.largeSpacing : 0
                         spacing: Kirigami.Units.smallSpacing
 
                         Kirigami.Icon {

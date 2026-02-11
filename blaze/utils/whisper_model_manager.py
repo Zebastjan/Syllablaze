@@ -38,6 +38,7 @@ class WhisperModelManager:
         "large-v1",
         "large-v2",
         "large-v3",
+        "large-v3-turbo",
         "large",
         # Distil-Whisper models (only include confirmed existing models)
         "distil-medium.en",

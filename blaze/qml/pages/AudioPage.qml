@@ -14,6 +14,23 @@ ColumnLayout {
         } else {
             sampleRateCombo.currentIndex = 1
         }
+
+        // Load and select current microphone
+        var savedMicIndex = settingsBridge.getMicIndex()
+        var devices = settingsBridge.getAudioDevices()
+
+        console.log("Saved mic index:", savedMicIndex)
+        console.log("Found", devices.length, "audio device(s)")
+
+        // Find the saved device in the list
+        for (var i = 0; i < devices.length; i++) {
+            console.log("  Device", i, ":", devices[i].name, "(index", devices[i].index, ")")
+            if (devices[i].index === savedMicIndex) {
+                deviceCombo.currentIndex = i
+                console.log("  -> Selected device", i)
+                break
+            }
+        }
     }
 
     // Page header
