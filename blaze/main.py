@@ -11,6 +11,7 @@ import logging
 from blaze.kirigami_integration import KirigamiSettingsWindow as SettingsWindow
 from blaze.progress_window import ProgressWindow
 from blaze.loading_window import LoadingWindow
+from blaze.recording_dialog_manager import RecordingDialogManager
 from PyQt6.QtCore import pyqtSignal
 from blaze.settings import Settings
 from blaze.shortcuts import GlobalShortcuts
@@ -98,6 +99,7 @@ class ApplicationTrayIcon(QSystemTrayIcon):
         self.settings_window = None
         self.progress_window = None
         self.processing_window = None
+        self.recording_dialog = None
 
         # Initialize managers
         self.ui_manager = UIManager()
@@ -116,6 +118,7 @@ class ApplicationTrayIcon(QSystemTrayIcon):
 
     def initialize(self):
         """Initialize the tray recorder after showing loading window"""
+        logger.info("ApplicationTrayIcon: Initializing...")
         # Set application icon
         self.app_icon = QIcon.fromTheme("syllablaze")
         if self.app_icon.isNull():
@@ -143,6 +146,27 @@ class ApplicationTrayIcon(QSystemTrayIcon):
         # Create menu
         self.setup_menu()
 
+        # Initialize recording dialog
+        try:
+            logger.info("Initializing recording dialog...")
+            self.recording_dialog = RecordingDialogManager()
+            self.recording_dialog.initialize()
+
+            # Connect dialog bridge signals to app methods
+            self.recording_dialog.dialog_bridge.toggleRecordingRequested.connect(
+                self.toggle_recording
+            )
+            self.recording_dialog.dialog_bridge.openSettingsRequested.connect(
+                self.toggle_settings
+            )
+
+            # Show dialog persistently
+            self.recording_dialog.show()
+            logger.info("Recording dialog initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize recording dialog: {e}", exc_info=True)
+            self.recording_dialog = None
+
         # Setup global shortcuts with saved preference
         # Note: Shortcuts are set up after D-Bus is connected in the main async flow
 
@@ -161,6 +185,11 @@ class ApplicationTrayIcon(QSystemTrayIcon):
         self.settings_action = QAction("Settings", menu)
         self.settings_action.triggered.connect(self.toggle_settings)
         menu.addAction(self.settings_action)
+
+        # Add recording dialog toggle action
+        self.dialog_action = QAction("Show Recording Dialog", menu)
+        self.dialog_action.triggered.connect(self._toggle_recording_dialog)
+        menu.addAction(self.dialog_action)
 
         # Add separator before quit
         menu.addSeparator()
@@ -225,6 +254,10 @@ class ApplicationTrayIcon(QSystemTrayIcon):
                 # Mark as transcribing
                 self.transcribing = True
 
+                # Update recording dialog
+                if self.recording_dialog:
+                    self.recording_dialog.update_recording_state(False)
+
                 # Update progress window before stopping recording
                 if self.progress_window:
                     self.progress_window.set_processing_mode()
@@ -285,6 +318,10 @@ class ApplicationTrayIcon(QSystemTrayIcon):
                         if result:
                             self.recording = True
                             logger.info("Recording started successfully")
+
+                            # Update recording dialog
+                            if self.recording_dialog:
+                                self.recording_dialog.update_recording_state(True)
                         else:
                             # Revert UI if start failed
                             logger.error("Failed to start recording")
@@ -341,6 +378,18 @@ class ApplicationTrayIcon(QSystemTrayIcon):
             self.settings_window.activateWindow()
             logger.info("Called activateWindow() on settings window")
             logger.info(f"Final visibility after show: {self.settings_window.isVisible()}")
+
+    def _toggle_recording_dialog(self):
+        """Toggle recording dialog visibility"""
+        if self.recording_dialog:
+            if self.recording_dialog.is_visible():
+                self.recording_dialog.hide()
+                self.dialog_action.setText("Show Recording Dialog")
+                logger.info("Recording dialog hidden")
+            else:
+                self.recording_dialog.show()
+                self.dialog_action.setText("Hide Recording Dialog")
+                logger.info("Recording dialog shown")
 
     def update_tooltip(self, recognized_text=None):
         """Update the tooltip with app name, version, model and language information"""
@@ -496,6 +545,10 @@ class ApplicationTrayIcon(QSystemTrayIcon):
         """
         logger.info("ApplicationTrayIcon: Recording processed, starting transcription")
 
+        # Update recording dialog to transcribing state
+        if self.recording_dialog:
+            self.recording_dialog.update_transcribing_state(True)
+
         # Ensure progress window is in processing mode
         if self.progress_window:
             self.progress_window.set_processing_mode()
@@ -568,6 +621,10 @@ class ApplicationTrayIcon(QSystemTrayIcon):
         # Reset transcribing state
         self.transcribing = False
 
+        # Update recording dialog
+        if self.recording_dialog:
+            self.recording_dialog.update_transcribing_state(False)
+
         if text:
             # Copy text to clipboard
             QApplication.clipboard().setText(text)
@@ -591,6 +648,10 @@ class ApplicationTrayIcon(QSystemTrayIcon):
     def handle_transcription_error(self, error):
         # Reset transcribing state
         self.transcribing = False
+
+        # Update recording dialog
+        if self.recording_dialog:
+            self.recording_dialog.update_transcribing_state(False)
 
         self.ui_manager.show_notification(
             self, "Transcription Error", error, self.normal_icon
@@ -983,6 +1044,12 @@ def _connect_signals(tray, loading_window, app, ui_manager):
     tray.audio_manager.volume_changing.connect(tray._update_volume_display)
     tray.audio_manager.recording_completed.connect(tray._handle_recording_completed)
     tray.audio_manager.recording_failed.connect(tray.handle_recording_error)
+
+    # Connect volume updates to recording dialog
+    if tray.recording_dialog:
+        tray.audio_manager.volume_changing.connect(
+            tray.recording_dialog.update_volume
+        )
 
     # Connect transcription manager signals
     tray.transcription_manager.transcription_progress.connect(
