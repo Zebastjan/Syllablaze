@@ -171,36 +171,37 @@ ApplicationWindow {
         id: mouseHandler
         anchors.fill: parent
 
-        property point dragStartPos: Qt.point(0, 0)
-        property point windowStartPos: Qt.point(0, 0)
-        property bool isDragging: false
-        property int dragThreshold: 5
+        property point pressPos: Qt.point(0, 0)
+        property bool wasDragged: false
 
         acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
 
         onPressed: (mouse) => {
-            dragStartPos = Qt.point(mouse.x, mouse.y)
-            windowStartPos = Qt.point(root.x, root.y)
-            isDragging = false
+            pressPos = Qt.point(mouse.x, mouse.y)
+            wasDragged = false
+
+            // For left button, prepare for potential drag
+            if (mouse.button === Qt.LeftButton) {
+                // Don't start system move yet, wait to see if it's a click or drag
+            }
         }
 
         onPositionChanged: (mouse) => {
-            // Calculate total movement from start
-            var dx = mouse.x - dragStartPos.x
-            var dy = mouse.y - dragStartPos.y
+            // Calculate distance moved
+            var dx = mouse.x - pressPos.x
+            var dy = mouse.y - pressPos.y
             var distance = Math.sqrt(dx * dx + dy * dy)
 
-            // If moved more than threshold, start dragging
-            if (distance > dragThreshold) {
-                isDragging = true
-                // Move window relative to original position
-                root.x = windowStartPos.x + dx
-                root.y = windowStartPos.y + dy
+            // If moved more than 5 pixels with left button, start system drag
+            if (distance > 5 && !wasDragged && mouse.buttons & Qt.LeftButton) {
+                wasDragged = true
+                // Use Qt's native window dragging
+                root.startSystemMove()
             }
         }
 
         onReleased: (mouse) => {
-            if (!isDragging) {
+            if (!wasDragged) {
                 // It was a click, not a drag
                 if (mouse.button === Qt.LeftButton) {
                     console.log("Left click - toggle recording")
@@ -215,7 +216,7 @@ ApplicationWindow {
                     contextMenu.popup()
                 }
             }
-            isDragging = false
+            wasDragged = false
         }
 
         // Double-click to dismiss
