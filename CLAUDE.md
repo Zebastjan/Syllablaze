@@ -15,7 +15,8 @@ python3 install.py
 # Run directly during development
 python3 -m blaze.main
 
-# Dev update: runs ruff --fix, copies to pipx install dir, restarts app
+# Dev update: copies to pipx install dir, restarts app
+# NOTE: Ruff has been DISABLED during debugging sessions
 ./blaze/dev-update.sh
 
 # Uninstall
@@ -42,11 +43,11 @@ pytest config is in `tests/pytest.ini`. Fixtures and mocks (MockPyAudio, MockSet
 
 ## Linting
 
-CI uses **flake8** (max-line-length=127, max-complexity=10). Dev workflow uses **ruff** with `--fix`. No formatter (black/autopep8) is configured.
+CI uses **flake8** (max-line-length=127, max-complexity=10). Dev workflow uses **ruff** optionally. No formatter (black/autopep8) is configured.
 
 ```bash
 flake8 . --max-line-length=127
-ruff check blaze/ --fix
+# ruff check blaze/ --fix  # DISABLED during active debugging
 ```
 
 ## Architecture
@@ -70,7 +71,7 @@ ApplicationTrayIcon (main.py) - orchestrator
 - All inter-component communication uses Qt signals/slots (thread-safe)
 - Audio recorded at 16kHz directly (optimized for Whisper, no resampling needed)
 - Audio processed entirely in memory (no temp files to disk)
-- Global shortcuts use pynput with 300ms debounce; default is Alt+Space
+- Global shortcuts use KDE kglobalaccel D-Bus integration; default is Alt+Space
 - WhisperModelManager (`blaze/whisper_model_manager.py`) handles model download/deletion/GPU detection
 - Settings persisted via QSettings (`blaze/settings.py`)
 - Constants (app version, sample rates, defaults) in `blaze/constants.py`

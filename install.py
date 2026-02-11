@@ -1,5 +1,15 @@
 #!/usr/bin/env python3
 
+# Syllablaze Installation Script
+#
+# Standard installation (stable):
+#   python3 install.py
+#
+# Development installation (parallel, editable):
+#   pipx install -e . --force --system-site-packages --suffix=-dev
+#   Creates 'syllablaze-dev' command alongside 'syllablaze'
+#   Useful for testing new features (e.g., Kirigami UI) without disrupting stable version
+
 import os
 import shutil
 import sys
@@ -105,7 +115,7 @@ setup(
         # Create a subprocess with proper output handling
         try:
             process = subprocess.Popen(
-                ["pipx", "install", ".", "--force", "--verbose"],
+                ["pipx", "install", ".", "--force", "--verbose", "--system-site-packages"],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True

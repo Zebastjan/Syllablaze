@@ -1,10 +1,14 @@
 import os
 import sys
+
+# Set QML import path for Kirigami before importing any Qt modules
+os.environ['QML2_IMPORT_PATH'] = '/usr/lib/qt6/qml'
+
 from PyQt6.QtWidgets import QApplication, QMessageBox, QSystemTrayIcon, QMenu
 from PyQt6.QtCore import QCoreApplication
 from PyQt6.QtGui import QIcon, QAction
 import logging
-from blaze.settings_window import SettingsWindow
+from blaze.kirigami_integration import KirigamiSettingsWindow as SettingsWindow
 from blaze.progress_window import ProgressWindow
 from blaze.loading_window import LoadingWindow
 from PyQt6.QtCore import pyqtSignal
@@ -313,17 +317,30 @@ class ApplicationTrayIcon(QSystemTrayIcon):
         self.toggle_recording()  # This is now safe since toggle_recording handles everything
 
     def toggle_settings(self):
-        if not self.settings_window:
-            self.settings_window = SettingsWindow()
+        logger.info("====== toggle_settings() called ======")
 
-        if self.settings_window.isVisible():
+        if not self.settings_window:
+            logger.info("Creating new SettingsWindow instance")
+            self.settings_window = SettingsWindow()
+            logger.info(f"SettingsWindow created: {type(self.settings_window).__name__}")
+
+        current_visibility = self.settings_window.isVisible()
+        logger.info(f"Current settings window visibility: {current_visibility}")
+
+        if current_visibility:
+            logger.info("Hiding settings window")
             self.settings_window.hide()
         else:
+            logger.info("Showing settings window")
             # Show the window (not maximized)
             self.settings_window.show()
+            logger.info("Called show() on settings window")
             # Bring to front and activate
             self.settings_window.raise_()
+            logger.info("Called raise_() on settings window")
             self.settings_window.activateWindow()
+            logger.info("Called activateWindow() on settings window")
+            logger.info(f"Final visibility after show: {self.settings_window.isVisible()}")
 
     def update_tooltip(self, recognized_text=None):
         """Update the tooltip with app name, version, model and language information"""
