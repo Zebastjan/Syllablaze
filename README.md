@@ -18,6 +18,22 @@ Real-time audio transcription app using OpenAI's Whisper with **working global k
 - 🔒 In-memory audio processing (no temporary files)
 - ⚡ Direct 16kHz recording for improved privacy and reduced file size
 
+## UI Features
+
+### Recording Dialog (Optional)
+- Circular floating window with real-time volume visualization
+- Click to start/stop recording
+- Drag to move, scroll to resize
+- Right-click for quick actions menu
+- Configurable via Settings → UI
+
+### Modern Settings Interface
+- Native KDE Kirigami styling
+- Organized pages: Models, Audio, Transcription, Shortcuts, UI, About
+- Model download with progress tracking
+- Audio device selection with intelligent filtering
+- UI customization: dialog visibility, size, always-on-top behavior
+
 ## What's New in v0.5
 
 - **✅ Working Global Keyboard Shortcuts**: True system-wide hotkeys using `pynput`
@@ -25,6 +41,8 @@ Real-time audio transcription app using OpenAI's Whisper with **working global k
 - **✅ Single Toggle Shortcut**: Simplified UX - one key (Alt+Space default) to start/stop
 - **✅ Improved Stability**: Prevents recording during transcription
 - **✅ Better Window Management**: Progress window always appears on top
+- **✨ Modern Settings UI**: New Kirigami-based settings window matching KDE Plasma styling
+- **✨ Recording Dialog**: Optional circular volume indicator with real-time visualization
 
 ## What's New in v0.4 beta
 
