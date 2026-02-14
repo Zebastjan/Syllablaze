@@ -186,6 +186,26 @@ ApplicationWindow {
         }
     }
 
+    // Timer to prevent accidental clicks when dialog appears
+    Timer {
+        id: showDelayTimer
+        interval: 300  // Ignore clicks for 300ms after showing
+        property bool ignoreClicks: false
+        onTriggered: {
+            ignoreClicks = false
+        }
+    }
+
+    // Detect when dialog becomes visible
+    onVisibleChanged: {
+        if (visible) {
+            // Start ignoring clicks when dialog appears
+            showDelayTimer.ignoreClicks = true
+            showDelayTimer.restart()
+            console.log("Dialog shown - ignoring clicks for 300ms")
+        }
+    }
+
     // Mouse interaction handler
     MouseArea {
         id: mouseHandler
@@ -221,6 +241,12 @@ ApplicationWindow {
         }
 
         onReleased: (mouse) => {
+            // Ignore clicks if we just became visible
+            if (showDelayTimer.ignoreClicks) {
+                console.log("Click ignored - dialog just appeared")
+                return
+            }
+
             if (!wasDragged) {
                 // It was a click, not a drag
                 if (mouse.button === Qt.LeftButton) {

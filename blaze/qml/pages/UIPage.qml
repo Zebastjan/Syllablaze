@@ -7,6 +7,18 @@ Kirigami.ScrollablePage {
     id: uiPage
     title: "User Interface"
 
+    // Listen to setting changes from other sources (e.g., dialog dismissal)
+    Connections {
+        target: settingsBridge
+        function onSettingChanged(key, value) {
+            if (key === "show_recording_dialog") {
+                showDialogSwitch.checked = (value !== false)
+            } else if (key === "show_progress_window") {
+                showProgressSwitch.checked = (value !== false)
+            }
+        }
+    }
+
     ColumnLayout {
         spacing: Kirigami.Units.largeSpacing
 
