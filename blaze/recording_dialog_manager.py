@@ -78,6 +78,7 @@ class DialogBridge(QObject):
     openSettingsRequested = pyqtSignal()
     dismissRequested = pyqtSignal()
     dialogClosedSignal = pyqtSignal()
+    windowPositionChanged = pyqtSignal(int, int)  # x, y
 
     @pyqtSlot()
     def toggleRecording(self):
@@ -104,6 +105,12 @@ class DialogBridge(QObject):
         logger.info("DialogBridge: dialogClosed() called from QML")
         self.dialogClosedSignal.emit()
 
+    @pyqtSlot(int, int)
+    def saveWindowPosition(self, x, y):
+        """Called from QML when window position changes"""
+        logger.info(f"DialogBridge: saveWindowPosition({x}, {y}) called from QML")
+        self.windowPositionChanged.emit(x, y)
+
 
 class RecordingDialogManager(QObject):
     """Manages the circular recording indicator dialog."""
@@ -119,6 +126,7 @@ class RecordingDialogManager(QObject):
         # Connect dialog bridge signals for internal handling
         self.dialog_bridge.dismissRequested.connect(self._on_dismiss)
         self.dialog_bridge.openClipboardRequested.connect(self._on_open_clipboard)
+        self.dialog_bridge.windowPositionChanged.connect(self._on_window_position_changed_from_qml)
 
     def initialize(self):
         """Create QML engine and load RecordingDialog.qml"""
@@ -156,12 +164,30 @@ class RecordingDialogManager(QObject):
                 self.window = root_objects[0]
                 logger.info("RecordingDialogManager: QML window loaded successfully")
 
+                # Set initial window flags to prevent border flash
+                from PyQt6.QtCore import Qt
+                settings = Settings()
+                always_on_top = settings.get("recording_dialog_always_on_top", True)
+                base_flags = Qt.WindowType.FramelessWindowHint | Qt.WindowType.Window
+                if always_on_top:
+                    initial_flags = base_flags | Qt.WindowType.WindowStaysOnTopHint
+                else:
+                    initial_flags = base_flags
+                self.window.setFlags(initial_flags)
+                logger.info(f"RecordingDialogManager: Set initial window flags: {initial_flags}")
+
                 # Restore saved window size
                 self._restore_window_size()
+
+                # Restore saved window position
+                self._restore_window_position()
 
                 # Connect size change handler
                 if hasattr(self.window, 'widthChanged'):
                     self.window.widthChanged.connect(self._on_window_size_changed)
+
+                # Position change handlers removed - now handled by QML onXChanged/onYChanged
+
             else:
                 logger.error("RecordingDialogManager: Failed to load QML window")
 
@@ -171,99 +197,44 @@ class RecordingDialogManager(QObject):
     def show(self):
         """Show the recording dialog"""
         if self.window:
+            from PyQt6.QtCore import Qt
+            settings = Settings()
+            always_on_top = settings.get("recording_dialog_always_on_top", True)
+
+            logger.info(f"show() called - setting value: {always_on_top!r} (type: {type(always_on_top).__name__})")
+
+            # Settings.get() already returns a boolean
+            always_on_top = bool(always_on_top)
+
+            logger.info(f"show() - always_on_top={always_on_top}")
+
+            # Set Qt window flags
+            # Use Qt.Window instead of Qt.Tool for better Wayland control
+            # FramelessWindowHint for borderless appearance
+            base_flags = Qt.WindowType.FramelessWindowHint | Qt.WindowType.Window
+            if always_on_top:
+                new_flags = base_flags | Qt.WindowType.WindowStaysOnTopHint
+                logger.info("Adding WindowStaysOnTopHint flag (using Qt.Window base)")
+            else:
+                new_flags = base_flags
+                logger.info("NOT adding WindowStaysOnTopHint flag (using Qt.Window base)")
+
+            logger.info(f"Setting window flags: {new_flags}")
+            self.window.setFlags(new_flags)
+
+            # Show window
             self.window.show()
             self.window.raise_()
             self.window.requestActivate()
 
-            # Set window properties using X11/KDE methods
-            self._set_window_properties()
+            # Restore position after a brief delay (window needs to be fully shown)
+            from PyQt6.QtCore import QTimer
+            QTimer.singleShot(50, self._restore_window_position)
 
             self._visible = True
-            logger.info("RecordingDialogManager: Dialog shown")
+            logger.info(f"RecordingDialogManager: Dialog shown (always_on_top={always_on_top})")
         else:
             logger.warning("RecordingDialogManager: Cannot show - window not initialized")
-
-    def _set_window_properties(self):
-        """Set window to be always on top and on all desktops using KWin"""
-        try:
-            # Use QTimer to set properties after window is fully shown
-            from PyQt6.QtCore import QTimer
-            QTimer.singleShot(100, self._apply_kwin_properties)
-        except Exception as e:
-            logger.warning(f"Could not schedule window properties: {e}")
-
-    def _apply_kwin_properties(self):
-        """Apply KWin-specific window properties"""
-        try:
-            import subprocess
-
-            # Get the window title to find it in KWin
-            window_title = "Syllablaze Recording"
-
-            # Method 1: Use KWin scripting to set properties
-            kwin_script = f"""
-// Find window by title
-var clients = workspace.clientList();
-for (var i = 0; i < clients.length; i++) {{
-    var client = clients[i];
-    if (client.caption.indexOf("{window_title}") !== -1) {{
-        client.onAllDesktops = true;
-        client.keepAbove = true;
-        print("Set Syllablaze window to sticky and always on top");
-    }}
-}}
-"""
-
-            # Execute KWin script via D-Bus
-            try:
-                result = subprocess.run(
-                    ['qdbus', 'org.kde.KWin', '/Scripting',
-                     'org.kde.kwin.Scripting.loadScript',
-                     '/dev/stdin', 'syllablaze-window-props'],
-                    input=kwin_script.encode(),
-                    capture_output=True,
-                    timeout=2
-                )
-
-                if result.returncode == 0:
-                    script_id = result.stdout.decode().strip()
-                    # Run the script
-                    subprocess.run(
-                        ['qdbus', 'org.kde.KWin', f'/Scripting/{script_id}',
-                         'org.kde.kwin.Script.run'],
-                        capture_output=True,
-                        timeout=1
-                    )
-                    logger.info("Applied KWin window properties via scripting")
-                else:
-                    logger.warning(f"KWin script load failed: {result.stderr.decode()}")
-            except Exception as e:
-                logger.warning(f"KWin scripting failed: {e}")
-
-            # Method 2: Fallback to wmctrl if available
-            try:
-                # Find window by title
-                result = subprocess.run(
-                    ['wmctrl', '-l'],
-                    capture_output=True,
-                    timeout=1,
-                    text=True
-                )
-
-                if result.returncode == 0:
-                    for line in result.stdout.split('\n'):
-                        if window_title in line:
-                            win_id = line.split()[0]
-                            # Set sticky and always on top
-                            subprocess.run(['wmctrl', '-i', '-r', win_id, '-b', 'add,sticky,above'],
-                                         capture_output=True, timeout=1)
-                            logger.info("Set window properties via wmctrl")
-                            break
-            except Exception as e:
-                logger.debug(f"wmctrl fallback failed: {e}")
-
-        except Exception as e:
-            logger.warning(f"Could not apply window properties: {e}")
 
     def hide(self):
         """Hide the recording dialog"""
@@ -275,6 +246,21 @@ for (var i = 0; i < clients.length; i++) {{
     def is_visible(self):
         """Check if the dialog is currently visible"""
         return self._visible
+
+    def update_always_on_top(self, always_on_top):
+        """Update the always-on-top window property"""
+        logger.info(f"update_always_on_top() called with: {always_on_top}")
+
+        # If window exists and is visible, hide and show to apply new setting
+        if self.window and self._visible:
+            logger.info("Window is visible - hiding and reshowing with new setting")
+            self.hide()
+
+            # Small delay to ensure settings are persisted before show() reads them
+            from PyQt6.QtCore import QTimer
+            QTimer.singleShot(100, self.show)
+        else:
+            logger.debug("Window not visible - will apply on next show()")
 
     def update_recording_state(self, is_recording):
         """Update recording state in QML"""
@@ -320,7 +306,46 @@ for (var i = 0; i < clients.length; i++) {{
         if width:
             settings = Settings()
             settings.set("recording_dialog_size", int(width))
-            logger.debug(f"RecordingDialogManager: Saved window size {width}px")
+            logger.info(f"RecordingDialogManager: Saved window size {width}px")
+
+    def _restore_window_position(self):
+        """Restore saved window position from Settings"""
+        if not self.window:
+            logger.warning("Cannot restore position - window is None")
+            return
+
+        settings = Settings()
+        saved_x = settings.get("recording_dialog_x", None)
+        saved_y = settings.get("recording_dialog_y", None)
+
+        # Log current position before restore
+        current_x = self.window.property("x")
+        current_y = self.window.property("y")
+        logger.info(f"Current window position before restore: ({current_x}, {current_y})")
+
+        # Only restore if we have a saved position (both x and y must be set)
+        if saved_x is not None and saved_y is not None:
+            try:
+                logger.info(f"Attempting to restore position to ({saved_x}, {saved_y})")
+                self.window.setProperty("x", int(saved_x))
+                self.window.setProperty("y", int(saved_y))
+
+                # Verify it was set
+                new_x = self.window.property("x")
+                new_y = self.window.property("y")
+                logger.info(f"Position after setProperty: ({new_x}, {new_y})")
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Failed to restore window position: {e}")
+        else:
+            logger.info(f"No saved position found (x={saved_x}, y={saved_y}), using window manager default")
+
+    def _on_window_position_changed_from_qml(self, x, y):
+        """Save window position when changed from QML"""
+        if x is not None and y is not None:
+            settings = Settings()
+            settings.set("recording_dialog_x", int(x))
+            settings.set("recording_dialog_y", int(y))
+            logger.info(f"RecordingDialogManager: Saved window position from QML ({x}, {y})")
 
     def _on_dismiss(self):
         """Hide the dialog when dismissed"""

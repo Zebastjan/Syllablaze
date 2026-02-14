@@ -14,15 +14,21 @@ class ProgressWindow(QWidget):
     def __init__(self, title="Recording"):
         super().__init__()
         self.setWindowTitle(title)
-        self.setWindowFlags(Qt.WindowType.WindowStaysOnTopHint |
-                           Qt.WindowType.CustomizeWindowHint |
-                           Qt.WindowType.WindowTitleHint)
-        
-        # Prevent closing while processing
-        self.processing = False
-        
+
         # Get settings
         self.settings = Settings()
+
+        # Set window flags based on settings
+        always_on_top = self.settings.get("progress_window_always_on_top", True)
+        base_flags = Qt.WindowType.CustomizeWindowHint | Qt.WindowType.WindowTitleHint
+        if always_on_top:
+            flags = base_flags | Qt.WindowType.WindowStaysOnTopHint
+        else:
+            flags = base_flags
+        self.setWindowFlags(flags)
+
+        # Prevent closing while processing
+        self.processing = False
         
         # Create main layout
         layout = QVBoxLayout()
@@ -133,3 +139,19 @@ class ProgressWindow(QWidget):
         """Update the progress bar with a percentage value"""
         if self.current_state:
             self.current_state.update(progress=percent)
+
+    def update_always_on_top(self, always_on_top):
+        """Update the always-on-top window property"""
+        base_flags = Qt.WindowType.CustomizeWindowHint | Qt.WindowType.WindowTitleHint
+        if always_on_top:
+            flags = base_flags | Qt.WindowType.WindowStaysOnTopHint
+        else:
+            flags = base_flags
+
+        # Update window flags (requires hide/show cycle)
+        was_visible = self.isVisible()
+        self.setWindowFlags(flags)
+        if was_visible:
+            self.show()
+            self.raise_()
+            self.activateWindow()

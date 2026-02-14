@@ -15,6 +15,10 @@ Kirigami.ScrollablePage {
                 showDialogSwitch.checked = (value !== false)
             } else if (key === "show_progress_window") {
                 showProgressSwitch.checked = (value !== false)
+            } else if (key === "recording_dialog_always_on_top") {
+                alwaysOnTopSwitch.checked = (value !== false)
+            } else if (key === "progress_window_always_on_top") {
+                progressAlwaysOnTopSwitch.checked = (value !== false)
             }
         }
     }
@@ -72,6 +76,26 @@ Kirigami.ScrollablePage {
                 opacity: 0.7
                 font.pointSize: Kirigami.Theme.smallFont.pointSize
             }
+
+            QQC2.Switch {
+                id: alwaysOnTopSwitch
+                Kirigami.FormData.label: "Keep dialog always on top:"
+                checked: settingsBridge ? settingsBridge.get("recording_dialog_always_on_top") !== false : true
+                enabled: showDialogSwitch.checked
+                onToggled: {
+                    if (settingsBridge) {
+                        settingsBridge.set("recording_dialog_always_on_top", checked)
+                    }
+                }
+            }
+
+            QQC2.Label {
+                Layout.fillWidth: true
+                text: "Recording dialog will always stay above other windows for quick access"
+                wrapMode: Text.WordWrap
+                opacity: 0.7
+                font.pointSize: Kirigami.Theme.smallFont.pointSize
+            }
         }
 
         // Progress Window Section
@@ -97,6 +121,26 @@ Kirigami.ScrollablePage {
             QQC2.Label {
                 Layout.fillWidth: true
                 text: "Show the traditional progress window during recording and transcription"
+                wrapMode: Text.WordWrap
+                opacity: 0.7
+                font.pointSize: Kirigami.Theme.smallFont.pointSize
+            }
+
+            QQC2.Switch {
+                id: progressAlwaysOnTopSwitch
+                Kirigami.FormData.label: "Keep progress window always on top:"
+                checked: settingsBridge ? settingsBridge.get("progress_window_always_on_top") !== false : true
+                enabled: showProgressSwitch.checked
+                onToggled: {
+                    if (settingsBridge) {
+                        settingsBridge.set("progress_window_always_on_top", checked)
+                    }
+                }
+            }
+
+            QQC2.Label {
+                Layout.fillWidth: true
+                text: "Progress window will stay above other windows (for testing always-on-top functionality)"
                 wrapMode: Text.WordWrap
                 opacity: 0.7
                 font.pointSize: Kirigami.Theme.smallFont.pointSize

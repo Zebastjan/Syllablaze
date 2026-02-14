@@ -102,6 +102,9 @@ class ApplicationTrayIcon(QSystemTrayIcon):
         self.recording_dialog = None
         self.settings = Settings()  # Initialize settings early
 
+        # Flag to prevent recursive updates when changing dialog visibility
+        self._updating_dialog_visibility = False
+
         # Initialize managers
         self.ui_manager = UIManager()
         self.audio_manager = None
@@ -170,12 +173,9 @@ class ApplicationTrayIcon(QSystemTrayIcon):
                 self._on_recording_dialog_dismissed
             )
 
-            # Show dialog if enabled in settings
-            if self.settings.get("show_recording_dialog", True):
-                self.recording_dialog.show()
-                logger.info("Recording dialog shown (enabled in settings)")
-            else:
-                logger.info("Recording dialog hidden (disabled in settings)")
+            # Set initial dialog visibility from settings
+            initial_visibility = self.settings.get("show_recording_dialog", True)
+            self.set_recording_dialog_visibility(initial_visibility, source="startup")
             logger.info("Recording dialog initialized successfully")
         except Exception as e:
             logger.error(f"Failed to initialize recording dialog: {e}", exc_info=True)
@@ -402,47 +402,120 @@ class ApplicationTrayIcon(QSystemTrayIcon):
             logger.info(f"Final visibility after show: {self.settings_window.isVisible()}")
 
     def _toggle_recording_dialog(self):
-        """Toggle recording dialog visibility"""
-        if self.recording_dialog:
-            if self.recording_dialog.is_visible():
-                self.recording_dialog.hide()
-                self.dialog_action.setText("Show Recording Dialog")
-                logger.info("Recording dialog hidden")
-            else:
-                self.recording_dialog.show()
-                self.dialog_action.setText("Hide Recording Dialog")
-                logger.info("Recording dialog shown")
+        """Toggle recording dialog visibility via tray menu"""
+        self.toggle_recording_dialog_visibility(source="tray_menu")
 
     def _on_recording_dialog_dismissed(self):
         """Handle recording dialog being manually dismissed"""
-        logger.info("Recording dialog was manually dismissed - updating setting")
-        # Update the setting to reflect the dismissal
-        self.settings.set("show_recording_dialog", False)
-        # Update menu text
-        if hasattr(self, 'dialog_action'):
-            self.dialog_action.setText("Show Recording Dialog")
+        logger.info("Recording dialog was manually dismissed")
+        self.set_recording_dialog_visibility(False, source="dismissal")
 
     def _on_setting_changed(self, key, value):
         """Handle setting changes from settings window"""
         logger.info(f"Setting changed: {key} = {value}")
 
+        # Check if we're in the middle of updating dialog visibility
+        # to prevent recursive updates
+        if hasattr(self, '_updating_dialog_visibility') and self._updating_dialog_visibility:
+            logger.debug(f"Ignoring setting change during dialog visibility update: {key}")
+            return
+
         if key == "show_recording_dialog":
             if self.recording_dialog:
-                if value:
-                    self.recording_dialog.show()
-                    logger.info("Recording dialog shown (setting enabled)")
-                    if hasattr(self, 'dialog_action'):
-                        self.dialog_action.setText("Hide Recording Dialog")
-                else:
-                    self.recording_dialog.hide()
-                    logger.info("Recording dialog hidden (setting disabled)")
-                    if hasattr(self, 'dialog_action'):
-                        self.dialog_action.setText("Show Recording Dialog")
+                # Convert value to boolean (QML might send various types)
+                visible = bool(value) if value is not None else True
+                self.set_recording_dialog_visibility(visible, source="settings_ui")
 
         elif key == "show_progress_window":
             # Store the setting for use when showing progress window
             logger.info(f"Progress window visibility setting changed to: {value}")
             # The actual show/hide will be handled in toggle_recording based on this setting
+
+        elif key == "recording_dialog_always_on_top":
+            # Update the recording dialog's always-on-top property
+            if self.recording_dialog:
+                always_on_top = bool(value) if value is not None else True
+                self.recording_dialog.update_always_on_top(always_on_top)
+
+        elif key == "progress_window_always_on_top":
+            # Update the progress window's always-on-top property
+            if hasattr(self, 'ui_manager') and self.ui_manager and self.ui_manager.progress_window:
+                always_on_top = bool(value) if value is not None else True
+                self.ui_manager.progress_window.update_always_on_top(always_on_top)
+                logger.info(f"Updated progress window always-on-top to: {always_on_top}")
+
+    def set_recording_dialog_visibility(self, visible, source="unknown"):
+        """
+        Central method to control recording dialog visibility.
+
+        This is the SINGLE SOURCE OF TRUTH for dialog visibility.
+        All visibility changes MUST flow through this method.
+
+        Args:
+            visible (bool): True to show dialog, False to hide
+            source (str): Source of the change for debugging
+                         ("startup", "tray_menu", "settings_ui", "dismissal", "manual")
+        """
+        if not self.recording_dialog:
+            logger.warning(f"Cannot set dialog visibility: dialog not initialized (source: {source})")
+            return
+
+        logger.info(f"set_recording_dialog_visibility(visible={visible!r}, source={source})")
+
+        # Get current state
+        current_visible = self.recording_dialog.is_visible()
+        current_setting = self.settings.get("show_recording_dialog", True)
+
+        logger.info(f"  Current state: dialog visible={current_visible!r}, setting={current_setting!r}")
+
+        # Check if already in desired state (prevent redundant operations)
+        if current_visible == visible and current_setting == visible:
+            logger.info(f"Dialog already in desired state (visible={visible}), no action needed")
+            return
+
+        # Update dialog visibility
+        if visible:
+            self.recording_dialog.show()
+            logger.info(f"Recording dialog shown (source: {source})")
+        else:
+            self.recording_dialog.hide()
+            logger.info(f"Recording dialog hidden (source: {source})")
+
+        # Update setting (use internal flag to prevent recursive signal)
+        if current_setting != visible:
+            self._updating_dialog_visibility = True
+            try:
+                self.settings.set("show_recording_dialog", visible)
+                # Manually emit to QML to keep it in sync
+                if self.settings_window and self.settings_window.settings_bridge:
+                    self.settings_window.settings_bridge.settingChanged.emit("show_recording_dialog", visible)
+            finally:
+                self._updating_dialog_visibility = False
+
+        # Update tray menu text
+        if hasattr(self, 'dialog_action'):
+            if visible:
+                self.dialog_action.setText("Hide Recording Dialog")
+            else:
+                self.dialog_action.setText("Show Recording Dialog")
+
+    def toggle_recording_dialog_visibility(self, source="unknown"):
+        """
+        Toggle recording dialog visibility (convenience wrapper).
+
+        This is a convenience method that calls set_recording_dialog_visibility()
+        with the opposite of the current state.
+
+        Args:
+            source (str): Source of the change for debugging
+                         ("tray_menu", "keyboard_shortcut", etc.)
+        """
+        if not self.recording_dialog:
+            logger.warning(f"Cannot toggle dialog visibility: dialog not initialized (source: {source})")
+            return
+
+        current_visible = self.recording_dialog.is_visible()
+        self.set_recording_dialog_visibility(not current_visible, source)
 
     def update_tooltip(self, recognized_text=None):
         """Update the tooltip with app name, version, model and language information"""

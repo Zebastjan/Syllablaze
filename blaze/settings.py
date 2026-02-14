@@ -36,20 +36,80 @@ class Settings:
             self.settings.setValue('vad_filter', DEFAULT_VAD_FILTER)
         if self.settings.value('word_timestamps') is None:
             self.settings.setValue('word_timestamps', DEFAULT_WORD_TIMESTAMPS)
+
+        # UI settings - recording dialog
+        if self.settings.value('show_recording_dialog') is None:
+            self.settings.setValue('show_recording_dialog', True)
+        if self.settings.value('recording_dialog_always_on_top') is None:
+            self.settings.setValue('recording_dialog_always_on_top', True)
+        if self.settings.value('recording_dialog_size') is None:
+            self.settings.setValue('recording_dialog_size', 200)
+        if self.settings.value('recording_dialog_x') is None:
+            self.settings.setValue('recording_dialog_x', None)  # None = let window manager decide
+        if self.settings.value('recording_dialog_y') is None:
+            self.settings.setValue('recording_dialog_y', None)
+
+        # UI settings - progress window
+        if self.settings.value('show_progress_window') is None:
+            self.settings.setValue('show_progress_window', True)
+        if self.settings.value('progress_window_always_on_top') is None:
+            self.settings.setValue('progress_window_always_on_top', True)
         
     def get(self, key, default=None):
+        """Get a setting value with proper type conversion"""
         value = self.settings.value(key, default)
-        
+
+        # Handle None/null values
+        if value is None:
+            return default
+
+        # Boolean settings - convert strings to booleans
+        boolean_settings = [
+            'vad_filter',
+            'word_timestamps',
+            'show_recording_dialog',
+            'recording_dialog_always_on_top',
+            'show_progress_window',
+            'progress_window_always_on_top',
+        ]
+
+        if key in boolean_settings:
+            if isinstance(value, str):
+                return value.lower() in ['true', '1', 'yes']
+            return bool(value)
+
+        # Integer settings - ensure proper conversion
+        integer_settings = [
+            'beam_size',
+            'mic_index',
+            'recording_dialog_size',
+            'recording_dialog_x',
+            'recording_dialog_y',
+        ]
+
+        if key in integer_settings:
+            if value is None:
+                return default
+            # Handle QSettings @Invalid() - when stored None is read, it might be string or QVariant
+            if isinstance(value, str) and (value == '' or '@Invalid' in value):
+                logger.debug(f"Setting {key} has invalid/empty value: {value!r}, returning default: {default}")
+                return default
+            try:
+                return int(value)
+            except (ValueError, TypeError):
+                if key == 'beam_size':
+                    logger.warning(f"Invalid beam_size in settings: {value!r}, using default: {DEFAULT_BEAM_SIZE}")
+                    return DEFAULT_BEAM_SIZE
+                elif key == 'mic_index':
+                    logger.warning(f"Invalid mic_index in settings: {value!r}, using default: {default}")
+                    return default
+                logger.debug(f"Cannot convert {key}={value!r} to int, returning default: {default}")
+                return default
+
         # Validate specific settings
         if key == 'model':
             # We'll validate models in the model manager
             pass
-        elif key == 'mic_index':
-            try:
-                return int(value)
-            except (ValueError, TypeError):
-                logger.warning(f"Invalid mic_index in settings: {value}, using default: {default}")
-                return default
         elif key == 'language' and value not in self.VALID_LANGUAGES:
             logger.warning(f"Invalid language in settings: {value}, using default: auto")
             return 'auto'  # Default to auto-detect
@@ -72,14 +132,6 @@ class Settings:
             except (ValueError, TypeError):
                 logger.warning(f"Invalid beam_size in settings: {value}, using default: {DEFAULT_BEAM_SIZE}")
                 return DEFAULT_BEAM_SIZE
-        elif key == 'vad_filter':
-            if isinstance(value, str):
-                return value.lower() in ['true', '1', 'yes']
-            return bool(value)
-        elif key == 'word_timestamps':
-            if isinstance(value, str):
-                return value.lower() in ['true', '1', 'yes']
-            return bool(value)
         elif key == 'shortcut':
             if not value or not isinstance(value, str) or not value.strip():
                 return DEFAULT_SHORTCUT
@@ -88,7 +140,7 @@ class Settings:
         # Log the settings access for important settings
         if key in ['model', 'language', 'sample_rate_mode', 'compute_type', 'device', 'beam_size', 'vad_filter', 'word_timestamps']:
             logger.info(f"Setting accessed: {key} = {value}")
-                
+
         return value
         
     def set(self, key, value):
@@ -129,12 +181,12 @@ class Settings:
 
         # Get the old value for logging
         old_value = self.get(key)
-        
-        # Log the settings change
-        logger.info(f"Setting changed: {key} = {value} (was: {old_value})")
-                
+
+        # Log the settings change with repr() for better debugging
+        logger.info(f"Setting changed: {key} = {value!r} (was: {old_value!r})")
+
         self.settings.setValue(key, value)
-        self.settings.sync()
+        self.settings.sync()  # Force write to disk
         
     def save(self):
         """Save settings to disk"""

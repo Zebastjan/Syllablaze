@@ -6,15 +6,39 @@ ApplicationWindow {
     title: "Syllablaze Recording"
 
     // Borderless window properties with transparency
-    flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool
+    // Flags will be set from Python based on settings (not hardcoded here)
     color: "transparent"
 
     // Circular window dimensions
     width: 200
     height: 200
 
-    // Visible initially
-    visible: true
+    // Start hidden - Python will show if needed
+    visible: false
+
+    // Track position changes in QML
+    onXChanged: {
+        if (root.visible && Qt.platform.os !== "windows") {
+            // Only save position for frameless windows after they're shown
+            // Delay to avoid saving during initial positioning
+            positionSaveTimer.restart()
+        }
+    }
+
+    onYChanged: {
+        if (root.visible && Qt.platform.os !== "windows") {
+            positionSaveTimer.restart()
+        }
+    }
+
+    // Debounce position saving (don't save on every pixel move)
+    Timer {
+        id: positionSaveTimer
+        interval: 500  // Save 500ms after user stops moving window
+        onTriggered: {
+            dialogBridge.saveWindowPosition(root.x, root.y)
+        }
+    }
 
     // Reduce opacity during transcription
     opacity: (audioBridge && audioBridge.isTranscribing) ? 0.5 : 1.0
