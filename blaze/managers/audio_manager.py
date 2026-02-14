@@ -17,6 +17,7 @@ class AudioManager(QObject):
     
     # Define signals
     volume_changing = pyqtSignal(float)  # Signal for volume level updates
+    audio_samples_changing = pyqtSignal(list)  # Signal for audio waveform samples
     recording_completed = pyqtSignal(object)  # Signal for completed recording (with audio data)
     recording_failed = pyqtSignal(str)  # Signal for recording errors
     
@@ -49,6 +50,7 @@ class AudioManager(QObject):
             
             # Connect signals
             self.recorder.volume_changing.connect(self.volume_changing)
+            self.recorder.audio_samples_changing.connect(self.audio_samples_changing)
             self.recorder.recording_completed.connect(self._on_recording_completed)
             self.recorder.recording_failed.connect(self.recording_failed)
             

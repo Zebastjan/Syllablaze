@@ -23,17 +23,25 @@ ApplicationWindow {
         NumberAnimation { duration: 200 }
     }
 
-    // Circular background
+    // Circular background (only visible when recording)
     Rectangle {
         id: background
         anchors.fill: parent
         radius: width / 2
-        color: "#232629"  // Dark background
-        border.color: audioBridge.isRecording ? "#ef2929" : "#3daee9"  // Red when recording, KDE blue otherwise
-        border.width: 2
+        color: audioBridge.isRecording ? "#232629" : "transparent"  // Dark background only when recording
+        border.color: audioBridge.isRecording ? "#ef2929" : "transparent"  // Red border only when recording
+        border.width: audioBridge.isRecording ? 2 : 0
+
+        Behavior on color {
+            ColorAnimation { duration: 200 }
+        }
 
         Behavior on border.color {
             ColorAnimation { duration: 200 }
+        }
+
+        Behavior on border.width {
+            NumberAnimation { duration: 200 }
         }
     }
 

@@ -160,8 +160,12 @@ class ApplicationTrayIcon(QSystemTrayIcon):
                 self.toggle_settings
             )
 
-            # Show dialog persistently
-            self.recording_dialog.show()
+            # Show dialog if enabled in settings
+            if self.settings.get("show_recording_dialog", True):
+                self.recording_dialog.show()
+                logger.info("Recording dialog shown (enabled in settings)")
+            else:
+                logger.info("Recording dialog hidden (disabled in settings)")
             logger.info("Recording dialog initialized successfully")
         except Exception as e:
             logger.error(f"Failed to initialize recording dialog: {e}", exc_info=True)
@@ -361,6 +365,9 @@ class ApplicationTrayIcon(QSystemTrayIcon):
             self.settings_window = SettingsWindow()
             logger.info(f"SettingsWindow created: {type(self.settings_window).__name__}")
 
+            # Connect to settings changes to handle recording dialog visibility
+            self.settings_window.settings_bridge.settingChanged.connect(self._on_setting_changed)
+
         current_visibility = self.settings_window.isVisible()
         logger.info(f"Current settings window visibility: {current_visibility}")
 
@@ -390,6 +397,19 @@ class ApplicationTrayIcon(QSystemTrayIcon):
                 self.recording_dialog.show()
                 self.dialog_action.setText("Hide Recording Dialog")
                 logger.info("Recording dialog shown")
+
+    def _on_setting_changed(self, key, value):
+        """Handle setting changes from settings window"""
+        logger.info(f"Setting changed: {key} = {value}")
+
+        if key == "show_recording_dialog":
+            if self.recording_dialog:
+                if value:
+                    self.recording_dialog.show()
+                    logger.info("Recording dialog shown (setting enabled)")
+                else:
+                    self.recording_dialog.hide()
+                    logger.info("Recording dialog hidden (setting disabled)")
 
     def update_tooltip(self, recognized_text=None):
         """Update the tooltip with app name, version, model and language information"""
@@ -1045,10 +1065,13 @@ def _connect_signals(tray, loading_window, app, ui_manager):
     tray.audio_manager.recording_completed.connect(tray._handle_recording_completed)
     tray.audio_manager.recording_failed.connect(tray.handle_recording_error)
 
-    # Connect volume updates to recording dialog
+    # Connect volume and audio sample updates to recording dialog
     if tray.recording_dialog:
         tray.audio_manager.volume_changing.connect(
             tray.recording_dialog.update_volume
+        )
+        tray.audio_manager.audio_samples_changing.connect(
+            tray.recording_dialog.update_audio_samples
         )
 
     # Connect transcription manager signals

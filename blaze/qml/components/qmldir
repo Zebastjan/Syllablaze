@@ -1,0 +1,3 @@
+module components
+RadialWaveform 1.0 RadialWaveform.qml
+CircularVolumeMeter 1.0 CircularVolumeMeter.qml

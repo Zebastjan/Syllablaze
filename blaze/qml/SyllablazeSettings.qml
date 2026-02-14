@@ -150,6 +150,11 @@ Kirigami.ApplicationWindow {
                                 page: "pages/TranscriptionPage.qml"
                             }
                             ListElement {
+                                name: "User Interface"
+                                icon: "window"
+                                page: "pages/UIPage.qml"
+                            }
+                            ListElement {
                                 name: "Shortcuts"
                                 icon: "configure-shortcuts"
                                 page: "pages/ShortcutsPage.qml"

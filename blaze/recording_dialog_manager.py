@@ -6,8 +6,9 @@ Manages the circular recording indicator dialog with volume visualization.
 
 import os
 import logging
-from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot, QUrl, QSettings
+from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot, QUrl
 from PyQt6.QtQml import QQmlApplicationEngine
+from blaze.settings import Settings
 
 logger = logging.getLogger(__name__)
 
@@ -18,12 +19,14 @@ class AudioBridge(QObject):
     recordingStateChanged = pyqtSignal(bool)  # isRecording
     volumeChanged = pyqtSignal(float)  # 0.0-1.0
     transcribingStateChanged = pyqtSignal(bool)  # isTranscribing
+    audioSamplesChanged = pyqtSignal('QVariantList')  # Audio waveform samples
 
     def __init__(self):
         super().__init__()
         self._is_recording = False
         self._current_volume = 0.0
         self._is_transcribing = False
+        self._audio_samples = []
 
     @pyqtProperty(bool, notify=recordingStateChanged)
     def isRecording(self):
@@ -37,6 +40,10 @@ class AudioBridge(QObject):
     def isTranscribing(self):
         return self._is_transcribing
 
+    @pyqtProperty('QVariantList', notify=audioSamplesChanged)
+    def audioSamples(self):
+        return self._audio_samples
+
     def setRecording(self, recording):
         if self._is_recording != recording:
             self._is_recording = recording
@@ -48,6 +55,13 @@ class AudioBridge(QObject):
         volume = max(0.0, min(1.0, volume))
         self._current_volume = volume
         self.volumeChanged.emit(volume)
+
+    def setAudioSamples(self, samples):
+        """Set audio waveform samples (list of floats -1.0 to 1.0)"""
+        if isinstance(samples, (list, tuple)) and len(samples) > 0:
+            # Keep only last 128 samples for performance
+            self._audio_samples = list(samples[-128:])
+            self.audioSamplesChanged.emit(self._audio_samples)
 
     def setTranscribing(self, transcribing):
         if self._is_transcribing != transcribing:
@@ -150,10 +164,6 @@ class RecordingDialogManager(QObject):
                     self.window.widthChanged.connect(self._on_window_size_changed)
             else:
                 logger.error("RecordingDialogManager: Failed to load QML window")
-                # Print QML errors if any
-                if self.engine:
-                    for error in self.engine.errors():
-                        logger.error(f"QML Error: {error.toString()}")
 
         except Exception as e:
             logger.error(f"RecordingDialogManager: Initialization failed: {e}", exc_info=True)
@@ -164,10 +174,96 @@ class RecordingDialogManager(QObject):
             self.window.show()
             self.window.raise_()
             self.window.requestActivate()
+
+            # Set window properties using X11/KDE methods
+            self._set_window_properties()
+
             self._visible = True
             logger.info("RecordingDialogManager: Dialog shown")
         else:
             logger.warning("RecordingDialogManager: Cannot show - window not initialized")
+
+    def _set_window_properties(self):
+        """Set window to be always on top and on all desktops using KWin"""
+        try:
+            # Use QTimer to set properties after window is fully shown
+            from PyQt6.QtCore import QTimer
+            QTimer.singleShot(100, self._apply_kwin_properties)
+        except Exception as e:
+            logger.warning(f"Could not schedule window properties: {e}")
+
+    def _apply_kwin_properties(self):
+        """Apply KWin-specific window properties"""
+        try:
+            import subprocess
+
+            # Get the window title to find it in KWin
+            window_title = "Syllablaze Recording"
+
+            # Method 1: Use KWin scripting to set properties
+            kwin_script = f"""
+// Find window by title
+var clients = workspace.clientList();
+for (var i = 0; i < clients.length; i++) {{
+    var client = clients[i];
+    if (client.caption.indexOf("{window_title}") !== -1) {{
+        client.onAllDesktops = true;
+        client.keepAbove = true;
+        print("Set Syllablaze window to sticky and always on top");
+    }}
+}}
+"""
+
+            # Execute KWin script via D-Bus
+            try:
+                result = subprocess.run(
+                    ['qdbus', 'org.kde.KWin', '/Scripting',
+                     'org.kde.kwin.Scripting.loadScript',
+                     '/dev/stdin', 'syllablaze-window-props'],
+                    input=kwin_script.encode(),
+                    capture_output=True,
+                    timeout=2
+                )
+
+                if result.returncode == 0:
+                    script_id = result.stdout.decode().strip()
+                    # Run the script
+                    subprocess.run(
+                        ['qdbus', 'org.kde.KWin', f'/Scripting/{script_id}',
+                         'org.kde.kwin.Script.run'],
+                        capture_output=True,
+                        timeout=1
+                    )
+                    logger.info("Applied KWin window properties via scripting")
+                else:
+                    logger.warning(f"KWin script load failed: {result.stderr.decode()}")
+            except Exception as e:
+                logger.warning(f"KWin scripting failed: {e}")
+
+            # Method 2: Fallback to wmctrl if available
+            try:
+                # Find window by title
+                result = subprocess.run(
+                    ['wmctrl', '-l'],
+                    capture_output=True,
+                    timeout=1,
+                    text=True
+                )
+
+                if result.returncode == 0:
+                    for line in result.stdout.split('\n'):
+                        if window_title in line:
+                            win_id = line.split()[0]
+                            # Set sticky and always on top
+                            subprocess.run(['wmctrl', '-i', '-r', win_id, '-b', 'add,sticky,above'],
+                                         capture_output=True, timeout=1)
+                            logger.info("Set window properties via wmctrl")
+                            break
+            except Exception as e:
+                logger.debug(f"wmctrl fallback failed: {e}")
+
+        except Exception as e:
+            logger.warning(f"Could not apply window properties: {e}")
 
     def hide(self):
         """Hide the recording dialog"""
@@ -188,17 +284,21 @@ class RecordingDialogManager(QObject):
         """Update volume level in QML (0.0-1.0)"""
         self.audio_bridge.setVolume(volume)
 
+    def update_audio_samples(self, samples):
+        """Update audio waveform samples"""
+        self.audio_bridge.setAudioSamples(samples)
+
     def update_transcribing_state(self, is_transcribing):
         """Update transcription state in QML"""
         self.audio_bridge.setTranscribing(is_transcribing)
 
     def _restore_window_size(self):
-        """Restore saved window size from QSettings"""
+        """Restore saved window size from Settings"""
         if not self.window:
             return
 
-        settings = QSettings("Syllablaze", "RecordingDialog")
-        saved_size = settings.value("window_size", 200)
+        settings = Settings()
+        saved_size = settings.get("recording_dialog_size", 200)
 
         try:
             saved_size = int(saved_size)
@@ -218,8 +318,8 @@ class RecordingDialogManager(QObject):
 
         width = self.window.property("width")
         if width:
-            settings = QSettings("Syllablaze", "RecordingDialog")
-            settings.setValue("window_size", int(width))
+            settings = Settings()
+            settings.set("recording_dialog_size", int(width))
             logger.debug(f"RecordingDialogManager: Saved window size {width}px")
 
     def _on_dismiss(self):

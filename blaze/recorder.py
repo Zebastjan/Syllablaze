@@ -56,6 +56,7 @@ class AudioRecorder(QObject):
     recording_failed = pyqtSignal(str)
     # Use present continuous for ongoing updates
     volume_changing = pyqtSignal(float)
+    audio_samples_changing = pyqtSignal(list)  # Emits recent audio samples for waveform
 
     def __init__(self):
         super().__init__()
@@ -235,9 +236,19 @@ class AudioRecorder(QObject):
                     audio_data = np.frombuffer(in_data, dtype=np.int16)
                     volume = AudioProcessor.calculate_volume(audio_data)
                     self.volume_changing.emit(volume)
+
+                    # Emit audio samples for waveform visualization
+                    # Downsample and normalize to -1.0 to 1.0 range
+                    # Take every Nth sample to get ~128 samples
+                    step = max(1, len(audio_data) // 128)
+                    samples = audio_data[::step][:128]  # Take up to 128 samples
+                    # Normalize to -1.0 to 1.0
+                    normalized_samples = (samples.astype(float) / 32768.0).tolist()
+                    self.audio_samples_changing.emit(normalized_samples)
                 except Exception as e:
                     logger.error(f"Error calculating volume: {e}")
                     self.volume_changing.emit(0.0)
+                    self.audio_samples_changing.emit([])
                 return (in_data, pyaudio.paContinue)
         except RuntimeError:
             # Handle case where object is being deleted
