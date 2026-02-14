@@ -175,6 +175,17 @@ ApplicationWindow {
         }
     }
 
+    // Timer to distinguish single-click from double-click
+    Timer {
+        id: clickTimer
+        interval: 250  // Wait 250ms to see if it's a double-click
+        onTriggered: {
+            // This is a confirmed single-click
+            console.log("Single click confirmed - toggle recording")
+            dialogBridge.toggleRecording()
+        }
+    }
+
     // Mouse interaction handler
     MouseArea {
         id: mouseHandler
@@ -213,8 +224,8 @@ ApplicationWindow {
             if (!wasDragged) {
                 // It was a click, not a drag
                 if (mouse.button === Qt.LeftButton) {
-                    console.log("Left click - toggle recording")
-                    dialogBridge.toggleRecording()
+                    // Delay the action to distinguish from double-click
+                    clickTimer.restart()
                 }
                 else if (mouse.button === Qt.MiddleButton) {
                     console.log("Middle click - open clipboard")
@@ -230,6 +241,8 @@ ApplicationWindow {
 
         // Double-click to dismiss
         onDoubleClicked: {
+            // Cancel the pending single-click action
+            clickTimer.stop()
             console.log("Double-click - dismiss dialog")
             dialogBridge.dismissDialog()
         }

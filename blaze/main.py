@@ -100,6 +100,7 @@ class ApplicationTrayIcon(QSystemTrayIcon):
         self.progress_window = None
         self.processing_window = None
         self.recording_dialog = None
+        self.settings = Settings()  # Initialize settings early
 
         # Initialize managers
         self.ui_manager = UIManager()
@@ -146,6 +147,12 @@ class ApplicationTrayIcon(QSystemTrayIcon):
         # Create menu
         self.setup_menu()
 
+        # Initialize settings window early to connect signals
+        logger.info("Initializing settings window for signal connections...")
+        self.settings_window = SettingsWindow()
+        self.settings_window.settings_bridge.settingChanged.connect(self._on_setting_changed)
+        logger.info("Settings window created and signals connected")
+
         # Initialize recording dialog
         try:
             logger.info("Initializing recording dialog...")
@@ -158,6 +165,9 @@ class ApplicationTrayIcon(QSystemTrayIcon):
             )
             self.recording_dialog.dialog_bridge.openSettingsRequested.connect(
                 self.toggle_settings
+            )
+            self.recording_dialog.dialog_bridge.dismissRequested.connect(
+                self._on_recording_dialog_dismissed
             )
 
             # Show dialog if enabled in settings
@@ -293,22 +303,29 @@ class ApplicationTrayIcon(QSystemTrayIcon):
                     self.recording = False
             else:
                 # Start recording
-                # Always create a fresh progress window
-                # Close any existing window first
-                if self.progress_window:
-                    self.ui_manager.safely_close_window(
-                        self.progress_window, "before new recording"
-                    )
-                    self.progress_window = None
+                # Create progress window if enabled in settings
+                show_progress = self.settings.get("show_progress_window", True)
+                logger.info(f"Progress window setting: show_progress_window = {show_progress}")
+                if show_progress:
+                    # Always create a fresh progress window
+                    # Close any existing window first
+                    if self.progress_window:
+                        self.ui_manager.safely_close_window(
+                            self.progress_window, "before new recording"
+                        )
+                        self.progress_window = None
 
-                # Create a new progress window
-                self.progress_window = ProgressWindow("Voice Recording")
-                self.progress_window.stop_clicked.connect(self._stop_recording)
+                    # Create a new progress window
+                    self.progress_window = ProgressWindow("Voice Recording")
+                    self.progress_window.stop_clicked.connect(self._stop_recording)
 
-                # Make sure window is visible and on top
-                self.progress_window.show()
-                self.progress_window.raise_()
-                self.progress_window.activateWindow()
+                    # Make sure window is visible and on top
+                    self.progress_window.show()
+                    self.progress_window.raise_()
+                    self.progress_window.activateWindow()
+                    logger.info("Progress window shown (enabled in settings)")
+                else:
+                    logger.info("Progress window hidden (disabled in settings)")
 
                 # Update UI to give immediate feedback
                 self.record_action.setText("Stop Recording")
@@ -360,12 +377,10 @@ class ApplicationTrayIcon(QSystemTrayIcon):
     def toggle_settings(self):
         logger.info("====== toggle_settings() called ======")
 
+        # Settings window is now created early in initialize(), so just use it
         if not self.settings_window:
-            logger.info("Creating new SettingsWindow instance")
+            logger.warning("Settings window not initialized - creating now")
             self.settings_window = SettingsWindow()
-            logger.info(f"SettingsWindow created: {type(self.settings_window).__name__}")
-
-            # Connect to settings changes to handle recording dialog visibility
             self.settings_window.settings_bridge.settingChanged.connect(self._on_setting_changed)
 
         current_visibility = self.settings_window.isVisible()
@@ -398,6 +413,15 @@ class ApplicationTrayIcon(QSystemTrayIcon):
                 self.dialog_action.setText("Hide Recording Dialog")
                 logger.info("Recording dialog shown")
 
+    def _on_recording_dialog_dismissed(self):
+        """Handle recording dialog being manually dismissed"""
+        logger.info("Recording dialog was manually dismissed - updating setting")
+        # Update the setting to reflect the dismissal
+        self.settings.set("show_recording_dialog", False)
+        # Update menu text
+        if hasattr(self, 'dialog_action'):
+            self.dialog_action.setText("Show Recording Dialog")
+
     def _on_setting_changed(self, key, value):
         """Handle setting changes from settings window"""
         logger.info(f"Setting changed: {key} = {value}")
@@ -407,9 +431,18 @@ class ApplicationTrayIcon(QSystemTrayIcon):
                 if value:
                     self.recording_dialog.show()
                     logger.info("Recording dialog shown (setting enabled)")
+                    if hasattr(self, 'dialog_action'):
+                        self.dialog_action.setText("Hide Recording Dialog")
                 else:
                     self.recording_dialog.hide()
                     logger.info("Recording dialog hidden (setting disabled)")
+                    if hasattr(self, 'dialog_action'):
+                        self.dialog_action.setText("Show Recording Dialog")
+
+        elif key == "show_progress_window":
+            # Store the setting for use when showing progress window
+            logger.info(f"Progress window visibility setting changed to: {value}")
+            # The actual show/hide will be handled in toggle_recording based on this setting
 
     def update_tooltip(self, recognized_text=None):
         """Update the tooltip with app name, version, model and language information"""
@@ -569,12 +602,12 @@ class ApplicationTrayIcon(QSystemTrayIcon):
         if self.recording_dialog:
             self.recording_dialog.update_transcribing_state(True)
 
-        # Ensure progress window is in processing mode
+        # Ensure progress window is in processing mode (if enabled)
         if self.progress_window:
             self.progress_window.set_processing_mode()
             self.progress_window.set_status("Starting transcription...")
         else:
-            logger.error("Progress window not available when recording completed")
+            logger.debug("Progress window not shown (disabled in settings or not available)")
 
         try:
             if not self.transcription_manager:
