@@ -22,9 +22,11 @@ Kirigami.ScrollablePage {
             QQC2.Switch {
                 id: showDialogSwitch
                 Kirigami.FormData.label: "Show recording dialog:"
-                checked: settingsBridge.get("show_recording_dialog") !== false
+                checked: settingsBridge ? settingsBridge.get("show_recording_dialog") !== false : true
                 onToggled: {
-                    settingsBridge.set("show_recording_dialog", checked)
+                    if (settingsBridge) {
+                        settingsBridge.set("show_recording_dialog", checked)
+                    }
                 }
             }
 
@@ -42,10 +44,12 @@ Kirigami.ScrollablePage {
                 from: 100
                 to: 500
                 stepSize: 10
-                value: settingsBridge.get("recording_dialog_size") || 200
+                value: settingsBridge ? (settingsBridge.get("recording_dialog_size") || 200) : 200
                 enabled: showDialogSwitch.checked
                 onValueModified: {
-                    settingsBridge.set("recording_dialog_size", value)
+                    if (settingsBridge) {
+                        settingsBridge.set("recording_dialog_size", value)
+                    }
                 }
             }
 
@@ -70,9 +74,11 @@ Kirigami.ScrollablePage {
             QQC2.Switch {
                 id: showProgressSwitch
                 Kirigami.FormData.label: "Show progress window:"
-                checked: settingsBridge.get("show_progress_window") !== false
+                checked: settingsBridge ? settingsBridge.get("show_progress_window") !== false : true
                 onToggled: {
-                    settingsBridge.set("show_progress_window", checked)
+                    if (settingsBridge) {
+                        settingsBridge.set("show_progress_window", checked)
+                    }
                 }
             }
 
