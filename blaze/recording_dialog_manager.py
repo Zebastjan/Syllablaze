@@ -121,8 +121,9 @@ class DialogBridge(QObject):
 class RecordingDialogManager(QObject):
     """Manages the circular recording indicator dialog."""
 
-    def __init__(self, parent=None):
+    def __init__(self, settings, parent=None):
         super().__init__(parent)
+        self.settings = settings
         self.engine = None
         self.window = None
         self.audio_bridge = AudioBridge()
@@ -174,7 +175,7 @@ class RecordingDialogManager(QObject):
                 # Set initial window flags to prevent border flash
                 from PyQt6.QtCore import Qt
 
-                settings = Settings()
+                settings = self.settings
                 always_on_top = settings.get("recording_dialog_always_on_top", True)
                 base_flags = Qt.WindowType.FramelessWindowHint | Qt.WindowType.Window
                 if always_on_top:
@@ -204,7 +205,7 @@ class RecordingDialogManager(QObject):
                 #       "Recording Dialog",
                 #       "recording_dialog_always_on_top"
                 #   )
-                settings = Settings()
+                settings = self.settings
                 initial_always_on_top = settings.get('recording_dialog_always_on_top')
                 logger.info(f"Initializing KWin rule with always_on_top={initial_always_on_top}")
 

@@ -11,12 +11,12 @@ from blaze.ui.state_manager import RecordingState, ProcessingState
 class ProgressWindow(QWidget):
     stop_clicked = pyqtSignal()  # Signal emitted when stop button is clicked
 
-    def __init__(self, title="Recording"):
+    def __init__(self, settings, title="Recording"):
         super().__init__()
         self.setWindowTitle(title)
 
-        # Get settings
-        self.settings = Settings()
+        # Store settings reference
+        self.settings = settings
 
         # Set window flags based on settings
         always_on_top = self.settings.get("progress_window_always_on_top", True)

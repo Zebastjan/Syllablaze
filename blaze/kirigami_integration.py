@@ -39,9 +39,9 @@ class SettingsBridge(QObject):
     modelDownloadComplete = pyqtSignal(str)  # model_name
     modelDownloadError = pyqtSignal(str, str)  # model_name, error_message
 
-    def __init__(self):
+    def __init__(self, settings):
         super().__init__()
-        self.settings = Settings()
+        self.settings = settings
 
     # === Generic get/set ===
 
@@ -476,9 +476,9 @@ class KirigamiSettingsWindow(QWidget):
 
     initialization_complete = pyqtSignal()
 
-    def __init__(self):
+    def __init__(self, settings):
         super().__init__()
-        self.settings = Settings()
+        self.settings = settings
         self.whisper_model = None
         self.current_model = None
 
@@ -486,7 +486,7 @@ class KirigamiSettingsWindow(QWidget):
         # Window size is managed by QML based on screen resolution
 
         # Create bridges
-        self.settings_bridge = SettingsBridge()
+        self.settings_bridge = SettingsBridge(settings)
         self.actions_bridge = ActionsBridge()
 
         # Use QQmlApplicationEngine for reliable QML loading
@@ -631,7 +631,9 @@ def show_kirigami_settings():
     logger.info("This will NOT affect your running Syllablaze instance")
     logger.info("=" * 60)
 
-    window = KirigamiSettingsWindow()
+    # Create a test settings instance for isolated testing
+    test_settings = Settings()
+    window = KirigamiSettingsWindow(test_settings)
     window.show()
 
     return app.exec()

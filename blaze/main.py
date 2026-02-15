@@ -90,7 +90,7 @@ def check_dependencies():
 class ApplicationTrayIcon(QSystemTrayIcon):
     initialization_complete = pyqtSignal()
 
-    def __init__(self):
+    def __init__(self, settings=None):
         super().__init__()
 
         # Initialize basic state
@@ -100,7 +100,7 @@ class ApplicationTrayIcon(QSystemTrayIcon):
         self.progress_window = None
         self.processing_window = None
         self.recording_dialog = None
-        self.settings = Settings()  # Initialize settings early
+        self.settings = settings if settings is not None else Settings()  # Use provided settings or create new
 
         # Flag to prevent recursive updates when changing dialog visibility
         self._updating_dialog_visibility = False
@@ -152,14 +152,14 @@ class ApplicationTrayIcon(QSystemTrayIcon):
 
         # Initialize settings window early to connect signals
         logger.info("Initializing settings window for signal connections...")
-        self.settings_window = SettingsWindow()
+        self.settings_window = SettingsWindow(self.settings)
         self.settings_window.settings_bridge.settingChanged.connect(self._on_setting_changed)
         logger.info("Settings window created and signals connected")
 
         # Initialize recording dialog
         try:
             logger.info("Initializing recording dialog...")
-            self.recording_dialog = RecordingDialogManager()
+            self.recording_dialog = RecordingDialogManager(self.settings)
             self.recording_dialog.initialize()
 
             # Connect dialog bridge signals to app methods
@@ -316,7 +316,7 @@ class ApplicationTrayIcon(QSystemTrayIcon):
                         self.progress_window = None
 
                     # Create a new progress window
-                    self.progress_window = ProgressWindow("Voice Recording")
+                    self.progress_window = ProgressWindow(self.settings, "Voice Recording")
                     self.progress_window.stop_clicked.connect(self._stop_recording)
 
                     # Make sure window is visible and on top
@@ -380,7 +380,7 @@ class ApplicationTrayIcon(QSystemTrayIcon):
         # Settings window is now created early in initialize(), so just use it
         if not self.settings_window:
             logger.warning("Settings window not initialized - creating now")
-            self.settings_window = SettingsWindow()
+            self.settings_window = SettingsWindow(self.settings)
             self.settings_window.settings_bridge.settingChanged.connect(self._on_setting_changed)
 
         current_visibility = self.settings_window.isVisible()
@@ -521,9 +521,8 @@ class ApplicationTrayIcon(QSystemTrayIcon):
         """Update the tooltip with app name, version, model and language information"""
         import sys
 
-        settings = Settings()
-        model_name = settings.get("model", DEFAULT_WHISPER_MODEL)
-        language_code = settings.get("language", "auto")
+        model_name = self.settings.get("model", DEFAULT_WHISPER_MODEL)
+        language_code = self.settings.get("language", "auto")
 
         # Get language display name from VALID_LANGUAGES if available
         if language_code in VALID_LANGUAGES:
@@ -1001,7 +1000,7 @@ def main():
                 return 1
 
             # Create tray icon (assuming ApplicationTrayIcon is defined)
-            tray = ApplicationTrayIcon()
+            tray = ApplicationTrayIcon(settings)
 
             # Connect loading window to tray initialization
             tray.initialization_complete.connect(loading_window.close)
@@ -1122,7 +1121,7 @@ def _initialize_audio_manager(tray, loading_window, app, ui_manager):
 
     # Create audio manager
     global tray_recorder_instance
-    tray.audio_manager = AudioManager(Settings())
+    tray.audio_manager = AudioManager(tray.settings)
     tray_recorder_instance = tray
 
     # Initialize audio manager
@@ -1143,7 +1142,7 @@ def _initialize_transcription_manager(tray, loading_window, app, ui_manager):
     )
 
     # Create transcription manager
-    tray.transcription_manager = TranscriptionManager(Settings())
+    tray.transcription_manager = TranscriptionManager(tray.settings)
 
     # Configure optimal settings
     tray.transcription_manager.configure_optimal_settings()
@@ -1221,7 +1220,7 @@ async def initialize_tray(tray, loading_window, app, ui_manager):
             ui_manager.update_loading_status(
                 loading_window, "Setting up keyboard shortcuts...", 12
             )
-            saved_shortcut = Settings().get("shortcut", DEFAULT_SHORTCUT)
+            saved_shortcut = tray.settings.get("shortcut", DEFAULT_SHORTCUT)
             try:
                 success = await tray.shortcuts.setup_shortcuts(bus, saved_shortcut)
                 if success:
