@@ -28,6 +28,7 @@ from blaze.managers.ui_manager import UIManager
 from blaze.managers.lock_manager import LockManager
 from blaze.managers.audio_manager import AudioManager
 from blaze.managers.transcription_manager import TranscriptionManager
+from blaze.clipboard_manager import ClipboardManager
 
 import asyncio
 from dbus_next.service import ServiceInterface, method
@@ -109,6 +110,7 @@ class ApplicationTrayIcon(QSystemTrayIcon):
         self.ui_manager = UIManager()
         self.audio_manager = None
         self.transcription_manager = None
+        self.clipboard_manager = None  # Will be initialized in initialize()
 
         # Add shortcuts handler
         self.shortcuts = GlobalShortcuts()
@@ -149,6 +151,11 @@ class ApplicationTrayIcon(QSystemTrayIcon):
 
         # Create menu
         self.setup_menu()
+
+        # Initialize clipboard manager early (needed by transcription handler)
+        logger.info("Initializing clipboard manager...")
+        self.clipboard_manager = ClipboardManager(self.settings, self.ui_manager)
+        logger.info("Clipboard manager initialized")
 
         # Initialize settings window early to connect signals
         logger.info("Initializing settings window for signal connections...")
@@ -751,18 +758,8 @@ class ApplicationTrayIcon(QSystemTrayIcon):
             self.recording_dialog.update_transcribing_state(False)
 
         if text:
-            # Copy text to clipboard
-            QApplication.clipboard().setText(text)
-
-            # Truncate text for notification if it's too long
-            display_text = text
-            if len(text) > 100:
-                display_text = text[:100] + "..."
-
-            # Show notification with the transcribed text
-            self.ui_manager.show_notification(
-                self, "Transcription Complete", display_text, self.normal_icon
-            )
+            # Use clipboard manager to copy text and show notification
+            self.clipboard_manager.copy_to_clipboard(text, self, self.normal_icon)
 
             # Update tooltip with recognized text
             self.update_tooltip(text)

@@ -7,7 +7,6 @@ reducing code duplication and improving maintainability.
 
 import logging
 from PyQt6.QtCore import QObject, pyqtSignal
-from PyQt6.QtWidgets import QApplication
 from blaze.constants import (
     DEFAULT_WHISPER_MODEL, DEFAULT_BEAM_SIZE, DEFAULT_VAD_FILTER, 
     DEFAULT_WORD_TIMESTAMPS
@@ -250,32 +249,6 @@ class TranscriptionManager(QObject):
         except Exception as e:
             logger.error(f"Failed to update language: {e}")
             return False
-    
-    def handle_transcription_result(self, text):
-        """Handle transcription result
-        
-        Parameters:
-        -----------
-        text : str
-            Transcribed text
-            
-        Returns:
-        --------
-        str
-            Processed text
-        """
-        if not text:
-            return ""
-            
-        try:
-            # Copy text to clipboard
-            QApplication.clipboard().setText(text)
-            
-            # Return the text
-            return text
-        except Exception as e:
-            logger.error(f"Failed to process transcription result: {e}")
-            return text
     
     def cleanup(self):
         """Clean up transcription resources
