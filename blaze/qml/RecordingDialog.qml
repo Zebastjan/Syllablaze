@@ -21,12 +21,14 @@ ApplicationWindow {
         if (root.visible && Qt.platform.os !== "windows") {
             // Only save position for frameless windows after they're shown
             // Delay to avoid saving during initial positioning
+            console.log("onXChanged fired, x=" + root.x + ", restarting timer")
             positionSaveTimer.restart()
         }
     }
 
     onYChanged: {
         if (root.visible && Qt.platform.os !== "windows") {
+            console.log("onYChanged fired, y=" + root.y + ", restarting timer")
             positionSaveTimer.restart()
         }
     }
@@ -36,6 +38,17 @@ ApplicationWindow {
         id: positionSaveTimer
         interval: 500  // Save 500ms after user stops moving window
         onTriggered: {
+            console.log("positionSaveTimer triggered, saving position (" + root.x + ", " + root.y + ")")
+            dialogBridge.saveWindowPosition(root.x, root.y)
+        }
+    }
+
+    // Delayed save for after drag completes (gives properties time to update)
+    Timer {
+        id: dragEndSaveTimer
+        interval: 500  // Delay after drag ends for window manager to update position
+        onTriggered: {
+            console.log("dragEndSaveTimer triggered, saving position (" + root.x + ", " + root.y + ")")
             dialogBridge.saveWindowPosition(root.x, root.y)
         }
     }
@@ -220,15 +233,7 @@ ApplicationWindow {
         }
     }
 
-    // Detect when dialog becomes visible
-    onVisibleChanged: {
-        if (visible) {
-            // Start ignoring clicks when dialog appears
-            showDelayTimer.ignoreClicks = true
-            showDelayTimer.restart()
-            console.log("Dialog shown - ignoring clicks for 300ms")
-        }
-    }
+
 
     // Mouse interaction handler
     MouseArea {
@@ -237,6 +242,7 @@ ApplicationWindow {
 
         property point pressPos: Qt.point(0, 0)
         property bool wasDragged: false
+        property bool isDoubleClickSequence: false
 
         acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
 
@@ -244,9 +250,15 @@ ApplicationWindow {
             pressPos = Qt.point(mouse.x, mouse.y)
             wasDragged = false
 
-            // For left button, prepare for potential drag
-            if (mouse.button === Qt.LeftButton) {
-                // Don't start system move yet, wait to see if it's a click or drag
+            // On double-click, Qt fires: pressed -> released -> pressed -> doubleClicked -> released
+            // So we detect the second press and cancel any pending single-click
+            if (mouse.button === Qt.LeftButton && clickTimer.running) {
+                console.log("Second press detected - canceling single-click timer and marking as double-click sequence")
+                clickTimer.stop()
+                isDoubleClickSequence = true
+            } else if (mouse.button === Qt.LeftButton) {
+                // First click in potential sequence - reset flag
+                isDoubleClickSequence = false
             }
         }
 
@@ -259,23 +271,41 @@ ApplicationWindow {
             // If moved more than 5 pixels with left button, start system drag
             if (distance > 5 && !wasDragged && mouse.buttons & Qt.LeftButton) {
                 wasDragged = true
+                console.log("Drag started (distance=" + distance + ")")
                 // Use Qt's native window dragging
                 root.startSystemMove()
             }
         }
 
         onReleased: (mouse) => {
+            console.log("onReleased: wasDragged=" + wasDragged + ", button=" + mouse.button + ", clickTimer.running=" + clickTimer.running)
+            
             // Ignore clicks if we just became visible
             if (showDelayTimer.ignoreClicks) {
                 console.log("Click ignored - dialog just appeared")
+                wasDragged = false
                 return
             }
 
-            if (!wasDragged) {
+            if (wasDragged) {
+                // Drag completed - save position
+                // Note: startSystemMove() doesn't always trigger onXChanged/onYChanged
+                // Use delayed save to ensure properties have updated
+                console.log("Drag completed, scheduling delayed save")
+                dragEndSaveTimer.restart()
+                wasDragged = false
+            } else {
                 // It was a click, not a drag
                 if (mouse.button === Qt.LeftButton) {
-                    // Delay the action to distinguish from double-click
-                    clickTimer.restart()
+                    // Don't restart timer if this is part of a double-click sequence
+                    if (!isDoubleClickSequence) {
+                        // Start timer for single-click detection
+                        clickTimer.restart()
+                        console.log("Starting click timer for single-click detection")
+                    } else {
+                        console.log("Suppressing click timer - this was a double-click sequence")
+                        isDoubleClickSequence = false  // Reset flag for next interaction
+                    }
                 }
                 else if (mouse.button === Qt.MiddleButton) {
                     console.log("Middle click - open clipboard")
@@ -286,12 +316,12 @@ ApplicationWindow {
                     contextMenu.popup()
                 }
             }
-            wasDragged = false
         }
 
         // Double-click to dismiss
-        onDoubleClicked: {
-            // Cancel the pending single-click action
+        onDoubleClicked: (mouse) => {
+            // Timer should already be stopped by the second onPressed
+            // But stop it again just to be sure
             clickTimer.stop()
             console.log("Double-click - dismiss dialog")
             dialogBridge.dismissDialog()
@@ -333,49 +363,90 @@ ApplicationWindow {
 
         MenuItem {
             text: "Dismiss"
-            onTriggered: dialogBridge.dismissDialog()
+            onTriggered: {
+                console.log("Dismiss menu clicked - saving position")
+                dialogBridge.saveWindowPosition(root.x, root.y)
+                dialogBridge.dismissDialog()
+            }
         }
     }
 
     // Window behavior
     Component.onCompleted: {
         console.log("RecordingDialog: Window created")
+        console.log("hasSavedPosition:", hasSavedPosition)
 
-        // Center window on screen
-        var screens = Qt.application.screens
-        console.log("Number of screens:", screens ? screens.length : "none")
+        // Only center if no saved position exists
+        if (!hasSavedPosition) {
+            console.log("No saved position - centering window on screen")
 
-        if (screens && screens.length > 0) {
-            var screen = screens[0]
-            console.log("Primary screen:", screen)
+            // Center window on screen
+            var screens = Qt.application.screens
+            console.log("Number of screens:", screens ? screens.length : "none")
 
-            if (screen && screen.availableGeometry) {
-                var screenRect = screen.availableGeometry
-                console.log("Screen geometry:", screenRect.width, "x", screenRect.height, "at", screenRect.x, ",", screenRect.y)
+            if (screens && screens.length > 0) {
+                var screen = screens[0]
+                console.log("Primary screen:", screen)
 
-                var centerX = screenRect.x + (screenRect.width - root.width) / 2
-                var centerY = screenRect.y + (screenRect.height - root.height) / 2
+                if (screen && screen.availableGeometry) {
+                    var screenRect = screen.availableGeometry
+                    console.log("Screen geometry:", screenRect.width, "x", screenRect.height, "at", screenRect.x, ",", screenRect.y)
 
-                console.log("Target position:", centerX, ",", centerY)
+                    var centerX = screenRect.x + (screenRect.width - root.width) / 2
+                    var centerY = screenRect.y + (screenRect.height - root.height) / 2
 
-                root.x = Math.max(0, centerX)
-                root.y = Math.max(0, centerY)
-                console.log("RecordingDialog: Position set to", root.x, ",", root.y)
+                    console.log("Target position:", centerX, ",", centerY)
+
+                    root.x = Math.max(0, centerX)
+                    root.y = Math.max(0, centerY)
+                    console.log("RecordingDialog: Position set to", root.x, ",", root.y)
+                } else {
+                    console.log("No screen geometry available, using default position")
+                    root.x = 100
+                    root.y = 100
+                }
             } else {
-                console.log("No screen geometry available, using default position")
+                console.log("No screens available, using default position")
                 root.x = 100
                 root.y = 100
             }
         } else {
-            console.log("No screens available, using default position")
-            root.x = 100
-            root.y = 100
+            console.log("RecordingDialog: Using saved position from Python (skipping centering)")
+            // Use the initial position passed from Python
+            if (typeof initialX !== 'undefined' && typeof initialY !== 'undefined') {
+                root.x = initialX
+                root.y = initialY
+                console.log("RecordingDialog: Set position to saved coordinates (" + root.x + ", " + root.y + ")")
+            } else {
+                console.log("RecordingDialog: initialX/initialY not available")
+            }
+        }
+    }
+
+    // Visibility change handling - save position when hiding
+    onVisibleChanged: {
+        if (!visible) {
+            // Dialog is being hidden - save position
+            // On Wayland, position is always 0,0 to the app, so only save on X11
+            var isWayland = Qt.platform.os === "linux" && typeof dialogBridge !== 'undefined' && dialogBridge.isWayland ? dialogBridge.isWayland() : false
+            if (!isWayland && root.x !== 0 && root.y !== 0) {
+                console.log("Dialog hiding - saving position (" + root.x + ", " + root.y + ")")
+                dialogBridge.saveWindowPosition(root.x, root.y)
+            } else {
+                console.log("Dialog hiding - skipping position save (Wayland or position 0,0)")
+            }
+        } else {
+            // Dialog shown - ignoring clicks for 300ms
+            showDelayTimer.ignoreClicks = true
+            showDelayTimer.restart()
+            console.log("Dialog shown - ignoring clicks for 300ms")
         }
     }
 
     // Close handling
     onClosing: {
-        console.log("RecordingDialog: Window closing")
+        console.log("RecordingDialog: Window closing - saving position (" + root.x + ", " + root.y + ")")
+        dialogBridge.saveWindowPosition(root.x, root.y)
         dialogBridge.dialogClosed()
     }
 }

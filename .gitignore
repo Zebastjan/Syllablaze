@@ -38,6 +38,7 @@ tmp/
 
 # Log files
 *.log
+debug-logs.txt
 
 # Local configuration
 .env
@@ -65,3 +66,6 @@ htmlcov/
 # Temporary files created by the application
 # These are created in tempfile.mktemp() calls
 /tmp*
+
+# Unrelated projects in working directory
+archon/

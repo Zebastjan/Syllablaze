@@ -9,6 +9,7 @@ import logging
 from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot, QUrl
 from PyQt6.QtQml import QQmlApplicationEngine
 from blaze.settings import Settings
+from blaze.kwin_rules import is_wayland
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +20,7 @@ class AudioBridge(QObject):
     recordingStateChanged = pyqtSignal(bool)  # isRecording
     volumeChanged = pyqtSignal(float)  # 0.0-1.0
     transcribingStateChanged = pyqtSignal(bool)  # isTranscribing
-    audioSamplesChanged = pyqtSignal('QVariantList')  # Audio waveform samples
+    audioSamplesChanged = pyqtSignal("QVariantList")  # Audio waveform samples
 
     def __init__(self):
         super().__init__()
@@ -40,7 +41,7 @@ class AudioBridge(QObject):
     def isTranscribing(self):
         return self._is_transcribing
 
-    @pyqtProperty('QVariantList', notify=audioSamplesChanged)
+    @pyqtProperty("QVariantList", notify=audioSamplesChanged)
     def audioSamples(self):
         return self._audio_samples
 
@@ -111,6 +112,11 @@ class DialogBridge(QObject):
         logger.info(f"DialogBridge: saveWindowPosition({x}, {y}) called from QML")
         self.windowPositionChanged.emit(x, y)
 
+    @pyqtSlot()
+    def isWayland(self):
+        """Check if running on Wayland"""
+        return is_wayland()
+
 
 class RecordingDialogManager(QObject):
     """Manages the circular recording indicator dialog."""
@@ -122,11 +128,14 @@ class RecordingDialogManager(QObject):
         self.audio_bridge = AudioBridge()
         self.dialog_bridge = DialogBridge()
         self._visible = False
+        self._kde_window_manager = None
 
         # Connect dialog bridge signals for internal handling
         self.dialog_bridge.dismissRequested.connect(self._on_dismiss)
         self.dialog_bridge.openClipboardRequested.connect(self._on_open_clipboard)
-        self.dialog_bridge.windowPositionChanged.connect(self._on_window_position_changed_from_qml)
+        self.dialog_bridge.windowPositionChanged.connect(
+            self._on_window_position_changed_from_qml
+        )
 
     def initialize(self):
         """Create QML engine and load RecordingDialog.qml"""
@@ -146,9 +155,7 @@ class RecordingDialogManager(QObject):
 
             # Load QML file
             qml_path = os.path.join(
-                os.path.dirname(__file__),
-                "qml",
-                "RecordingDialog.qml"
+                os.path.dirname(__file__), "qml", "RecordingDialog.qml"
             )
             logger.info(f"RecordingDialogManager: Loading QML from {qml_path}")
 
@@ -166,6 +173,7 @@ class RecordingDialogManager(QObject):
 
                 # Set initial window flags to prevent border flash
                 from PyQt6.QtCore import Qt
+
                 settings = Settings()
                 always_on_top = settings.get("recording_dialog_always_on_top", True)
                 base_flags = Qt.WindowType.FramelessWindowHint | Qt.WindowType.Window
@@ -174,41 +182,75 @@ class RecordingDialogManager(QObject):
                 else:
                     initial_flags = base_flags
                 self.window.setFlags(initial_flags)
-                logger.info(f"RecordingDialogManager: Set initial window flags: {initial_flags}")
+                logger.info(
+                    f"RecordingDialogManager: Set initial window flags: {initial_flags}"
+                )
 
                 # Restore saved window size
                 self._restore_window_size()
 
-                # Restore saved window position
-                self._restore_window_position()
-
                 # Connect size change handler
-                if hasattr(self.window, 'widthChanged'):
+                if hasattr(self.window, "widthChanged"):
                     self.window.widthChanged.connect(self._on_window_size_changed)
 
-                # Position change handlers removed - now handled by QML onXChanged/onYChanged
+                # PHASE 2: Sync initial KWin rule with current setting (critical for Wayland)
+                # This ensures the KWin rule matches the user's setting from startup,
+                # not just when they toggle it in the UI.
+                #
+                # ARCHITECTURAL NOTE: This can be refactored to use WindowSettingsManager:
+                #   from blaze.managers.window_settings_manager import WindowSettingsManager
+                #   manager = WindowSettingsManager()
+                #   success, error = manager.initialize_kwin_rule(
+                #       "Recording Dialog",
+                #       "recording_dialog_always_on_top"
+                #   )
+                settings = Settings()
+                initial_always_on_top = settings.get('recording_dialog_always_on_top')
+                logger.info(f"Initializing KWin rule with always_on_top={initial_always_on_top}")
+
+                from blaze.kwin_rules import create_or_update_kwin_rule
+                success = create_or_update_kwin_rule(enable_keep_above=initial_always_on_top)
+                if not success:
+                    logger.warning("Failed to initialize KWin rule - always-on-top may not work correctly")
+                else:
+                    logger.info("KWin rule initialized successfully")
 
             else:
                 logger.error("RecordingDialogManager: Failed to load QML window")
 
         except Exception as e:
-            logger.error(f"RecordingDialogManager: Initialization failed: {e}", exc_info=True)
+            logger.error(
+                f"RecordingDialogManager: Initialization failed: {e}", exc_info=True
+            )
 
     def show(self):
         """Show the recording dialog"""
         if self.window:
             from PyQt6.QtCore import Qt
-            settings = Settings()
-            always_on_top = settings.get("recording_dialog_always_on_top", True)
 
-            logger.info(f"show() called - setting value: {always_on_top!r} (type: {type(always_on_top).__name__})")
+            settings = Settings()
+            # PHASE 3: Use Settings-level default (no hardcoded default here)
+            # The default is properly initialized in settings.py init_default_settings()
+            always_on_top = settings.get("recording_dialog_always_on_top")
+
+            logger.info(
+                f"show() called - setting value: {always_on_top!r} (type: {type(always_on_top).__name__})"
+            )
 
             # Settings.get() already returns a boolean
             always_on_top = bool(always_on_top)
 
             logger.info(f"show() - always_on_top={always_on_top}")
 
-            # Set Qt window flags
+            # Sync KWin rule with current setting (ensures KWin behavior matches Qt flags)
+            from blaze.kwin_rules import create_or_update_kwin_rule
+            create_or_update_kwin_rule(enable_keep_above=always_on_top)
+            logger.info(f"Synced KWin rule: above={always_on_top}")
+
+            # PHASE 5: Set Qt window flags
+            # WAYLAND/KWIN: KWin rules are what actually control window behavior.
+            # Qt window flags are set as well (some compositors may respect them),
+            # but KWin rules in ~/.config/kwinrulesrc are the real control mechanism.
             # Use Qt.Window instead of Qt.Tool for better Wayland control
             # FramelessWindowHint for borderless appearance
             base_flags = Qt.WindowType.FramelessWindowHint | Qt.WindowType.Window
@@ -217,7 +259,9 @@ class RecordingDialogManager(QObject):
                 logger.info("Adding WindowStaysOnTopHint flag (using Qt.Window base)")
             else:
                 new_flags = base_flags
-                logger.info("NOT adding WindowStaysOnTopHint flag (using Qt.Window base)")
+                logger.info(
+                    "NOT adding WindowStaysOnTopHint flag (using Qt.Window base)"
+                )
 
             logger.info(f"Setting window flags: {new_flags}")
             self.window.setFlags(new_flags)
@@ -227,14 +271,14 @@ class RecordingDialogManager(QObject):
             self.window.raise_()
             self.window.requestActivate()
 
-            # Restore position after a brief delay (window needs to be fully shown)
-            from PyQt6.QtCore import QTimer
-            QTimer.singleShot(50, self._restore_window_position)
-
             self._visible = True
-            logger.info(f"RecordingDialogManager: Dialog shown (always_on_top={always_on_top})")
+            logger.info(
+                f"RecordingDialogManager: Dialog shown (always_on_top={always_on_top})"
+            )
         else:
-            logger.warning("RecordingDialogManager: Cannot show - window not initialized")
+            logger.warning(
+                "RecordingDialogManager: Cannot show - window not initialized"
+            )
 
     def hide(self):
         """Hide the recording dialog"""
@@ -248,19 +292,22 @@ class RecordingDialogManager(QObject):
         return self._visible
 
     def update_always_on_top(self, always_on_top):
-        """Update the always-on-top window property"""
+        """Update the always-on-top window property live (no restart needed)."""
         logger.info(f"update_always_on_top() called with: {always_on_top}")
 
-        # If window exists and is visible, hide and show to apply new setting
-        if self.window and self._visible:
-            logger.info("Window is visible - hiding and reshowing with new setting")
-            self.hide()
+        if not self.window:
+            logger.warning("Cannot update always-on-top - window not initialized")
+            return
 
-            # Small delay to ensure settings are persisted before show() reads them
-            from PyQt6.QtCore import QTimer
-            QTimer.singleShot(100, self.show)
+        # If window is visible, refresh it to apply new setting
+        if self._visible:
+            logger.info("Window visible - refreshing to apply new always-on-top setting")
+            self.hide()
+            self.show()  # Direct synchronous call - mimics manual restart pattern
         else:
             logger.debug("Window not visible - will apply on next show()")
+
+        logger.info(f"Always-on-top update complete: {always_on_top}")
 
     def update_recording_state(self, is_recording):
         """Update recording state in QML"""
@@ -279,12 +326,46 @@ class RecordingDialogManager(QObject):
         self.audio_bridge.setTranscribing(is_transcribing)
 
     def _restore_window_size(self):
-        """Restore saved window size from Settings"""
+        """Restore saved window size from KWin rules (or Settings as fallback)"""
         if not self.window:
             return
 
-        settings = Settings()
-        saved_size = settings.get("recording_dialog_size", 200)
+        saved_size = None
+
+        # Try to get size from KWin rules first
+        try:
+            from blaze.kwin_rules import find_or_create_rule_group, KWINRULESRC
+            import subprocess
+
+            group = find_or_create_rule_group()
+            result = subprocess.run(
+                [
+                    "kreadconfig6",
+                    "--file",
+                    KWINRULESRC,
+                    "--group",
+                    group,
+                    "--key",
+                    "size",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=1,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                size_str = result.stdout.strip()
+                parts = size_str.split(",")
+                if len(parts) == 2:
+                    saved_size = int(parts[0])  # Use width
+                    logger.info(f"Found size in KWin rules: {saved_size}px")
+        except Exception as e:
+            logger.debug(f"Could not read size from KWin rules: {e}")
+
+        # Fall back to Settings
+        if saved_size is None:
+            settings = Settings()
+            saved_size = settings.get("recording_dialog_size", 200)
+            logger.info(f"Using size from Settings: {saved_size}px")
 
         try:
             saved_size = int(saved_size)
@@ -293,7 +374,9 @@ class RecordingDialogManager(QObject):
 
             self.window.setProperty("width", saved_size)
             self.window.setProperty("height", saved_size)
-            logger.info(f"RecordingDialogManager: Restored window size to {saved_size}px")
+            logger.info(
+                f"RecordingDialogManager: Restored window size to {saved_size}px"
+            )
         except (ValueError, TypeError) as e:
             logger.warning(f"Failed to restore window size: {e}")
 
@@ -309,46 +392,22 @@ class RecordingDialogManager(QObject):
             logger.info(f"RecordingDialogManager: Saved window size {width}px")
 
     def _restore_window_position(self):
-        """Restore saved window position from Settings"""
-        if not self.window:
-            logger.warning("Cannot restore position - window is None")
-            return
-
-        settings = Settings()
-        saved_x = settings.get("recording_dialog_x", None)
-        saved_y = settings.get("recording_dialog_y", None)
-
-        # Log current position before restore
-        current_x = self.window.property("x")
-        current_y = self.window.property("y")
-        logger.info(f"Current window position before restore: ({current_x}, {current_y})")
-
-        # Only restore if we have a saved position (both x and y must be set)
-        if saved_x is not None and saved_y is not None:
-            try:
-                logger.info(f"Attempting to restore position to ({saved_x}, {saved_y})")
-                self.window.setProperty("x", int(saved_x))
-                self.window.setProperty("y", int(saved_y))
-
-                # Verify it was set
-                new_x = self.window.property("x")
-                new_y = self.window.property("y")
-                logger.info(f"Position after setProperty: ({new_x}, {new_y})")
-            except (ValueError, TypeError) as e:
-                logger.warning(f"Failed to restore window position: {e}")
-        else:
-            logger.info(f"No saved position found (x={saved_x}, y={saved_y}), using window manager default")
+        """Position restore - no-op (position saving disabled due to KDE/Wayland limitations)"""
+        # Position saving has been disabled - KDE/Wayland doesn't reliably support it
+        pass
 
     def _on_window_position_changed_from_qml(self, x, y):
-        """Save window position when changed from QML"""
-        if x is not None and y is not None:
-            settings = Settings()
-            settings.set("recording_dialog_x", int(x))
-            settings.set("recording_dialog_y", int(y))
-            logger.info(f"RecordingDialogManager: Saved window position from QML ({x}, {y})")
+        """Position change handler - no-op (position saving disabled due to KDE/Wayland limitations)"""
+        # Position saving has been disabled - KDE/Wayland doesn't reliably support it
+        pass
 
     def _on_dismiss(self):
-        """Hide the dialog when dismissed"""
+        """Hide the dialog when dismissed. Stop recording if active."""
+        # If recording is active, stop it before dismissing
+        if self.audio_bridge.isRecording:
+            logger.info("Recording active during dismiss - stopping recording first")
+            self.dialog_bridge.toggleRecordingRequested.emit()
+
         self.hide()
 
     def _on_open_clipboard(self):
@@ -361,10 +420,14 @@ class RecordingDialogManager(QObject):
         try:
             # Method 1: Try Klipper via qdbus (KDE)
             result = subprocess.run(
-                ["qdbus", "org.kde.klipper", "/klipper",
-                 "org.kde.klipper.klipper.showKlipperManuallyInvokeActionMenu"],
+                [
+                    "qdbus",
+                    "org.kde.klipper",
+                    "/klipper",
+                    "org.kde.klipper.klipper.showKlipperManuallyInvokeActionMenu",
+                ],
                 capture_output=True,
-                timeout=2
+                timeout=2,
             )
             if result.returncode == 0:
                 logger.info("Opened Klipper clipboard manager via qdbus")
@@ -390,9 +453,15 @@ class RecordingDialogManager(QObject):
 
         try:
             # Method 3: Try plasma clipboard applet
-            subprocess.Popen(["qdbus", "org.kde.plasmashell", "/PlasmaShell",
-                            "org.kde.PlasmaShell.evaluateScript",
-                            "const clipboardApplet = desktops().map(d => d.widgets('org.kde.plasma.clipboard')).flat()[0]; if (clipboardApplet) clipboardApplet.showPopup();"])
+            subprocess.Popen(
+                [
+                    "qdbus",
+                    "org.kde.plasmashell",
+                    "/PlasmaShell",
+                    "org.kde.PlasmaShell.evaluateScript",
+                    "const clipboardApplet = desktops().map(d => d.widgets('org.kde.plasma.clipboard')).flat()[0]; if (clipboardApplet) clipboardApplet.showPopup();",
+                ]
+            )
             logger.info("Triggered Plasma clipboard applet")
             return
         except Exception as e:
@@ -406,9 +475,12 @@ class RecordingDialogManager(QObject):
                 logger.info(f"Clipboard content: {text[:100]}...")
                 # Show notification with clipboard content
                 from PyQt6.QtWidgets import QMessageBox
+
                 msg = QMessageBox()
                 msg.setWindowTitle("Clipboard Content")
-                msg.setText(f"Current clipboard:\n\n{text[:200]}{'...' if len(text) > 200 else ''}")
+                msg.setText(
+                    f"Current clipboard:\n\n{text[:200]}{'...' if len(text) > 200 else ''}"
+                )
                 msg.setIcon(QMessageBox.Icon.Information)
                 msg.exec()
             else:
