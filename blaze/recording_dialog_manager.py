@@ -119,16 +119,20 @@ class DialogBridge(QObject):
 
 
 class RecordingDialogManager(QObject):
-    """Manages the circular recording indicator dialog."""
+    """Manages the circular recording indicator dialog.
 
-    def __init__(self, settings, parent=None):
+    This is a VIEW component - it responds to ApplicationState changes
+    but does not own visibility state.
+    """
+
+    def __init__(self, settings, app_state, parent=None):
         super().__init__(parent)
         self.settings = settings
+        self.app_state = app_state
         self.engine = None
         self.window = None
         self.audio_bridge = AudioBridge()
         self.dialog_bridge = DialogBridge()
-        self._visible = False
         self._kde_window_manager = None
 
         # Connect dialog bridge signals for internal handling
@@ -225,14 +229,12 @@ class RecordingDialogManager(QObject):
             )
 
     def show(self):
-        """Show the recording dialog"""
+        """Show the recording dialog window (Qt operation only)."""
         if self.window:
             from PyQt6.QtCore import Qt
 
-            settings = Settings()
-            # PHASE 3: Use Settings-level default (no hardcoded default here)
-            # The default is properly initialized in settings.py init_default_settings()
-            always_on_top = settings.get("recording_dialog_always_on_top")
+            # Get always-on-top setting
+            always_on_top = self.settings.get("recording_dialog_always_on_top")
 
             logger.info(
                 f"show() called - setting value: {always_on_top!r} (type: {type(always_on_top).__name__})"
@@ -272,9 +274,8 @@ class RecordingDialogManager(QObject):
             self.window.raise_()
             self.window.requestActivate()
 
-            self._visible = True
             logger.info(
-                f"RecordingDialogManager: Dialog shown (always_on_top={always_on_top})"
+                f"RecordingDialogManager: Dialog window shown (always_on_top={always_on_top})"
             )
         else:
             logger.warning(
@@ -282,15 +283,14 @@ class RecordingDialogManager(QObject):
             )
 
     def hide(self):
-        """Hide the recording dialog"""
+        """Hide the recording dialog window (Qt operation only)."""
         if self.window:
             self.window.hide()
-            self._visible = False
-            logger.info("RecordingDialogManager: Dialog hidden")
+            logger.info("RecordingDialogManager: Dialog window hidden")
 
     def is_visible(self):
-        """Check if the dialog is currently visible"""
-        return self._visible
+        """Check if the dialog should be visible (queries ApplicationState)."""
+        return self.app_state.is_recording_dialog_visible() if self.app_state else False
 
     def update_always_on_top(self, always_on_top):
         """Update the always-on-top window property live (no restart needed)."""

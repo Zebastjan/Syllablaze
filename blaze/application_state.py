@@ -29,9 +29,9 @@ class ApplicationState(QObject):
     transcription_stopped = pyqtSignal()
     transcription_state_changed = pyqtSignal(bool)  # is_transcribing
 
-    # Window visibility signals (will be added in Phase 4)
-    # recording_dialog_visibility_changed = pyqtSignal(bool)
-    # progress_window_visibility_changed = pyqtSignal(bool)
+    # Window visibility signals
+    recording_dialog_visibility_changed = pyqtSignal(bool, str)  # visible, source
+    progress_window_visibility_changed = pyqtSignal(bool)  # visible
 
     def __init__(self, settings):
         """Initialize application state.
@@ -49,6 +49,11 @@ class ApplicationState(QObject):
 
         # Transcription state
         self._is_transcribing = False
+
+        # Window visibility state
+        # Initialize from settings
+        self._recording_dialog_visible = settings.get("show_recording_dialog", True)
+        self._progress_window_visible = settings.get("show_progress_window", True)
 
         logger.info("ApplicationState initialized")
 
@@ -148,6 +153,82 @@ class ApplicationState(QObject):
         self.transcription_stopped.emit()
         return True
 
+    # === Window Visibility State ===
+
+    def is_recording_dialog_visible(self):
+        """Get recording dialog visibility state.
+
+        Returns:
+        --------
+        bool
+            True if recording dialog should be visible
+        """
+        return self._recording_dialog_visible
+
+    def set_recording_dialog_visible(self, visible, source="unknown"):
+        """Set recording dialog visibility state.
+
+        This is the single source of truth for dialog visibility.
+        Updates both state and settings, then emits signal.
+
+        Parameters:
+        -----------
+        visible : bool
+            True to show dialog, False to hide
+        source : str
+            Source of the visibility change (for debugging)
+        """
+        if self._recording_dialog_visible == visible:
+            logger.debug(
+                f"Recording dialog visibility unchanged ({visible}) from {source}"
+            )
+            return False
+
+        logger.info(
+            f"ApplicationState: Recording dialog visibility {self._recording_dialog_visible} -> {visible} (source: {source})"
+        )
+        self._recording_dialog_visible = visible
+
+        # Update settings to persist the change
+        self.settings.set("show_recording_dialog", visible)
+
+        # Emit signal so UI components can react
+        self.recording_dialog_visibility_changed.emit(visible, source)
+        return True
+
+    def is_progress_window_visible(self):
+        """Get progress window visibility state.
+
+        Returns:
+        --------
+        bool
+            True if progress window should be visible
+        """
+        return self._progress_window_visible
+
+    def set_progress_window_visible(self, visible):
+        """Set progress window visibility state.
+
+        Parameters:
+        -----------
+        visible : bool
+            True to show window, False to hide
+        """
+        if self._progress_window_visible == visible:
+            return False
+
+        logger.info(
+            f"ApplicationState: Progress window visibility {self._progress_window_visible} -> {visible}"
+        )
+        self._progress_window_visible = visible
+
+        # Update settings to persist the change
+        self.settings.set("show_progress_window", visible)
+
+        # Emit signal so UI components can react
+        self.progress_window_visibility_changed.emit(visible)
+        return True
+
     # === State Query Methods ===
 
     def get_state_summary(self):
@@ -161,4 +242,6 @@ class ApplicationState(QObject):
         return {
             'recording': self._is_recording,
             'transcribing': self._is_transcribing,
+            'recording_dialog_visible': self._recording_dialog_visible,
+            'progress_window_visible': self._progress_window_visible,
         }
