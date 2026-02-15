@@ -321,9 +321,7 @@ class ApplicationTrayIcon(QSystemTrayIcon):
                 # Mark as transcribing
                 self._set_transcribing_state(True)
 
-                # Update recording dialog
-                if self.recording_dialog:
-                    self.recording_dialog.update_recording_state(False)
+                # Phase 5: update_recording_state() call removed - AudioBridge listens to app_state directly
 
                 # Update progress window before stopping recording
                 if self.progress_window:
@@ -393,9 +391,7 @@ class ApplicationTrayIcon(QSystemTrayIcon):
                             self._set_recording_state(True)
                             logger.info("Recording started successfully")
 
-                            # Update recording dialog
-                            if self.recording_dialog:
-                                self.recording_dialog.update_recording_state(True)
+                            # Phase 5: update_recording_state() call removed - AudioBridge listens to app_state
                         else:
                             # Revert UI if start failed
                             logger.error("Failed to start recording")
@@ -701,9 +697,7 @@ class ApplicationTrayIcon(QSystemTrayIcon):
         """
         logger.info("ApplicationTrayIcon: Recording processed, starting transcription")
 
-        # Update recording dialog to transcribing state
-        if self.recording_dialog:
-            self.recording_dialog.update_transcribing_state(True)
+        # Phase 5: update_transcribing_state() call removed - AudioBridge listens to app_state
 
         # Ensure progress window is in processing mode (if enabled)
         if self.progress_window:
@@ -777,9 +771,7 @@ class ApplicationTrayIcon(QSystemTrayIcon):
         # Reset transcribing state
         self._set_transcribing_state(False)
 
-        # Update recording dialog
-        if self.recording_dialog:
-            self.recording_dialog.update_transcribing_state(False)
+        # Phase 5: update_transcribing_state() call removed - AudioBridge listens to app_state
 
         if text:
             # Use clipboard manager to copy text and show notification
@@ -795,9 +787,7 @@ class ApplicationTrayIcon(QSystemTrayIcon):
         # Reset transcribing state
         self._set_transcribing_state(False)
 
-        # Update recording dialog
-        if self.recording_dialog:
-            self.recording_dialog.update_transcribing_state(False)
+        # Phase 5: update_transcribing_state() call removed - AudioBridge listens to app_state
 
         self.ui_manager.show_notification(
             self, "Transcription Error", error, self.normal_icon

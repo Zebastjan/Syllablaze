@@ -15,23 +15,33 @@ logger = logging.getLogger(__name__)
 
 
 class AudioBridge(QObject):
-    """Bridge exposing recording state and volume to QML."""
+    """Bridge exposing recording state and volume to QML.
+
+    This is a READ-ONLY view of ApplicationState.
+    State is owned by ApplicationState, not by this bridge.
+    """
 
     recordingStateChanged = pyqtSignal(bool)  # isRecording
     volumeChanged = pyqtSignal(float)  # 0.0-1.0
     transcribingStateChanged = pyqtSignal(bool)  # isTranscribing
     audioSamplesChanged = pyqtSignal("QVariantList")  # Audio waveform samples
 
-    def __init__(self):
+    def __init__(self, app_state):
         super().__init__()
-        self._is_recording = False
+        self.app_state = app_state
+        # Audio-specific state (not in ApplicationState)
         self._current_volume = 0.0
-        self._is_transcribing = False
         self._audio_samples = []
+
+        # Connect to ApplicationState signals to relay to QML
+        if self.app_state:
+            self.app_state.recording_state_changed.connect(self._on_recording_state_changed)
+            self.app_state.transcription_state_changed.connect(self._on_transcription_state_changed)
 
     @pyqtProperty(bool, notify=recordingStateChanged)
     def isRecording(self):
-        return self._is_recording
+        """Query ApplicationState for recording status (read-only)."""
+        return self.app_state.is_recording() if self.app_state else False
 
     @pyqtProperty(float, notify=volumeChanged)
     def currentVolume(self):
@@ -39,36 +49,36 @@ class AudioBridge(QObject):
 
     @pyqtProperty(bool, notify=transcribingStateChanged)
     def isTranscribing(self):
-        return self._is_transcribing
+        """Query ApplicationState for transcribing status (read-only)."""
+        return self.app_state.is_transcribing() if self.app_state else False
 
     @pyqtProperty("QVariantList", notify=audioSamplesChanged)
     def audioSamples(self):
         return self._audio_samples
 
-    def setRecording(self, recording):
-        if self._is_recording != recording:
-            self._is_recording = recording
-            self.recordingStateChanged.emit(recording)
-            logger.info(f"AudioBridge: Recording state changed to {recording}")
+    def _on_recording_state_changed(self, is_recording):
+        """Handle recording state changes from ApplicationState (relay to QML)."""
+        logger.info(f"AudioBridge: Recording state changed to {is_recording} (from ApplicationState)")
+        self.recordingStateChanged.emit(is_recording)
+
+    def _on_transcription_state_changed(self, is_transcribing):
+        """Handle transcription state changes from ApplicationState (relay to QML)."""
+        logger.info(f"AudioBridge: Transcribing state changed to {is_transcribing} (from ApplicationState)")
+        self.transcribingStateChanged.emit(is_transcribing)
 
     def setVolume(self, volume):
+        """Update volume level (audio-specific state, not in ApplicationState)."""
         # Clamp volume to 0.0-1.0 range
         volume = max(0.0, min(1.0, volume))
         self._current_volume = volume
         self.volumeChanged.emit(volume)
 
     def setAudioSamples(self, samples):
-        """Set audio waveform samples (list of floats -1.0 to 1.0)"""
+        """Set audio waveform samples (audio-specific state, not in ApplicationState)."""
         if isinstance(samples, (list, tuple)) and len(samples) > 0:
             # Keep only last 128 samples for performance
             self._audio_samples = list(samples[-128:])
             self.audioSamplesChanged.emit(self._audio_samples)
-
-    def setTranscribing(self, transcribing):
-        if self._is_transcribing != transcribing:
-            self._is_transcribing = transcribing
-            self.transcribingStateChanged.emit(transcribing)
-            logger.info(f"AudioBridge: Transcribing state changed to {transcribing}")
 
 
 class DialogBridge(QObject):
@@ -131,7 +141,7 @@ class RecordingDialogManager(QObject):
         self.app_state = app_state
         self.engine = None
         self.window = None
-        self.audio_bridge = AudioBridge()
+        self.audio_bridge = AudioBridge(app_state)
         self.dialog_bridge = DialogBridge()
         self._kde_window_manager = None
 
@@ -301,7 +311,7 @@ class RecordingDialogManager(QObject):
             return
 
         # If window is visible, refresh it to apply new setting
-        if self._visible:
+        if self.window.isVisible():
             logger.info("Window visible - refreshing to apply new always-on-top setting")
             self.hide()
             self.show()  # Direct synchronous call - mimics manual restart pattern
@@ -310,9 +320,8 @@ class RecordingDialogManager(QObject):
 
         logger.info(f"Always-on-top update complete: {always_on_top}")
 
-    def update_recording_state(self, is_recording):
-        """Update recording state in QML"""
-        self.audio_bridge.setRecording(is_recording)
+    # Phase 5: update_recording_state() and update_transcribing_state() removed.
+    # AudioBridge now listens to ApplicationState signals directly.
 
     def update_volume(self, volume):
         """Update volume level in QML (0.0-1.0)"""
@@ -321,10 +330,6 @@ class RecordingDialogManager(QObject):
     def update_audio_samples(self, samples):
         """Update audio waveform samples"""
         self.audio_bridge.setAudioSamples(samples)
-
-    def update_transcribing_state(self, is_transcribing):
-        """Update transcription state in QML"""
-        self.audio_bridge.setTranscribing(is_transcribing)
 
     def _restore_window_size(self):
         """Restore saved window size from KWin rules (or Settings as fallback)"""
