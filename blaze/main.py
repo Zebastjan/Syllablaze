@@ -29,6 +29,7 @@ from blaze.managers.lock_manager import LockManager
 from blaze.managers.audio_manager import AudioManager
 from blaze.managers.transcription_manager import TranscriptionManager
 from blaze.clipboard_manager import ClipboardManager
+from blaze.application_state import ApplicationState
 
 import asyncio
 from dbus_next.service import ServiceInterface, method
@@ -91,17 +92,23 @@ def check_dependencies():
 class ApplicationTrayIcon(QSystemTrayIcon):
     initialization_complete = pyqtSignal()
 
-    def __init__(self, settings=None):
+    def __init__(self, settings=None, app_state=None):
         super().__init__()
 
-        # Initialize basic state
+        # Store settings and app state
+        self.settings = settings if settings is not None else Settings()
+        self.app_state = app_state
+
+        # DEPRECATED: These will be removed in Phase 6, use app_state instead
+        # Kept temporarily for backward compatibility during transition
         self.recording = False
         self.transcribing = False
+
+        # Window references
         self.settings_window = None
         self.progress_window = None
         self.processing_window = None
         self.recording_dialog = None
-        self.settings = settings if settings is not None else Settings()  # Use provided settings or create new
 
         # Flag to prevent recursive updates when changing dialog visibility
         self._updating_dialog_visibility = False
@@ -121,6 +128,40 @@ class ApplicationTrayIcon(QSystemTrayIcon):
 
         # Enable activation by left click
         self.activated.connect(self.on_activate)
+
+    # === State Synchronization Methods ===
+    # These keep the deprecated self.recording/self.transcribing in sync with app_state
+    # Will be removed in Phase 6 when we fully transition to app_state
+
+    def _set_recording_state(self, is_recording):
+        """Set recording state in both old field and app_state.
+
+        Parameters:
+        -----------
+        is_recording : bool
+            True if recording, False otherwise
+        """
+        self.recording = is_recording
+        if self.app_state:
+            if is_recording:
+                self.app_state.start_recording()
+            else:
+                self.app_state.stop_recording()
+
+    def _set_transcribing_state(self, is_transcribing):
+        """Set transcribing state in both old field and app_state.
+
+        Parameters:
+        -----------
+        is_transcribing : bool
+            True if transcribing, False otherwise
+        """
+        self.transcribing = is_transcribing
+        if self.app_state:
+            if is_transcribing:
+                self.app_state.start_transcription()
+            else:
+                self.app_state.stop_transcription()
 
     def initialize(self):
         """Initialize the tray recorder after showing loading window"""
@@ -273,7 +314,7 @@ class ApplicationTrayIcon(QSystemTrayIcon):
                 self.setIcon(self.normal_icon)
 
                 # Mark as transcribing
-                self.transcribing = True
+                self._set_transcribing_state(True)
 
                 # Update recording dialog
                 if self.recording_dialog:
@@ -290,7 +331,7 @@ class ApplicationTrayIcon(QSystemTrayIcon):
                         # Only change recording state after successful stop
                         result = self.audio_manager.stop_recording()
                         if result:
-                            self.recording = False
+                            self._set_recording_state(False)
                             logger.info("Recording stopped successfully")
                         else:
                             # Revert UI if stop failed
@@ -307,7 +348,7 @@ class ApplicationTrayIcon(QSystemTrayIcon):
                             self.progress_window = None
                 else:
                     # No audio manager, just update state
-                    self.recording = False
+                    self._set_recording_state(False)
             else:
                 # Start recording
                 # Create progress window if enabled in settings
@@ -344,7 +385,7 @@ class ApplicationTrayIcon(QSystemTrayIcon):
                         # Only change recording state after successful start
                         result = self.audio_manager.start_recording()
                         if result:
-                            self.recording = True
+                            self._set_recording_state(True)
                             logger.info("Recording started successfully")
 
                             # Update recording dialog
@@ -368,7 +409,7 @@ class ApplicationTrayIcon(QSystemTrayIcon):
                             self.progress_window = None
                 else:
                     # No audio manager, just update state
-                    self.recording = True
+                    self._set_recording_state(True)
         finally:
             # Always release the lock
             self._recording_lock = False
@@ -751,7 +792,7 @@ class ApplicationTrayIcon(QSystemTrayIcon):
 
     def handle_transcription_finished(self, text):
         # Reset transcribing state
-        self.transcribing = False
+        self._set_transcribing_state(False)
 
         # Update recording dialog
         if self.recording_dialog:
@@ -769,7 +810,7 @@ class ApplicationTrayIcon(QSystemTrayIcon):
 
     def handle_transcription_error(self, error):
         # Reset transcribing state
-        self.transcribing = False
+        self._set_transcribing_state(False)
 
         # Update recording dialog
         if self.recording_dialog:
@@ -968,6 +1009,10 @@ def main():
                 settings.set("device", "cpu")
                 settings.set("compute_type", "float32")
 
+            # Create application state manager (single source of truth)
+            app_state = ApplicationState(settings)
+            logger.info("Application state manager created")
+
             # Check if already running (assuming lock_manager is defined elsewhere)
             if not lock_manager.acquire_lock():
                 print("Syllablaze is already running. Only one instance is allowed.")
@@ -997,7 +1042,7 @@ def main():
                 return 1
 
             # Create tray icon (assuming ApplicationTrayIcon is defined)
-            tray = ApplicationTrayIcon(settings)
+            tray = ApplicationTrayIcon(settings, app_state)
 
             # Connect loading window to tray initialization
             tray.initialization_complete.connect(loading_window.close)
