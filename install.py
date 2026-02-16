@@ -15,6 +15,9 @@ import shutil
 import sys
 import subprocess
 import warnings
+import threading
+import time
+import itertools
 
 # Add the current directory to the path so we can import from blaze
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -50,32 +53,35 @@ def print_stage(stage_num, total_stages, stage_name):
 
 def install_with_pipx(skip_whisper=False):
     """Install the application using pipx"""
+    # Import version from constants
+    from blaze.constants import APP_VERSION
+
     # Define total number of installation stages
     total_stages = 6  # Dependencies check, setup creation, pipx install, verification, desktop integration, completion
-    
+
     print_stage(1, total_stages, "Checking dependencies and preparing installation")
     try:
         # Process requirements.txt
         with open("requirements.txt", "r") as f:
             requirements = f.read().splitlines()
-            
+
         # Filter out empty lines and comments
         requirements = [req for req in requirements if req and not req.startswith('#')]
-        
+
         # Remove openai-whisper if skip_whisper is True
         if skip_whisper:
             requirements = [req for req in requirements if "openai-whisper" not in req]
             print("NOTE: Skipping openai-whisper as requested. You will need to install it manually later.")
-        
+
         # Display requirements that will be installed
         print("Packages that will be installed:")
         for i, req in enumerate(requirements, 1):
             print(f"  {i}. {req}")
-        
+
         # Create setup.py file for pipx installation
         print_stage(2, total_stages, "Creating setup configuration")
         with open("setup.py", "w") as f:
-            f.write("""
+            f.write(f"""
 from setuptools import setup, find_packages
 import os
 import sys
@@ -90,14 +96,14 @@ with open("requirements.txt") as req_file:
 
 setup(
     name="syllablaze",
-    version="0.3",  # Hardcoded version for now
+    version="{APP_VERSION}",
     packages=find_packages(),
     install_requires=requirements,
-    entry_points={
+    entry_points={{
         "console_scripts": [
             "syllablaze=blaze.main:main",
         ],
-    },
+    }},
 )
 """)
         
@@ -120,106 +126,59 @@ setup(
                 stderr=subprocess.PIPE,
                 text=True
             )
-            
-            # Stream output in real-time
+
+            # Stream output in real-time with progress tracking
+            print("\n  Installation progress:")
+            current_package = None
+            pip_install_started = False
+
             while True:
                 output = process.stdout.readline()
                 if output == '' and process.poll() is not None:
                     break
-                if output:
-                    print(output.strip())
-            
+
+                line = output.strip()
+
+                # Skip empty lines
+                if not line:
+                    continue
+
+                # Show all output for transparency
+                print(f"  {line}")
+
+                # Track installation progress markers
+                if "Collecting" in line or "Downloading" in line:
+                    # Highlight package downloads
+                    if current_package not in line:
+                        for package in requirements:
+                            if package in line:
+                                current_package = package
+                                print(f"  → Installing {package}...")
+                                break
+
+                # Show successful installation message
+                if "Successfully installed" in line:
+                    print("  ✓ Installation packages ready")
+
             # Check return code
             return_code = process.poll()
             if return_code != 0:
+                # Show error output
+                error_output = process.stderr.read()
+                if error_output:
+                    print(f"\n  [ERROR] Installation failed with errors:")
+                    print(f"  {error_output}")
                 raise subprocess.CalledProcessError(return_code, process.args)
         except subprocess.CalledProcessError as e:
             print(f"  [ERROR] Installation failed: {e}")
             return False
 
-        print("\n  Installation progress:")
-        current_package = None
-        pip_install_started = False
-        
-        for line in iter(process.stdout.readline, ""):
-            # Filter and display the most relevant verbose output
-            line = line.strip()
-            
-            # Skip empty lines
-            if not line:
-                continue
-                
-            # Check for package installation indicators
-            for package in requirements:
-                if package in line and "Installing" in line and package != current_package:
-                    current_package = package
-                    print(f"\n  [STAGE 3.{requirements.index(package)+1}/{len(requirements)}] Installing {package}...")
-                    break
-            
-            # Show pip install progress
-            if "pip install" in line and not pip_install_started:
-                pip_install_started = True
-                print("  Starting pip installation process...")
-            
-            # Show download progress
-            if "Downloading" in line or "Processing" in line:
-                print(f"    {line}")
-            
-            # Show build/wheel progress
-            if "Building wheel" in line or "Created wheel" in line:
-                print(f"    {line}")
-                
-            # Show successful installation messages
-            if "Successfully installed" in line:
-                packages_installed = line.replace("Successfully installed", "").strip()
-                print(f"    Successfully installed: {packages_installed}")
-                print("    Please wait... ", end="", flush=True)
-                
-                # Start a simple spinner animation
-                import threading
-                import time
-                import itertools
-                
-                # Define the spinner animation
-                def spin():
-                    spinner = itertools.cycle(['-', '/', '|', '\\'])
-                    while not process.poll():
-                        sys.stdout.write(next(spinner))
-                        sys.stdout.flush()
-                        time.sleep(0.1)
-                        sys.stdout.write('\b')
-                        sys.stdout.flush()
-                
-                # Start the spinner in a separate thread
-                spinner_thread = threading.Thread(target=spin)
-                spinner_thread.daemon = True
-                spinner_thread.start()
-                
-            # Show package installation completion
-            if "installed package" in line and "syllablaze" in line:
-                print(f"    {line}")
-        
-        # Wait for process to complete
-        print("\n  Waiting for installation to complete...")
-        process.wait()
-        
-        # Make sure we close stdout to prevent resource leaks
+        # Installation successful
+        print("\n  [SUCCESS] Installation process completed successfully.")
+
+        # Close stdout to prevent resource leaks
         process.stdout.close()
-        
-        # Check if installation was successful
-        if process.returncode == 0:
-            print("\n  [SUCCESS] Installation process completed successfully.")
-        else:
-            print(f"\n  [ERROR] Installation failed with return code {process.returncode}")
-            print("  Error details:")
-            # We don't need to try/except here since we're not using timeout anymore
-            # and stdout should still be open
-            error_output = process.stdout.readlines()
-            if error_output:
-                for line in error_output[-10:]:  # Show last 10 lines
-                    print(f"    {line.strip()}")
-            return False
-        
+
         print_stage(4, total_stages, "Verifying installation")
         # Verification happens in verify_installation() function
         
@@ -286,14 +245,20 @@ def install_desktop_integration():
         # Set proper permissions for desktop file
         os.chmod(desktop_dst, 0o644)  # rw-r--r--
         
-        # Copy icon from resources directory
-        icon_src = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resources", "syllablaze.png")
-        icon_dst = os.path.join(icon_dir, "syllablaze.png")
+        # Copy icon from resources directory (using SVG for better scaling)
+        icon_src = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resources", "syllablaze.svg")
+        icon_dst = os.path.join(icon_dir, "syllablaze.svg")
         shutil.copy2(icon_src, icon_dst)
-        
+
         # Also copy icon to applications directory for better compatibility
-        icon_app_dst = os.path.join(app_dir, "syllablaze.png")
+        icon_app_dst = os.path.join(app_dir, "syllablaze.svg")
         shutil.copy2(icon_src, icon_app_dst)
+
+        # For backward compatibility, also install as PNG name (some systems may look for it)
+        icon_dst_png = os.path.join(icon_dir, "syllablaze.png")
+        shutil.copy2(icon_src, icon_dst_png)
+        icon_app_dst_png = os.path.join(app_dir, "syllablaze.png")
+        shutil.copy2(icon_src, icon_app_dst_png)
         
         # Make run script executable (now in blaze/ directory)
         run_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "blaze", "run-syllablaze.sh")
@@ -323,7 +288,7 @@ def install_desktop_integration():
             
         print("  [SUCCESS] Desktop integration files installed successfully")
         print(f"    Desktop file: {desktop_dst}")
-        print(f"    Icon: {icon_dst}")
+        print(f"    Icon: {icon_dst} (and .png fallback)")
         print("    KDE menu cache refreshed")
         return True
     except Exception as e:
@@ -357,19 +322,30 @@ def parse_arguments():
     import argparse
     parser = argparse.ArgumentParser(description="Install Syllablaze")
     parser.add_argument("--skip-whisper", action="store_true", help="Skip installing the openai-whisper package")
+    parser.add_argument("--force-reinstall", action="store_true",
+                       help="Uninstall existing installation and reinstall (preserves settings)")
     return parser.parse_args()
 
-def check_if_already_installed():
+def check_if_already_installed(force_reinstall=False):
     """Check if Syllablaze is already installed with pipx"""
     try:
         result = subprocess.run(["pipx", "list"], capture_output=True, text=True)
         if "syllablaze" in result.stdout:
-            print("[INFO] Syllablaze is already installed with pipx.")
-            print("[INFO] If you want to reinstall, first run: pipx uninstall syllablaze")
-            for line in result.stdout.splitlines():
-                if "syllablaze" in line:
-                    print(f"  {line.strip()}")
-            return True
+            if force_reinstall:
+                print("[INFO] Syllablaze is already installed. Reinstalling...")
+                subprocess.run(["pipx", "uninstall", "syllablaze"], check=True)
+                return False  # Allow installation to proceed
+            else:
+                # Interactive prompt
+                print("[INFO] Syllablaze is already installed.")
+                response = input("Reinstall? (y/n): ").strip().lower()
+                if response == 'y':
+                    print("Uninstalling existing installation...")
+                    subprocess.run(["pipx", "uninstall", "syllablaze"], check=True)
+                    return False  # Allow installation to proceed
+                else:
+                    print("Installation cancelled.")
+                    return True  # Block installation
         return False
     except subprocess.CalledProcessError:
         return False
@@ -384,10 +360,10 @@ def check_gpu_support():
     except Exception:
         return False
 
-def run_installation(skip_whisper=False):
+def run_installation(skip_whisper=False, force_reinstall=False):
     """Run the complete installation process with stages"""
     # Check if already installed
-    if check_if_already_installed():
+    if check_if_already_installed(force_reinstall=force_reinstall):
         return False
         
     # Check system dependencies
@@ -441,7 +417,8 @@ if __name__ == "__main__":
     
     # Run installation
     try:
-        if not run_installation(skip_whisper=args.skip_whisper):
+        if not run_installation(skip_whisper=args.skip_whisper,
+                               force_reinstall=args.force_reinstall):
             sys.exit(1)
         sys.exit(0)
     except KeyboardInterrupt:
