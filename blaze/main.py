@@ -99,14 +99,8 @@ class ApplicationTrayIcon(QSystemTrayIcon):
         self.settings = settings if settings is not None else Settings()
         self.app_state = app_state
 
-        # DEPRECATED: These will be removed in Phase 6, use app_state instead
-        # Kept temporarily for backward compatibility during transition
-        self.recording = False
-        self.transcribing = False
-
         # Window references
         self.settings_window = None
-        self.progress_window = None
         self.processing_window = None
         self.recording_dialog = None
 
@@ -126,39 +120,6 @@ class ApplicationTrayIcon(QSystemTrayIcon):
         # Enable activation by left click
         self.activated.connect(self.on_activate)
 
-    # === State Synchronization Methods ===
-    # These keep the deprecated self.recording/self.transcribing in sync with app_state
-    # Will be removed in Phase 6 when we fully transition to app_state
-
-    def _set_recording_state(self, is_recording):
-        """Set recording state in both old field and app_state.
-
-        Parameters:
-        -----------
-        is_recording : bool
-            True if recording, False otherwise
-        """
-        self.recording = is_recording
-        if self.app_state:
-            if is_recording:
-                self.app_state.start_recording()
-            else:
-                self.app_state.stop_recording()
-
-    def _set_transcribing_state(self, is_transcribing):
-        """Set transcribing state in both old field and app_state.
-
-        Parameters:
-        -----------
-        is_transcribing : bool
-            True if transcribing, False otherwise
-        """
-        self.transcribing = is_transcribing
-        if self.app_state:
-            if is_transcribing:
-                self.app_state.start_transcription()
-            else:
-                self.app_state.stop_transcription()
 
     def initialize(self):
         """Initialize the tray recorder after showing loading window"""
@@ -183,9 +144,8 @@ class ApplicationTrayIcon(QSystemTrayIcon):
         QApplication.instance().setWindowIcon(self.app_icon)
         self.setIcon(self.app_icon)
 
-        # Use app icon for normal state and theme icon for recording
-        self.normal_icon = self.app_icon
-        self.recording_icon = QIcon.fromTheme("media-playback-stop")
+        # Phase 6: Initialize icons in UIManager
+        self.ui_manager.initialize_icons(self.app_icon)
 
         # Create menu
         self.setup_menu()
@@ -275,58 +235,53 @@ class ApplicationTrayIcon(QSystemTrayIcon):
 
     def toggle_recording(self):
         """Toggle recording state with improved resilience to rapid clicks"""
-        # Don't allow toggling while transcribing
-        if self.transcribing:
-            logger.info("Cannot toggle recording while transcription is in progress")
-            return
-
-        # Use a lock to prevent concurrent execution of this method
-        if hasattr(self, "_recording_lock") and self._recording_lock:
+        # Phase 6: Use AudioManager lock to prevent concurrent operations
+        if not self.audio_manager.acquire_recording_lock():
             logger.info("Recording toggle already in progress, ignoring request")
             return
 
-        # Set lock
-        self._recording_lock = True
-
         try:
-            # Check if transcriber is properly initialized
-            if not self.recording and (
-                not hasattr(self, "transcription_manager")
-                or not self.transcription_manager
-                or not hasattr(self.transcription_manager.transcriber, "model")
-                or not self.transcription_manager.transcriber.model
-            ):
-                # Transcriber is not properly initialized, show a message
-                self.ui_manager.show_notification(
-                    self,
-                    "No Models Downloaded",
-                    "No Whisper models are downloaded. Please go to Settings to download a model.",
-                    self.normal_icon,
+            # Phase 6: Check readiness via AudioManager
+            if not self.app_state.is_recording():
+                ready, error_msg = self.audio_manager.is_ready_to_record(
+                    self.transcription_manager,
+                    self.app_state
                 )
-                # Open settings window to allow user to download a model
-                self.toggle_settings()
-                return
+                if not ready:
+                    self.ui_manager.show_notification(
+                        self,
+                        "Cannot Record",
+                        error_msg,
+                        self.ui_manager.normal_icon,
+                    )
+                    # If no model, open settings
+                    if "model" in error_msg.lower():
+                        self.toggle_settings()
+                    return
 
-            # Get current state before changing it (for logging)
-            current_state = "recording" if self.recording else "not recording"
-            new_state = "stop recording" if self.recording else "start recording"
+            # Phase 6: Get current state from app_state
+            is_recording = self.app_state.is_recording()
+            current_state = "recording" if is_recording else "not recording"
+            new_state = "stop recording" if is_recording else "start recording"
             logger.info(f"Toggle recording: {current_state} -> {new_state}")
 
-            if self.recording:
+            if self.app_state.is_recording():
                 # Stop recording
                 # Update UI first to give immediate feedback
                 self.record_action.setText("Start Recording")
-                self.setIcon(self.normal_icon)
+                # Phase 6: Use UIManager for icon updates
+                self.ui_manager.update_tray_icon_state(False, self)
 
-                # Mark as transcribing
-                self._set_transcribing_state(True)
+                # Phase 6: Mark as transcribing via app_state
+                self.app_state.start_transcription()
 
                 # Phase 5: update_recording_state() call removed - AudioBridge listens to app_state directly
 
                 # Update progress window before stopping recording
-                if self.progress_window:
-                    self.progress_window.set_processing_mode()
-                    self.progress_window.set_status("Processing audio...")
+                progress_window = self.ui_manager.get_progress_window()
+                if progress_window:
+                    progress_window.set_processing_mode()
+                    progress_window.set_status("Processing audio...")
 
                 # Stop the actual recording
                 if self.audio_manager:
@@ -334,53 +289,40 @@ class ApplicationTrayIcon(QSystemTrayIcon):
                         # Only change recording state after successful stop
                         result = self.audio_manager.stop_recording()
                         if result:
-                            self._set_recording_state(False)
+                            # Phase 6: Update state via app_state
+                            self.app_state.stop_recording()
                             logger.info("Recording stopped successfully")
                         else:
                             # Revert UI if stop failed
                             logger.error("Failed to stop recording")
                             self.record_action.setText("Stop Recording")
-                            self.setIcon(self.recording_icon)
+                            self.ui_manager.update_tray_icon_state(True, self)
                     except Exception as e:
                         logger.error(f"Error stopping recording: {e}")
                         # Revert UI if exception occurred
                         self.record_action.setText("Stop Recording")
-                        self.setIcon(self.recording_icon)
-                        if self.progress_window:
-                            self.progress_window.close()
-                            self.progress_window = None
+                        self.ui_manager.update_tray_icon_state(True, self)
+                        self.ui_manager.close_progress_window("after stop error")
                 else:
                     # No audio manager, just update state
-                    self._set_recording_state(False)
+                    # Phase 6: Update state via app_state
+                    self.app_state.stop_recording()
             else:
                 # Start recording
-                # Create progress window if enabled in settings
-                show_progress = self.settings.get("show_progress_window", True)
-                logger.info(f"Progress window setting: show_progress_window = {show_progress}")
-                if show_progress:
-                    # Always create a fresh progress window
-                    # Close any existing window first
-                    if self.progress_window:
-                        self.ui_manager.safely_close_window(
-                            self.progress_window, "before new recording"
-                        )
-                        self.progress_window = None
-
-                    # Create a new progress window
-                    self.progress_window = ProgressWindow(self.settings, "Voice Recording")
-                    self.progress_window.stop_clicked.connect(self._stop_recording)
-
+                # Phase 6: Use UIManager to create progress window
+                progress_window = self.ui_manager.create_progress_window(self.settings, "Voice Recording")
+                if progress_window:
+                    progress_window.stop_clicked.connect(self._stop_recording)
                     # Make sure window is visible and on top
-                    self.progress_window.show()
-                    self.progress_window.raise_()
-                    self.progress_window.activateWindow()
-                    logger.info("Progress window shown (enabled in settings)")
-                else:
-                    logger.info("Progress window hidden (disabled in settings)")
+                    progress_window.show()
+                    progress_window.raise_()
+                    progress_window.activateWindow()
+                    logger.info("Progress window shown")
 
                 # Update UI to give immediate feedback
                 self.record_action.setText("Stop Recording")
-                self.setIcon(self.recording_icon)
+                # Phase 6: Use UIManager for icon updates
+                self.ui_manager.update_tray_icon_state(True, self)
 
                 # Start the actual recording
                 if self.audio_manager:
@@ -388,7 +330,8 @@ class ApplicationTrayIcon(QSystemTrayIcon):
                         # Only change recording state after successful start
                         result = self.audio_manager.start_recording()
                         if result:
-                            self._set_recording_state(True)
+                            # Phase 6: Update state via app_state
+                            self.app_state.start_recording()
                             logger.info("Recording started successfully")
 
                             # Phase 5: update_recording_state() call removed - AudioBridge listens to app_state
@@ -396,24 +339,21 @@ class ApplicationTrayIcon(QSystemTrayIcon):
                             # Revert UI if start failed
                             logger.error("Failed to start recording")
                             self.record_action.setText("Start Recording")
-                            self.setIcon(self.normal_icon)
-                            if self.progress_window:
-                                self.progress_window.close()
-                                self.progress_window = None
+                            self.ui_manager.update_tray_icon_state(False, self)
+                            self.ui_manager.close_progress_window("after start failure")
                     except Exception as e:
                         logger.error(f"Error starting recording: {e}")
                         # Revert UI if exception occurred
                         self.record_action.setText("Start Recording")
-                        self.setIcon(self.normal_icon)
-                        if self.progress_window:
-                            self.progress_window.close()
-                            self.progress_window = None
+                        self.ui_manager.update_tray_icon_state(False, self)
+                        self.ui_manager.close_progress_window("after start error")
                 else:
                     # No audio manager, just update state
-                    self._set_recording_state(True)
+                    # Phase 6: Update state via app_state
+                    self.app_state.start_recording()
         finally:
-            # Always release the lock
-            self._recording_lock = False
+            # Phase 6: Always release the lock via AudioManager
+            self.audio_manager.release_recording_lock()
 
     def _stop_recording(self):
         """Internal method to stop recording and start processing"""
@@ -548,10 +488,15 @@ class ApplicationTrayIcon(QSystemTrayIcon):
         """Update the tooltip with app name, version, model and language information"""
         import sys
 
+        # Phase 6: Use UIManager to generate tooltip text
+        tooltip = self.ui_manager.get_tooltip_text(
+            self.settings,
+            recognized_text=recognized_text
+        )
+
+        # Print tooltip info to console with flush
         model_name = self.settings.get("model", DEFAULT_WHISPER_MODEL)
         language_code = self.settings.get("language", "auto")
-
-        # Get language display name from VALID_LANGUAGES if available
         if language_code in VALID_LANGUAGES:
             language_display = f"Language: {VALID_LANGUAGES[language_code]}"
         else:
@@ -560,18 +505,6 @@ class ApplicationTrayIcon(QSystemTrayIcon):
                 if language_code == "auto"
                 else f"Language: {language_code}"
             )
-
-        tooltip = f"{APP_NAME} {APP_VERSION}\nModel: {model_name}\n{language_display}"
-
-        # Add recognized text to tooltip if provided
-        if recognized_text:
-            # Truncate text if it's too long
-            max_length = 100
-            if len(recognized_text) > max_length:
-                recognized_text = recognized_text[:max_length] + "..."
-            tooltip += f"\nRecognized: {recognized_text}"
-
-        # Print tooltip info to console with flush
         print(f"TOOLTIP UPDATE: MODEL={model_name}, {language_display}", flush=True)
         sys.stdout.flush()
 
@@ -593,15 +526,10 @@ class ApplicationTrayIcon(QSystemTrayIcon):
             if reason == QSystemTrayIcon.ActivationReason.Trigger:  # Left click
                 logger.info("Tray icon left-clicked")
 
-                # Check if we're in the middle of processing a recording
-                if (
-                    hasattr(self, "progress_window")
-                    and self.progress_window
-                    and self.progress_window.isVisible()
-                ):
-                    if not self.recording and getattr(
-                        self.progress_window, "processing", False
-                    ):
+                # Phase 6: Check if we're in the middle of processing a recording
+                progress_window = self.ui_manager.get_progress_window()
+                if progress_window and progress_window.isVisible():
+                    if not self.recording and getattr(progress_window, "processing", False):
                         logger.info("Processing in progress, ignoring activation")
                         return
 
@@ -620,7 +548,7 @@ class ApplicationTrayIcon(QSystemTrayIcon):
                         self,
                         "No Models Downloaded",
                         "No Whisper models are downloaded. Please go to Settings to download a model.",
-                        self.normal_icon,
+                        self.ui_manager.normal_icon,
                     )
                     # Open settings window to allow user to download a model
                     self.toggle_settings()
@@ -658,12 +586,12 @@ class ApplicationTrayIcon(QSystemTrayIcon):
         if hasattr(self, "settings_window") and self.settings_window:
             self.ui_manager.safely_close_window(self.settings_window, "settings")
 
-        # Close progress window
-        if hasattr(self, "progress_window") and self.progress_window:
-            self.ui_manager.safely_close_window(self.progress_window, "progress")
+        # Phase 6: Close progress window via UIManager
+        self.ui_manager.close_progress_window("shutdown")
 
     def _stop_active_recording(self):
-        if self.recording:
+        # Phase 6: Check recording state from app_state
+        if self.app_state and self.app_state.is_recording():
             try:
                 self._stop_recording()
             except Exception as rec_error:
@@ -678,8 +606,10 @@ class ApplicationTrayIcon(QSystemTrayIcon):
 
     def _update_volume_display(self, volume_level):
         """Update the UI with current volume level"""
-        if self.progress_window and self.recording:
-            self.progress_window.update_volume(volume_level)
+        # Phase 6: Get progress window from UIManager, check recording from app_state
+        progress_window = self.ui_manager.get_progress_window()
+        if progress_window and self.app_state and self.app_state.is_recording():
+            progress_window.update_volume(volume_level)
 
     def _handle_recording_completed(self, normalized_audio_data):
         """Handle completion of audio recording and start transcription
@@ -700,9 +630,11 @@ class ApplicationTrayIcon(QSystemTrayIcon):
         # Phase 5: update_transcribing_state() call removed - AudioBridge listens to app_state
 
         # Ensure progress window is in processing mode (if enabled)
-        if self.progress_window:
-            self.progress_window.set_processing_mode()
-            self.progress_window.set_status("Starting transcription...")
+        # Phase 6: Get progress window from UIManager
+        progress_window = self.ui_manager.get_progress_window()
+        if progress_window:
+            progress_window.set_processing_mode()
+            progress_window.set_status("Starting transcription...")
         else:
             logger.debug("Progress window not shown (disabled in settings or not available)")
 
@@ -721,15 +653,14 @@ class ApplicationTrayIcon(QSystemTrayIcon):
 
         except Exception as e:
             logger.error(f"Failed to start transcription: {e}")
-            if self.progress_window:
-                self.progress_window.close()
-                self.progress_window = None
+            # Phase 6: Use UIManager to close progress window
+            self.ui_manager.close_progress_window("after transcription error")
 
             self.ui_manager.show_notification(
                 self,
                 "Error",
                 f"Failed to start transcription: {str(e)}",
-                self.normal_icon,
+                self.ui_manager.normal_icon,
             )
 
     def handle_recording_error(self, error):
@@ -738,44 +669,39 @@ class ApplicationTrayIcon(QSystemTrayIcon):
 
         # Show notification instead of dialog
         self.ui_manager.show_notification(
-            self, "Recording Error", error, self.normal_icon
+            self, "Recording Error", error, self.ui_manager.normal_icon
         )
 
         self._stop_recording()
-        if self.progress_window:
-            self.progress_window.close()
-            self.progress_window = None
+        # Phase 6: Use UIManager to close progress window
+        self.ui_manager.close_progress_window("after recording error")
 
     def update_processing_status(self, status):
-        if self.progress_window:
-            self.progress_window.set_status(status)
+        # Phase 6: Get progress window from UIManager
+        progress_window = self.ui_manager.get_progress_window()
+        if progress_window:
+            progress_window.set_status(status)
 
     def update_processing_progress(self, percent):
-        if self.progress_window:
-            self.progress_window.update_progress(percent)
+        # Phase 6: Get progress window from UIManager
+        progress_window = self.ui_manager.get_progress_window()
+        if progress_window:
+            progress_window.update_progress(percent)
 
     def _close_progress_window(self, context=""):
-        """Helper method to safely close progress window"""
-        if self.progress_window:
-            self.ui_manager.safely_close_window(
-                self.progress_window, f"progress {context}"
-            )
-            # Explicitly set to None to force recreation on next recording
-            self.progress_window = None
-        else:
-            logger.warning(
-                f"Progress window not found when trying to close {context}".strip()
-            )
+        """Helper method to safely close progress window (delegates to UIManager)"""
+        # Phase 6: Delegate to UIManager
+        self.ui_manager.close_progress_window(context)
 
     def handle_transcription_finished(self, text):
-        # Reset transcribing state
-        self._set_transcribing_state(False)
+        # Phase 6: Reset transcribing state via app_state
+        self.app_state.stop_transcription()
 
         # Phase 5: update_transcribing_state() call removed - AudioBridge listens to app_state
 
         if text:
             # Use clipboard manager to copy text and show notification
-            self.clipboard_manager.copy_to_clipboard(text, self, self.normal_icon)
+            self.clipboard_manager.copy_to_clipboard(text, self, self.ui_manager.normal_icon)
 
             # Update tooltip with recognized text
             self.update_tooltip(text)
@@ -784,13 +710,13 @@ class ApplicationTrayIcon(QSystemTrayIcon):
         self._close_progress_window("after transcription")
 
     def handle_transcription_error(self, error):
-        # Reset transcribing state
-        self._set_transcribing_state(False)
+        # Phase 6: Reset transcribing state via app_state
+        self.app_state.stop_transcription()
 
         # Phase 5: update_transcribing_state() call removed - AudioBridge listens to app_state
 
         self.ui_manager.show_notification(
-            self, "Transcription Error", error, self.normal_icon
+            self, "Transcription Error", error, self.ui_manager.normal_icon
         )
 
         # Update tooltip to indicate error

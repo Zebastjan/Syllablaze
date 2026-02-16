@@ -14,16 +14,16 @@ logger = logging.getLogger(__name__)
 
 class AudioManager(QObject):
     """Manager class for audio recording operations"""
-    
+
     # Define signals
     volume_changing = pyqtSignal(float)  # Signal for volume level updates
     audio_samples_changing = pyqtSignal(list)  # Signal for audio waveform samples
     recording_completed = pyqtSignal(object)  # Signal for completed recording (with audio data)
     recording_failed = pyqtSignal(str)  # Signal for recording errors
-    
+
     def __init__(self, settings):
         """Initialize the audio manager
-        
+
         Parameters:
         -----------
         settings : Settings
@@ -33,6 +33,7 @@ class AudioManager(QObject):
         self.settings = settings
         self.recorder = None
         self.is_recording = False
+        self._recording_lock = False  # Phase 6: Lock to prevent rapid toggles
     
     def initialize(self):
         """Initialize the audio recorder
@@ -186,9 +187,61 @@ class AudioManager(QObject):
             logger.error(f"Error saving audio file: {e}")
             return False
     
+    def is_ready_to_record(self, transcription_manager, app_state=None):
+        """Check if ready to start recording
+
+        Parameters:
+        -----------
+        transcription_manager : TranscriptionManager
+            Transcription manager to check model status
+        app_state : ApplicationState (optional)
+            Application state to check transcription status
+
+        Returns:
+        --------
+        tuple(bool, str)
+            (ready, error_message) - True if ready, False with error message if not
+        """
+        # Check if already transcribing
+        if app_state and app_state.is_transcribing():
+            return False, "Cannot start recording while transcription is in progress"
+
+        # Check if transcriber is properly initialized
+        if not transcription_manager:
+            return False, "Transcription manager not initialized"
+
+        if not hasattr(transcription_manager, "transcriber") or not transcription_manager.transcriber:
+            return False, "Transcriber not initialized"
+
+        if not hasattr(transcription_manager.transcriber, "model") or not transcription_manager.transcriber.model:
+            return False, "No Whisper model loaded. Please download a model in Settings."
+
+        return True, ""
+
+    def acquire_recording_lock(self):
+        """Try to acquire recording lock to prevent concurrent operations
+
+        Returns:
+        --------
+        bool
+            True if lock acquired, False if already locked
+        """
+        if self._recording_lock:
+            logger.info("Recording lock already held")
+            return False
+
+        self._recording_lock = True
+        logger.debug("Recording lock acquired")
+        return True
+
+    def release_recording_lock(self):
+        """Release the recording lock"""
+        self._recording_lock = False
+        logger.debug("Recording lock released")
+
     def cleanup(self):
         """Clean up audio resources
-        
+
         Returns:
         --------
         bool
@@ -196,12 +249,12 @@ class AudioManager(QObject):
         """
         if not self.recorder:
             return True
-            
+
         try:
             # Stop recording if in progress
             if self.is_recording:
                 self.stop_recording()
-                
+
             # Clean up recorder
             self.recorder.cleanup()
             self.recorder = None

@@ -218,12 +218,12 @@ class TranscriptionManager(QObject):
     
     def update_language(self, language=None):
         """Update the transcription language
-        
+
         Parameters:
         -----------
         language : str
             Language code to use (optional)
-            
+
         Returns:
         --------
         bool
@@ -232,23 +232,59 @@ class TranscriptionManager(QObject):
         if not self.transcriber:
             logger.error("Cannot update language: transcriber not initialized")
             return False
-            
+
         try:
             # Get language from settings if not provided
             if language is None:
                 language = self.settings.get('language', 'auto')
-                
+
             # Update language
             result = self.transcriber.update_language(language)
-            
+
             if result:
                 self.current_language = language
                 logger.info(f"Language updated to: {language}")
-                
+
             return result
         except Exception as e:
             logger.error(f"Failed to update language: {e}")
             return False
+
+    def is_model_loaded(self):
+        """Check if a Whisper model is loaded
+
+        Returns:
+        --------
+        bool
+            True if model is loaded, False otherwise
+        """
+        if not self.transcriber:
+            return False
+
+        if not hasattr(self.transcriber, "model"):
+            return False
+
+        return self.transcriber.model is not None
+
+    def get_model_status(self):
+        """Get current model status as a human-readable string
+
+        Returns:
+        --------
+        str
+            Status message describing the model state
+        """
+        if not self.transcriber:
+            return "Transcriber not initialized"
+
+        if not hasattr(self.transcriber, "model"):
+            return "Transcriber not properly configured"
+
+        if self.transcriber.model is None:
+            return "No model loaded. Please download a model in Settings."
+
+        model_name = self.current_model or "unknown"
+        return f"Model loaded: {model_name}"
     
     def cleanup(self):
         """Clean up transcription resources
