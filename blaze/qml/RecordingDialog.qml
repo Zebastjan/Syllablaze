@@ -374,52 +374,36 @@ ApplicationWindow {
     // Window behavior
     Component.onCompleted: {
         console.log("RecordingDialog: Window created")
-        console.log("hasSavedPosition:", hasSavedPosition)
 
-        // Only center if no saved position exists
-        if (!hasSavedPosition) {
-            console.log("No saved position - centering window on screen")
+        // Center window on screen (position saving is disabled on KDE/Wayland)
+        var screens = Qt.application.screens
+        console.log("Number of screens:", screens ? screens.length : "none")
 
-            // Center window on screen
-            var screens = Qt.application.screens
-            console.log("Number of screens:", screens ? screens.length : "none")
+        if (screens && screens.length > 0) {
+            var screen = screens[0]
+            console.log("Primary screen:", screen)
 
-            if (screens && screens.length > 0) {
-                var screen = screens[0]
-                console.log("Primary screen:", screen)
+            if (screen && screen.availableGeometry) {
+                var screenRect = screen.availableGeometry
+                console.log("Screen geometry:", screenRect.width, "x", screenRect.height, "at", screenRect.x, ",", screenRect.y)
 
-                if (screen && screen.availableGeometry) {
-                    var screenRect = screen.availableGeometry
-                    console.log("Screen geometry:", screenRect.width, "x", screenRect.height, "at", screenRect.x, ",", screenRect.y)
+                var centerX = screenRect.x + (screenRect.width - root.width) / 2
+                var centerY = screenRect.y + (screenRect.height - root.height) / 2
 
-                    var centerX = screenRect.x + (screenRect.width - root.width) / 2
-                    var centerY = screenRect.y + (screenRect.height - root.height) / 2
+                console.log("Centering at:", centerX, ",", centerY)
 
-                    console.log("Target position:", centerX, ",", centerY)
-
-                    root.x = Math.max(0, centerX)
-                    root.y = Math.max(0, centerY)
-                    console.log("RecordingDialog: Position set to", root.x, ",", root.y)
-                } else {
-                    console.log("No screen geometry available, using default position")
-                    root.x = 100
-                    root.y = 100
-                }
+                root.x = Math.max(0, centerX)
+                root.y = Math.max(0, centerY)
+                console.log("RecordingDialog: Centered at", root.x, ",", root.y)
             } else {
-                console.log("No screens available, using default position")
+                console.log("No screen geometry available, using default position")
                 root.x = 100
                 root.y = 100
             }
         } else {
-            console.log("RecordingDialog: Using saved position from Python (skipping centering)")
-            // Use the initial position passed from Python
-            if (typeof initialX !== 'undefined' && typeof initialY !== 'undefined') {
-                root.x = initialX
-                root.y = initialY
-                console.log("RecordingDialog: Set position to saved coordinates (" + root.x + ", " + root.y + ")")
-            } else {
-                console.log("RecordingDialog: initialX/initialY not available")
-            }
+            console.log("No screens available, using default position")
+            root.x = 100
+            root.y = 100
         }
     }
 
