@@ -40,42 +40,27 @@ class TranscriptionManager(QObject):
         self.current_language = None
     
     def configure_optimal_settings(self):
-        """Configure optimal settings for Faster Whisper based on hardware
-        
+        """Configure optimal settings for Faster Whisper
+
+        Sets default values for transcription parameters if not already configured.
+        Device and compute_type should already be configured by GPUSetupManager.
+
         Returns:
         --------
         bool
             True if configuration was successful, False otherwise
         """
         try:
-            # Check if this is the first run with Faster Whisper settings
-            if self.settings.get('compute_type') is None:
-                # Check for GPU support
-                try:
-                    import torch
-                    has_gpu = torch.cuda.is_available()
-                except ImportError:
-                    has_gpu = False
-                except Exception:
-                    has_gpu = False
-                    
-                if has_gpu:
-                    # Configure for GPU
-                    self.settings.set('device', 'cuda')
-                    self.settings.set('compute_type', 'float16')  # Good balance of speed and accuracy
-                else:
-                    # Configure for CPU
-                    self.settings.set('device', 'cpu')
-                    self.settings.set('compute_type', 'int8')  # Best performance on CPU
-                    
-                # Set other defaults
+            # Set transcription defaults if this is the first run
+            if self.settings.get('beam_size') is None:
                 self.settings.set('beam_size', DEFAULT_BEAM_SIZE)
+            if self.settings.get('vad_filter') is None:
                 self.settings.set('vad_filter', DEFAULT_VAD_FILTER)
+            if self.settings.get('word_timestamps') is None:
                 self.settings.set('word_timestamps', DEFAULT_WORD_TIMESTAMPS)
-                
-                logger.info("Faster Whisper configured with optimal settings for your hardware.")
-                print("Faster Whisper configured with optimal settings for your hardware.")
-            
+
+            logger.info("Transcription settings configured with optimal defaults.")
+
             return True
         except Exception as e:
             logger.error(f"Failed to configure optimal settings: {e}")

@@ -206,7 +206,7 @@ class SettingsBridge(QObject):
     @pyqtSlot(result='QVariantList')
     def getAvailableModels(self):
         """Get list of all available Whisper models with download status."""
-        from blaze.utils.whisper_model_manager import WhisperModelManager
+        from blaze.models import WhisperModelManager
         import os
 
         # Approximate model sizes in MB (for display purposes)
@@ -278,7 +278,7 @@ class SettingsBridge(QObject):
     @pyqtSlot(str)
     def downloadModel(self, model_name):
         """Download a Whisper model with progress updates."""
-        from blaze.utils.whisper_model_manager import WhisperModelManager
+        from blaze.models import WhisperModelManager
         import threading
 
         logger.info(f"Starting download of model: {model_name}")
@@ -303,7 +303,7 @@ class SettingsBridge(QObject):
     @pyqtSlot(str)
     def deleteModel(self, model_name):
         """Delete a Whisper model."""
-        from blaze.utils.whisper_model_manager import WhisperModelManager
+        from blaze.models import WhisperModelManager
 
         try:
             logger.info(f"Deleting model: {model_name}")

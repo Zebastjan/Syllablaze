@@ -22,7 +22,8 @@ ENV/
 
 # Whisper model files (can be large)
 *.pt
-models/
+# Whisper cache directory (not our blaze/models/ source code)
+~/.cache/whisper/
 
 # Temporary files
 temp/

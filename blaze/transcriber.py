@@ -6,7 +6,7 @@ from blaze.settings import Settings
 from blaze.constants import (
     DEFAULT_WHISPER_MODEL, DEFAULT_BEAM_SIZE, DEFAULT_VAD_FILTER, DEFAULT_WORD_TIMESTAMPS
 )
-from blaze.utils.whisper_model_manager import WhisperModelManager
+from blaze.models import WhisperModelManager
 logger = logging.getLogger(__name__)
 
 class FasterWhisperTranscriptionWorker(QThread):
