@@ -137,16 +137,31 @@ Recording indicator dialog (`blaze/recording_dialog_manager.py`, `blaze/qml/Reco
 
 ## Known Issues & Ongoing Work
 
-### Recording Dialog Settings Persistence (Active Work)
+### Recent Testing Notes (Feb 16, 2026)
 
-**Status**: Partially implemented, debugging in progress
+**Clipboard Issue - Possibly Resolved**:
+- Previous intermittent clipboard copying failures appear to be resolved
+- Issue seemed related to switching windows and copying/pasting from other applications
+- Recent testing could not trigger the issue - may be fixed by recent changes
+- Status: Monitoring - not currently reproducible
 
-**Working**:
+**Always-On-Top Toggle - Known Minor Issue**:
+- Recording dialog always-on-top setting requires manual reset to take effect
+- User must toggle setting off/on or restart app for changes to apply
+- Status: Minor annoyance - deferred for future fix
+
+### Recording Dialog Settings Persistence (Completed)
+
+**Status**: Implemented and working
+
+**Completed**:
 - Settings UI in UIPage.qml displays and updates correctly
 - Dialog size saves and restores
 - Dialog visibility toggles work from settings UI
+- SVG icon rendering with proper z-ordering (microphone visible)
+- GPU detection and CUDA library preloading working
 
-**Issues Being Fixed**:
+**Resolved Issues**:
 
 1. **Window Position Persistence**:
    - **Problem**: Position not saving on drag (QML `xChanged`/`yChanged` signals don't fire from Python)
