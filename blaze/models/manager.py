@@ -1,12 +1,11 @@
 """
-Whisper Model Manager for Syllablaze
+High-level Whisper Model Manager
 
-This module provides a high-level interface for managing Whisper models, including:
-- Getting information about available models
-- Checking if models are downloaded
+Provides a unified interface for managing Whisper models including:
 - Loading models
 - Downloading models with progress tracking
 - Deleting models
+- Getting model information
 """
 
 import os
@@ -15,8 +14,11 @@ import threading
 import json
 import urllib.request
 from pathlib import Path
+
 from blaze.settings import Settings
 from blaze.constants import DEFAULT_WHISPER_MODEL, DEFAULT_COMPUTE_TYPE, DEFAULT_DEVICE
+from blaze.models.registry import FASTER_WHISPER_MODELS, ModelRegistry
+from blaze.models.paths import ModelPaths, ModelUtils
 
 logger = logging.getLogger(__name__)
 
@@ -161,25 +163,15 @@ class WhisperModelManager:
                 )
 
             # Filter distil models to only include those we have CTranslate2 versions for
-            # Import FASTER_WHISPER_MODELS to check which distil models we support
-            try:
-                from blaze.whisper_model_manager import FASTER_WHISPER_MODELS
-
-                supported_distil_models = [
-                    name
-                    for name in distil_models
-                    if name in FASTER_WHISPER_MODELS
-                    and FASTER_WHISPER_MODELS[name].get("type") == "distil"
-                ]
-                logger.info(
-                    f"Filtered to {len(supported_distil_models)} supported distil models (with CTranslate2 versions)"
-                )
-            except ImportError:
-                # If we can't import, use all discovered models
-                supported_distil_models = distil_models
-                logger.warning(
-                    "Could not filter distil models - FASTER_WHISPER_MODELS not available"
-                )
+            supported_distil_models = [
+                name
+                for name in distil_models
+                if name in FASTER_WHISPER_MODELS
+                and FASTER_WHISPER_MODELS[name].get("type") == "distil"
+            ]
+            logger.info(
+                f"Filtered to {len(supported_distil_models)} supported distil models (with CTranslate2 versions)"
+            )
 
             # Combine standard and supported distil models
             all_models = standard_models + supported_distil_models
@@ -258,14 +250,8 @@ class WhisperModelManager:
             elif os.path.isfile(model_path):
                 actual_size = round(os.path.getsize(model_path) / (1024 * 1024))
 
-        # Import model information from the main module
-        try:
-            from blaze.whisper_model_manager import FASTER_WHISPER_MODELS
-
-            model_info = FASTER_WHISPER_MODELS.get(model_name, {})
-        except ImportError:
-            # If we can't import, use default values
-            model_info = {}
+        # Get model information from registry
+        model_info = FASTER_WHISPER_MODELS.get(model_name, {})
 
         # Use the size from FASTER_WHISPER_MODELS if available and the model is not downloaded
         if actual_size == 0 and "size_mb" in model_info:
@@ -382,17 +368,9 @@ class WhisperModelManager:
         # Check if the model is already downloaded in either format
         is_downloaded = self.is_model_downloaded(model_name)
 
-        # Try to import model information
-        try:
-            from blaze.whisper_model_manager import FASTER_WHISPER_MODELS
-
-            # Check if this is a Distil-Whisper model
-            model_info = FASTER_WHISPER_MODELS.get(model_name, {})
-            model_type = model_info.get("type", "standard")
-        except ImportError:
-            # If we can't import, assume it's a standard model
-            model_info = {}
-            model_type = "standard"
+        # Get model information from registry
+        model_info = FASTER_WHISPER_MODELS.get(model_name, {})
+        model_type = model_info.get("type", "standard")
 
         logger.info(
             f"Loading model: {model_name} (type: {model_type}, device: {device}, compute_type: {ct})"
@@ -563,17 +541,9 @@ class WhisperModelManager:
                     # Import Faster Whisper
                     from faster_whisper import WhisperModel
 
-                    # Try to import model information
-                    try:
-                        from blaze.whisper_model_manager import FASTER_WHISPER_MODELS
-
-                        # Check if this is a Distil-Whisper model
-                        model_info = FASTER_WHISPER_MODELS.get(model_name, {})
-                        model_type = model_info.get("type", "standard")
-                    except ImportError:
-                        # If we can't import, assume it's a standard model
-                        model_info = {}
-                        model_type = "standard"
+                    # Get model information from registry
+                    model_info = FASTER_WHISPER_MODELS.get(model_name, {})
+                    model_type = model_info.get("type", "standard")
 
                     if model_type == "distil":
                         # For Distil-Whisper models, use snapshot_download directly.
@@ -660,3 +630,60 @@ class WhisperModelManager:
 
         logger.warning(f"Model file not found: {model_path}")
         return False
+
+
+def get_model_info():
+    """Get comprehensive information about all Whisper models (backward compatibility function)"""
+    # Get the models directory
+    models_dir = ModelPaths.get_models_dir()
+
+    # Get available models from the registry
+    available_models = ModelRegistry.get_all_models()
+    logger.info(f"Available models for Faster Whisper: {available_models}")
+
+    # Get current active model from settings
+    settings = Settings()
+    active_model = settings.get("model", DEFAULT_WHISPER_MODEL)
+
+    # Scan the directory for all model files
+    if os.path.exists(models_dir):
+        files_in_cache = os.listdir(models_dir)
+        logger.info(f"Files in whisper cache: {files_in_cache}")
+    else:
+        logger.warning(f"Whisper cache directory does not exist: {models_dir}")
+        os.makedirs(models_dir, exist_ok=True)
+        files_in_cache = []
+
+    # Create model info dictionary
+    model_info = {}
+    for model_name in available_models:
+        # Check if the model is downloaded
+        is_downloaded = ModelUtils.is_model_downloaded(model_name)
+
+        # Get the model path
+        model_path = ModelUtils.get_model_path(model_name)
+
+        # Calculate the model size
+        actual_size = (
+            ModelUtils.calculate_model_size(model_path)
+            if is_downloaded
+            else ModelRegistry.get_model_info(model_name).get("size_mb", 0)
+        )
+
+        # Get model description
+        model_description = ModelRegistry.get_model_info(model_name).get(
+            "description", f"{model_name} model"
+        )
+
+        # Create model info object
+        model_info[model_name] = {
+            "name": model_name,
+            "display_name": model_name.capitalize(),
+            "description": model_description,
+            "is_downloaded": is_downloaded,
+            "size_mb": actual_size,
+            "path": model_path,
+            "is_active": model_name == active_model,
+        }
+
+    return model_info, models_dir
