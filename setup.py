@@ -17,6 +17,7 @@ setup(
     packages=find_packages(),
     install_requires=requirements,
     package_data={
+        'blaze': ['qml/**/*.qml'],  # Include all QML files
         '': ['resources/*'],  # Include all files in resources directory
     },
     include_package_data=True,

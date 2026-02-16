@@ -70,17 +70,18 @@ Window {
     Item {
         anchors.fill: parent
         
-        // Layer 1: SVG Base
+        // Layer 1: SVG Base (render on top)
         Image {
             id: svgBase
             anchors.fill: parent
-            source: "../../resources/syllablaze.svg"
+            source: svgBridge ? "file://" + svgBridge.svgPath : ""
             smooth: true
             antialiasing: true
             mipmap: true
+            z: 2  // Render on top to show microphone icon
         }
         
-        // Layer 2: Status Indicator Color Overlay
+        // Layer 2: Status Indicator Color Overlay (middle layer)
         // Positioned exactly over the status_indicator element from SVG
         Rectangle {
             id: statusOverlay
@@ -90,7 +91,8 @@ Window {
             height: statusBounds.height
             color: getStatusColor()
             opacity: isRecording ? 0.85 : 0.0
-            
+            z: 1  // Middle layer - behind icon, on top of waveform
+
             // Match the rounded corners of the SVG element
             // Using radius proportional to size
             radius: Math.min(width, height) * 0.25
@@ -104,12 +106,13 @@ Window {
             }
         }
         
-        // Layer 3: Waveform Visualization
+        // Layer 3: Waveform Visualization (background layer)
         // Draws radial bars in the waveform element area
         Canvas {
             id: waveformCanvas
             anchors.fill: parent
             visible: isRecording
+            z: 0  // Background layer - render behind everything
             
             onPaint: {
                 var ctx = getContext("2d")

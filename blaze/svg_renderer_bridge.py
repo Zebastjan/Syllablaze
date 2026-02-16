@@ -106,6 +106,11 @@ class SvgRendererBridge(QObject):
         """Get SVG viewBox height"""
         return self._view_box.height()
 
+    @pyqtProperty(str)
+    def svgPath(self):
+        """Get the path to the loaded SVG file"""
+        return self._svg_path
+
     def render(self, painter: QPainter):
         """Render the full SVG to the painter"""
         self._renderer.render(painter)
