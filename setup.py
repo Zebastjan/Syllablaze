@@ -1,5 +1,7 @@
 
 from setuptools import setup, find_packages
+import os
+import sys
 
 # Read requirements.txt and filter out empty lines/comments
 with open("requirements.txt") as req_file:
@@ -11,9 +13,13 @@ with open("requirements.txt") as req_file:
 
 setup(
     name="syllablaze",
-    version="0.3",  # Hardcoded version for now
+    version="0.5",
     packages=find_packages(),
     install_requires=requirements,
+    package_data={
+        '': ['resources/*'],  # Include all files in resources directory
+    },
+    include_package_data=True,
     entry_points={
         "console_scripts": [
             "syllablaze=blaze.main:main",

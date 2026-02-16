@@ -26,9 +26,27 @@ class SvgRendererBridge(QObject):
         super().__init__(parent)
 
         if svg_path is None:
-            # Default to syllablaze.svg in resources
+            # Search for syllablaze.svg in multiple locations
             base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            svg_path = os.path.join(base_dir, "resources", "syllablaze.svg")
+            possible_paths = [
+                # Development: resources/ at project root
+                os.path.join(base_dir, "resources", "syllablaze.svg"),
+                # Installed: resources/ in site-packages
+                os.path.join(os.path.dirname(base_dir), "resources", "syllablaze.svg"),
+                # System icons: where install.py copies it
+                os.path.expanduser("~/.local/share/icons/hicolor/256x256/apps/syllablaze.svg"),
+            ]
+
+            svg_path = None
+            for path in possible_paths:
+                if os.path.exists(path):
+                    svg_path = path
+                    break
+
+            if svg_path is None:
+                logger.error(f"Could not find syllablaze.svg in any of: {possible_paths}")
+                # Fallback to first path even though it doesn't exist
+                svg_path = possible_paths[0]
 
         self._svg_path = svg_path
         self._renderer = QSvgRenderer(svg_path)
