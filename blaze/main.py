@@ -28,6 +28,9 @@ from blaze.managers.ui_manager import UIManager
 from blaze.managers.lock_manager import LockManager
 from blaze.managers.audio_manager import AudioManager
 from blaze.managers.transcription_manager import TranscriptionManager
+from blaze.managers.tray_menu_manager import TrayMenuManager
+from blaze.managers.settings_coordinator import SettingsCoordinator
+from blaze.managers.window_visibility_coordinator import WindowVisibilityCoordinator
 from blaze.clipboard_manager import ClipboardManager
 from blaze.application_state import ApplicationState
 
@@ -89,7 +92,7 @@ def check_dependencies():
     return True
 
 
-class ApplicationTrayIcon(QSystemTrayIcon):
+class SyllablazeOrchestrator(QSystemTrayIcon):
     initialization_complete = pyqtSignal()
 
     def __init__(self, settings=None, app_state=None):
@@ -106,6 +109,7 @@ class ApplicationTrayIcon(QSystemTrayIcon):
 
         # Initialize managers
         self.ui_manager = UIManager()
+        self.tray_menu_manager = TrayMenuManager()
         self.audio_manager = None
         self.transcription_manager = None
         self.clipboard_manager = None  # Will be initialized in initialize()
@@ -123,7 +127,7 @@ class ApplicationTrayIcon(QSystemTrayIcon):
 
     def initialize(self):
         """Initialize the tray recorder after showing loading window"""
-        logger.info("ApplicationTrayIcon: Initializing...")
+        logger.info("SyllablazeOrchestrator: Initializing...")
         # Set application icon
         self.app_icon = QIcon.fromTheme("syllablaze")
         if self.app_icon.isNull():
@@ -158,8 +162,7 @@ class ApplicationTrayIcon(QSystemTrayIcon):
         # Initialize settings window early to connect signals
         logger.info("Initializing settings window for signal connections...")
         self.settings_window = SettingsWindow(self.settings)
-        self.settings_window.settings_bridge.settingChanged.connect(self._on_setting_changed)
-        logger.info("Settings window created and signals connected")
+        logger.info("Settings window created")
 
         # Initialize recording dialog
         try:
@@ -174,15 +177,38 @@ class ApplicationTrayIcon(QSystemTrayIcon):
             self.recording_dialog.dialog_bridge.openSettingsRequested.connect(
                 self.toggle_settings
             )
-            self.recording_dialog.dialog_bridge.dismissRequested.connect(
-                self._on_recording_dialog_dismissed
+
+            # Initialize settings coordinator after recording dialog
+            self.settings_coordinator = SettingsCoordinator(
+                recording_dialog=self.recording_dialog,
+                app_state=self.app_state
             )
 
-            # Connect to ApplicationState visibility changes (Phase 4: unidirectional data flow)
+            # Connect settings window to coordinator
+            self.settings_window.settings_bridge.settingChanged.connect(
+                self.settings_coordinator.on_setting_changed
+            )
+            logger.info("Settings coordinator initialized and signals connected")
+
+            # Initialize window visibility coordinator
+            self.window_visibility_coordinator = WindowVisibilityCoordinator(
+                recording_dialog=self.recording_dialog,
+                app_state=self.app_state,
+                tray_menu_manager=self.tray_menu_manager,
+                settings_bridge=self.settings_window.settings_bridge
+            )
+
+            # Connect to ApplicationState visibility changes
             if self.app_state:
                 self.app_state.recording_dialog_visibility_changed.connect(
-                    self._on_dialog_visibility_changed
+                    self.window_visibility_coordinator.on_dialog_visibility_changed
                 )
+
+            # Connect dialog dismissal to coordinator
+            self.recording_dialog.dialog_bridge.dismissRequested.connect(
+                self.window_visibility_coordinator.on_dialog_dismissed
+            )
+            logger.info("Window visibility coordinator initialized and signals connected")
 
             # Set initial dialog visibility (through ApplicationState)
             # This will trigger _on_dialog_visibility_changed which shows/hides the window
@@ -201,32 +227,12 @@ class ApplicationTrayIcon(QSystemTrayIcon):
         self.update_tooltip()
 
     def setup_menu(self):
-        menu = QMenu()
-
-        # Add recording action
-        self.record_action = QAction("Start Recording", menu)
-        self.record_action.triggered.connect(self.toggle_recording)
-        menu.addAction(self.record_action)
-
-        # Add settings action
-        self.settings_action = QAction("Settings", menu)
-        self.settings_action.triggered.connect(self.toggle_settings)
-        menu.addAction(self.settings_action)
-
-        # Add recording dialog toggle action
-        self.dialog_action = QAction("Show Recording Dialog", menu)
-        self.dialog_action.triggered.connect(self._toggle_recording_dialog)
-        menu.addAction(self.dialog_action)
-
-        # Add separator before quit
-        menu.addSeparator()
-
-        # Add quit action
-        quit_action = QAction("Quit", menu)
-        quit_action.triggered.connect(self.quit_application)
-        menu.addAction(quit_action)
-
-        # Set the context menu
+        menu = self.tray_menu_manager.create_menu(
+            toggle_recording_callback=self.toggle_recording,
+            toggle_settings_callback=self.toggle_settings,
+            toggle_dialog_callback=self._toggle_recording_dialog,
+            quit_callback=self.quit_application
+        )
         self.setContextMenu(menu)
 
     @staticmethod
@@ -268,7 +274,7 @@ class ApplicationTrayIcon(QSystemTrayIcon):
             if self.app_state.is_recording():
                 # Stop recording
                 # Update UI first to give immediate feedback
-                self.record_action.setText("Start Recording")
+                self.tray_menu_manager.update_recording_action(False)
                 # Phase 6: Use UIManager for icon updates
                 self.ui_manager.update_tray_icon_state(False, self)
 
@@ -295,12 +301,12 @@ class ApplicationTrayIcon(QSystemTrayIcon):
                         else:
                             # Revert UI if stop failed
                             logger.error("Failed to stop recording")
-                            self.record_action.setText("Stop Recording")
+                            self.tray_menu_manager.update_recording_action(True)
                             self.ui_manager.update_tray_icon_state(True, self)
                     except Exception as e:
                         logger.error(f"Error stopping recording: {e}")
                         # Revert UI if exception occurred
-                        self.record_action.setText("Stop Recording")
+                        self.tray_menu_manager.update_recording_action(True)
                         self.ui_manager.update_tray_icon_state(True, self)
                         self.ui_manager.close_progress_window("after stop error")
                 else:
@@ -312,6 +318,8 @@ class ApplicationTrayIcon(QSystemTrayIcon):
                 # Phase 6: Use UIManager to create progress window
                 progress_window = self.ui_manager.create_progress_window(self.settings, "Voice Recording")
                 if progress_window:
+                    # Set reference for settings coordinator
+                    self.settings_coordinator.set_progress_window(progress_window)
                     progress_window.stop_clicked.connect(self._stop_recording)
                     # Make sure window is visible and on top
                     progress_window.show()
@@ -320,7 +328,7 @@ class ApplicationTrayIcon(QSystemTrayIcon):
                     logger.info("Progress window shown")
 
                 # Update UI to give immediate feedback
-                self.record_action.setText("Stop Recording")
+                self.tray_menu_manager.update_recording_action(True)
                 # Phase 6: Use UIManager for icon updates
                 self.ui_manager.update_tray_icon_state(True, self)
 
@@ -338,13 +346,13 @@ class ApplicationTrayIcon(QSystemTrayIcon):
                         else:
                             # Revert UI if start failed
                             logger.error("Failed to start recording")
-                            self.record_action.setText("Start Recording")
+                            self.tray_menu_manager.update_recording_action(False)
                             self.ui_manager.update_tray_icon_state(False, self)
                             self.ui_manager.close_progress_window("after start failure")
                     except Exception as e:
                         logger.error(f"Error starting recording: {e}")
                         # Revert UI if exception occurred
-                        self.record_action.setText("Start Recording")
+                        self.tray_menu_manager.update_recording_action(False)
                         self.ui_manager.update_tray_icon_state(False, self)
                         self.ui_manager.close_progress_window("after start error")
                 else:
@@ -360,7 +368,7 @@ class ApplicationTrayIcon(QSystemTrayIcon):
         if not self.recording:
             return
 
-        logger.info("ApplicationTrayIcon: Stopping recording")
+        logger.info("SyllablazeOrchestrator: Stopping recording")
         self.toggle_recording()  # This is now safe since toggle_recording handles everything
 
     def toggle_settings(self):
@@ -370,7 +378,7 @@ class ApplicationTrayIcon(QSystemTrayIcon):
         if not self.settings_window:
             logger.warning("Settings window not initialized - creating now")
             self.settings_window = SettingsWindow(self.settings)
-            self.settings_window.settings_bridge.settingChanged.connect(self._on_setting_changed)
+            # Note: Signal connection to settings coordinator happens in initialize()
 
         current_visibility = self.settings_window.isVisible()
         logger.info(f"Current settings window visibility: {current_visibility}")
@@ -392,97 +400,8 @@ class ApplicationTrayIcon(QSystemTrayIcon):
 
     def _toggle_recording_dialog(self):
         """Toggle recording dialog visibility via tray menu"""
-        self.toggle_recording_dialog_visibility(source="tray_menu")
+        self.window_visibility_coordinator.toggle_visibility(source="tray_menu")
 
-    def _on_recording_dialog_dismissed(self):
-        """Handle recording dialog being manually dismissed"""
-        logger.info("Recording dialog was manually dismissed")
-        # Update ApplicationState (which will trigger _on_dialog_visibility_changed)
-        if self.app_state:
-            self.app_state.set_recording_dialog_visible(False, source="dismissal")
-
-    def _on_dialog_visibility_changed(self, visible, source):
-        """Handle recording dialog visibility changes from ApplicationState.
-
-        This is the single handler for ALL visibility changes.
-        ApplicationState is the source of truth.
-
-        Parameters:
-        -----------
-        visible : bool
-            True to show dialog, False to hide
-        source : str
-            Source of the change (startup, settings_ui, tray_menu, dismissal, etc.)
-        """
-        if not self.recording_dialog:
-            logger.warning(f"Cannot update dialog visibility: dialog not initialized (source: {source})")
-            return
-
-        logger.info(f"_on_dialog_visibility_changed(visible={visible}, source={source})")
-
-        # Update the actual Qt window
-        if visible:
-            self.recording_dialog.show()
-            logger.info(f"Recording dialog shown (source: {source})")
-        else:
-            self.recording_dialog.hide()
-            logger.info(f"Recording dialog hidden (source: {source})")
-
-        # Update tray menu text
-        if hasattr(self, 'dialog_action'):
-            self.dialog_action.setText("Hide Recording Dialog" if visible else "Show Recording Dialog")
-
-        # Update settings UI if needed (emit signal to QML)
-        if self.settings_window and self.settings_window.settings_bridge:
-            self.settings_window.settings_bridge.settingChanged.emit("show_recording_dialog", visible)
-
-    def _on_setting_changed(self, key, value):
-        """Handle setting changes from settings window"""
-        logger.info(f"Setting changed: {key} = {value}")
-
-        # Phase 4: No more recursion flag needed! ApplicationState prevents circular updates.
-
-        if key == "show_recording_dialog":
-            if self.recording_dialog and self.app_state:
-                # Convert value to boolean (QML might send various types)
-                visible = bool(value) if value is not None else True
-                # Update ApplicationState (which will trigger _on_dialog_visibility_changed)
-                self.app_state.set_recording_dialog_visible(visible, source="settings_ui")
-
-        elif key == "show_progress_window":
-            # Store the setting for use when showing progress window
-            logger.info(f"Progress window visibility setting changed to: {value}")
-            # The actual show/hide will be handled in toggle_recording based on this setting
-
-        elif key == "recording_dialog_always_on_top":
-            # Update the recording dialog's always-on-top property
-            if self.recording_dialog:
-                always_on_top = bool(value) if value is not None else True
-                self.recording_dialog.update_always_on_top(always_on_top)
-
-        elif key == "progress_window_always_on_top":
-            # Update the progress window's always-on-top property
-            if hasattr(self, 'ui_manager') and self.ui_manager and self.ui_manager.progress_window:
-                always_on_top = bool(value) if value is not None else True
-                self.ui_manager.progress_window.update_always_on_top(always_on_top)
-                logger.info(f"Updated progress window always-on-top to: {always_on_top}")
-
-    def toggle_recording_dialog_visibility(self, source="unknown"):
-        """
-        Toggle recording dialog visibility (convenience wrapper).
-
-        Uses ApplicationState to toggle visibility.
-
-        Args:
-            source (str): Source of the change for debugging
-                         ("tray_menu", "keyboard_shortcut", etc.)
-        """
-        if not self.recording_dialog or not self.app_state:
-            logger.warning(f"Cannot toggle dialog visibility: dialog or app_state not initialized (source: {source})")
-            return
-
-        current_visible = self.app_state.is_recording_dialog_visible()
-        self.app_state.set_recording_dialog_visible(not current_visible, source)
 
     def update_tooltip(self, recognized_text=None):
         """Update the tooltip with app name, version, model and language information"""
@@ -625,7 +544,7 @@ class ApplicationTrayIcon(QSystemTrayIcon):
         - Starts transcription process
         - Handles any errors during transcription setup
         """
-        logger.info("ApplicationTrayIcon: Recording processed, starting transcription")
+        logger.info("SyllablazeOrchestrator: Recording processed, starting transcription")
 
         # Phase 5: update_transcribing_state() call removed - AudioBridge listens to app_state
 
@@ -665,7 +584,7 @@ class ApplicationTrayIcon(QSystemTrayIcon):
 
     def handle_recording_error(self, error):
         """Handle recording errors"""
-        logger.error(f"ApplicationTrayIcon: Recording error: {error}")
+        logger.error(f"SyllablazeOrchestrator: Recording error: {error}")
 
         # Show notification instead of dialog
         self.ui_manager.show_notification(
@@ -932,16 +851,16 @@ def main():
                 loading_window, "Checking system requirements...", 10
             )
 
-            # Check system tray availability (assuming ApplicationTrayIcon is defined)
-            if not ApplicationTrayIcon.isSystemTrayAvailable():
+            # Check system tray availability (assuming SyllablazeOrchestrator is defined)
+            if not SyllablazeOrchestrator.isSystemTrayAvailable():
                 ui_manager.show_error_message(
                     "Error",
                     "System tray is not available. Please ensure your desktop environment supports system tray icons.",
                 )
                 return 1
 
-            # Create tray icon (assuming ApplicationTrayIcon is defined)
-            tray = ApplicationTrayIcon(settings, app_state)
+            # Create tray icon (assuming SyllablazeOrchestrator is defined)
+            tray = SyllablazeOrchestrator(settings, app_state)
 
             # Connect loading window to tray initialization
             tray.initialization_complete.connect(loading_window.close)
