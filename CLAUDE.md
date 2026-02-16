@@ -61,21 +61,31 @@ flake8 . --max-line-length=127
 
 ## Architecture
 
-**Entry point**: `blaze/main.py` - `main()` function creates the Qt application, initializes `ApplicationTrayIcon` (the main controller), sets up D-Bus service (`SyllaDBusService`), and starts a qasync event loop.
+**Entry point**: `blaze/main.py` - `main()` function creates the Qt application, initializes `SyllablazeOrchestrator` (the main controller), sets up D-Bus service (`SyllaDBusService`), and starts a qasync event loop.
 
 **Core flow**:
 ```
-ApplicationTrayIcon (main.py) - orchestrator
+SyllablazeOrchestrator (main.py) - orchestrator
   ├── AudioManager -> AudioRecorder (recorder.py) -> PyAudio microphone input
   ├── TranscriptionManager -> FasterWhisperTranscriptionWorker (transcriber.py)
   ├── UIManager -> ProgressWindow, LoadingWindow, ProcessingWindow
   ├── RecordingDialogManager -> RecordingDialog.qml (circular volume indicator)
+  ├── TrayMenuManager -> Tray menu creation and updates
+  ├── SettingsCoordinator -> Settings synchronization
+  ├── WindowVisibilityCoordinator -> Recording dialog visibility management
+  ├── GPUSetupManager -> GPU detection and CUDA library configuration
   ├── GlobalShortcuts (shortcuts.py) -> pynput keyboard listener
   ├── LockManager -> single-instance enforcement via lock file
   └── ClipboardManager -> copies transcription to clipboard
 ```
 
-**Manager pattern** (`blaze/managers/`): AudioManager, TranscriptionManager, UIManager, and LockManager separate concerns from the main controller.
+**Recent Refactoring** (Phase 7 - Feb 2025):
+- Extracted 8 manager classes to separate orchestration from implementation
+- main.py reduced from 1229 → 1026 lines (203 lines / 16.5% reduction)
+- Improved separation of concerns, testability, and maintainability
+- Recording logic simplified with helper methods (toggle_recording: 124 → 40 lines)
+
+**Manager pattern** (`blaze/managers/`): AudioManager, TranscriptionManager, UIManager, LockManager, TrayMenuManager, SettingsCoordinator, WindowVisibilityCoordinator, and GPUSetupManager separate concerns from the main controller.
 
 **Key design decisions**:
 - All inter-component communication uses Qt signals/slots (thread-safe)
@@ -83,6 +93,7 @@ ApplicationTrayIcon (main.py) - orchestrator
 - Audio processed entirely in memory (no temp files to disk)
 - Global shortcuts use KDE kglobalaccel D-Bus integration; default is Alt+Space
 - WhisperModelManager (`blaze/whisper_model_manager.py`) handles model download/deletion/GPU detection
+- **GPUSetupManager** (`blaze/managers/gpu_setup_manager.py`) handles CUDA library detection, LD_LIBRARY_PATH configuration, and process restart for GPU acceleration
 - Settings persisted via QSettings (`blaze/settings.py`)
 - Constants (app version, sample rates, defaults) in `blaze/constants.py`
 - **Centralized visibility control**: Dialog/window visibility managed through single-source-of-truth methods with recursion prevention
