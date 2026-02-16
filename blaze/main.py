@@ -2,7 +2,7 @@ import os
 import sys
 
 # Set QML import path for Kirigami before importing any Qt modules
-os.environ['QML2_IMPORT_PATH'] = '/usr/lib/qt6/qml'
+os.environ["QML2_IMPORT_PATH"] = "/usr/lib/qt6/qml"
 
 from PyQt6.QtWidgets import QApplication, QMessageBox, QSystemTrayIcon, QMenu
 from PyQt6.QtCore import QCoreApplication
@@ -125,16 +125,18 @@ class SyllablazeOrchestrator(QSystemTrayIcon):
         # Enable activation by left click
         self.activated.connect(self.on_activate)
 
-
     def initialize(self):
         """Initialize the tray recorder after showing loading window"""
         logger.info("SyllablazeOrchestrator: Initializing...")
         # Set application icon
         self.app_icon = QIcon.fromTheme("syllablaze")
         if self.app_icon.isNull():
-            # Try to load from local path
+            # Try to load from local path (resources directory)
             local_icon_path = os.path.join(
-                os.path.dirname(os.path.abspath(__file__)), "syllablaze.png"
+                os.path.dirname(os.path.abspath(__file__)),
+                "..",
+                "resources",
+                "syllablaze.svg",
             )
             if os.path.exists(local_icon_path):
                 self.app_icon = QIcon(local_icon_path)
@@ -168,21 +170,22 @@ class SyllablazeOrchestrator(QSystemTrayIcon):
         # Initialize recording dialog
         try:
             logger.info("Initializing recording dialog...")
-            self.recording_dialog = RecordingDialogManager(self.settings, self.app_state)
+            self.recording_dialog = RecordingDialogManager(
+                self.settings, self.app_state
+            )
             self.recording_dialog.initialize()
 
             # Connect dialog bridge signals to app methods
-            self.recording_dialog.dialog_bridge.toggleRecordingRequested.connect(
+            self.recording_dialog.bridge.toggleRecordingRequested.connect(
                 self.toggle_recording
             )
-            self.recording_dialog.dialog_bridge.openSettingsRequested.connect(
+            self.recording_dialog.bridge.openSettingsRequested.connect(
                 self.toggle_settings
             )
 
             # Initialize settings coordinator after recording dialog
             self.settings_coordinator = SettingsCoordinator(
-                recording_dialog=self.recording_dialog,
-                app_state=self.app_state
+                recording_dialog=self.recording_dialog, app_state=self.app_state
             )
 
             # Connect settings window to coordinator
@@ -196,7 +199,7 @@ class SyllablazeOrchestrator(QSystemTrayIcon):
                 recording_dialog=self.recording_dialog,
                 app_state=self.app_state,
                 tray_menu_manager=self.tray_menu_manager,
-                settings_bridge=self.settings_window.settings_bridge
+                settings_bridge=self.settings_window.settings_bridge,
             )
 
             # Connect to ApplicationState visibility changes
@@ -206,16 +209,20 @@ class SyllablazeOrchestrator(QSystemTrayIcon):
                 )
 
             # Connect dialog dismissal to coordinator
-            self.recording_dialog.dialog_bridge.dismissRequested.connect(
+            self.recording_dialog.bridge.dismissRequested.connect(
                 self.window_visibility_coordinator.on_dialog_dismissed
             )
-            logger.info("Window visibility coordinator initialized and signals connected")
+            logger.info(
+                "Window visibility coordinator initialized and signals connected"
+            )
 
             # Set initial dialog visibility (through ApplicationState)
             # This will trigger _on_dialog_visibility_changed which shows/hides the window
             initial_visibility = self.settings.get("show_recording_dialog", True)
             if self.app_state:
-                self.app_state.set_recording_dialog_visible(initial_visibility, source="startup")
+                self.app_state.set_recording_dialog_visible(
+                    initial_visibility, source="startup"
+                )
             logger.info("Recording dialog initialized successfully")
         except Exception as e:
             logger.error(f"Failed to initialize recording dialog: {e}", exc_info=True)
@@ -232,7 +239,7 @@ class SyllablazeOrchestrator(QSystemTrayIcon):
             toggle_recording_callback=self.toggle_recording,
             toggle_settings_callback=self.toggle_settings,
             toggle_dialog_callback=self._toggle_recording_dialog,
-            quit_callback=self.quit_application
+            quit_callback=self.quit_application,
         )
         self.setContextMenu(menu)
 
@@ -251,8 +258,7 @@ class SyllablazeOrchestrator(QSystemTrayIcon):
             # Check readiness if starting recording
             if not self.app_state.is_recording():
                 ready, error_msg = self.audio_manager.is_ready_to_record(
-                    self.transcription_manager,
-                    self.app_state
+                    self.transcription_manager, self.app_state
                 )
                 if not ready:
                     self.ui_manager.show_notification(
@@ -294,7 +300,9 @@ class SyllablazeOrchestrator(QSystemTrayIcon):
 
     def _setup_progress_window_for_recording(self):
         """Create and configure progress window for recording session"""
-        progress_window = self.ui_manager.create_progress_window(self.settings, "Voice Recording")
+        progress_window = self.ui_manager.create_progress_window(
+            self.settings, "Voice Recording"
+        )
         if progress_window:
             # Set reference for settings coordinator
             self.settings_coordinator.set_progress_window(progress_window)
@@ -413,12 +421,13 @@ class SyllablazeOrchestrator(QSystemTrayIcon):
             logger.info("Called raise_() on settings window")
             self.settings_window.activateWindow()
             logger.info("Called activateWindow() on settings window")
-            logger.info(f"Final visibility after show: {self.settings_window.isVisible()}")
+            logger.info(
+                f"Final visibility after show: {self.settings_window.isVisible()}"
+            )
 
     def _toggle_recording_dialog(self):
         """Toggle recording dialog visibility via tray menu"""
         self.window_visibility_coordinator.toggle_visibility(source="tray_menu")
-
 
     def update_tooltip(self, recognized_text=None):
         """Update the tooltip with app name, version, model and language information"""
@@ -426,8 +435,7 @@ class SyllablazeOrchestrator(QSystemTrayIcon):
 
         # Phase 6: Use UIManager to generate tooltip text
         tooltip = self.ui_manager.get_tooltip_text(
-            self.settings,
-            recognized_text=recognized_text
+            self.settings, recognized_text=recognized_text
         )
 
         # Print tooltip info to console with flush
@@ -465,7 +473,9 @@ class SyllablazeOrchestrator(QSystemTrayIcon):
                 # Phase 6: Check if we're in the middle of processing a recording
                 progress_window = self.ui_manager.get_progress_window()
                 if progress_window and progress_window.isVisible():
-                    if not self.recording and getattr(progress_window, "processing", False):
+                    if not self.recording and getattr(
+                        progress_window, "processing", False
+                    ):
                         logger.info("Processing in progress, ignoring activation")
                         return
 
@@ -561,7 +571,9 @@ class SyllablazeOrchestrator(QSystemTrayIcon):
         - Starts transcription process
         - Handles any errors during transcription setup
         """
-        logger.info("SyllablazeOrchestrator: Recording processed, starting transcription")
+        logger.info(
+            "SyllablazeOrchestrator: Recording processed, starting transcription"
+        )
 
         # Phase 5: update_transcribing_state() call removed - AudioBridge listens to app_state
 
@@ -572,7 +584,9 @@ class SyllablazeOrchestrator(QSystemTrayIcon):
             progress_window.set_processing_mode()
             progress_window.set_status("Starting transcription...")
         else:
-            logger.debug("Progress window not shown (disabled in settings or not available)")
+            logger.debug(
+                "Progress window not shown (disabled in settings or not available)"
+            )
 
         try:
             if not self.transcription_manager:
@@ -637,7 +651,9 @@ class SyllablazeOrchestrator(QSystemTrayIcon):
 
         if text:
             # Use clipboard manager to copy text and show notification
-            self.clipboard_manager.copy_to_clipboard(text, self, self.ui_manager.normal_icon)
+            self.clipboard_manager.copy_to_clipboard(
+                text, self, self.ui_manager.normal_icon
+            )
 
             # Update tooltip with recognized text
             self.update_tooltip(text)
@@ -689,8 +705,6 @@ def cleanup_lock_file():
 
 # Suppress GTK module error messages
 os.environ["GTK_MODULES"] = ""
-
-
 
 
 def main():
@@ -910,9 +924,7 @@ def _connect_signals(tray, loading_window, app, ui_manager):
 
     # Connect volume and audio sample updates to recording dialog
     if tray.recording_dialog:
-        tray.audio_manager.volume_changing.connect(
-            tray.recording_dialog.update_volume
-        )
+        tray.audio_manager.volume_changing.connect(tray.recording_dialog.update_volume)
         tray.audio_manager.audio_samples_changing.connect(
             tray.recording_dialog.update_audio_samples
         )
