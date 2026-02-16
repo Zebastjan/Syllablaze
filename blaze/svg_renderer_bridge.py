@@ -1,0 +1,151 @@
+"""
+SVG Renderer Bridge for QML
+
+Exposes SVG element bounds to QML for precise positioning.
+Uses QSvgRenderer to load the SVG and get element boundaries by ID.
+"""
+
+from PyQt6.QtCore import QObject, pyqtProperty, QRectF, QPointF
+from PyQt6.QtSvg import QSvgRenderer
+from PyQt6.QtGui import QPainter
+import os
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+class SvgRendererBridge(QObject):
+    """
+    Bridge class that exposes SVG element bounds to QML.
+
+    This allows QML to position overlays exactly on top of specific
+    SVG elements by their IDs.
+    """
+
+    def __init__(self, svg_path=None, parent=None):
+        super().__init__(parent)
+
+        if svg_path is None:
+            # Default to syllablaze.svg in resources
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            svg_path = os.path.join(base_dir, "resources", "syllablaze.svg")
+
+        self._svg_path = svg_path
+        self._renderer = QSvgRenderer(svg_path)
+
+        if not self._renderer.isValid():
+            logger.error(f"Failed to load SVG: {svg_path}")
+        else:
+            logger.info(f"SVG Renderer loaded: {svg_path}")
+
+        # Cache element bounds
+        self._status_bounds = None
+        self._waveform_bounds = None
+        self._view_box = self._renderer.viewBoxF()
+
+        logger.info(f"SVG viewBox: {self._view_box}")
+
+    @pyqtProperty(QRectF)
+    def statusIndicatorBounds(self):
+        """Get the bounds of the status_indicator element"""
+        if self._status_bounds is None:
+            self._status_bounds = self._renderer.boundsOnElement("status_indicator")
+            if self._status_bounds.isNull():
+                logger.warning(
+                    "status_indicator element not found in SVG, using fallback"
+                )
+                # Fallback to approximate center area
+                self._status_bounds = QRectF(100, 100, 312, 312)
+            else:
+                logger.info(f"status_indicator bounds: {self._status_bounds}")
+        return self._status_bounds
+
+    @pyqtProperty(QRectF)
+    def waveformBounds(self):
+        """Get the bounds of the waveform element"""
+        if self._waveform_bounds is None:
+            self._waveform_bounds = self._renderer.boundsOnElement("waveform")
+            if self._waveform_bounds.isNull():
+                logger.warning("waveform element not found in SVG, using fallback")
+                # Fallback to approximate ring area
+                self._waveform_bounds = QRectF(50, 50, 412, 412)
+            else:
+                logger.info(f"waveform bounds: {self._waveform_bounds}")
+        return self._waveform_bounds
+
+    @pyqtProperty(QRectF)
+    def viewBox(self):
+        """Get the SVG viewBox"""
+        return self._view_box
+
+    @pyqtProperty(float)
+    def viewBoxWidth(self):
+        """Get SVG viewBox width"""
+        return self._view_box.width()
+
+    @pyqtProperty(float)
+    def viewBoxHeight(self):
+        """Get SVG viewBox height"""
+        return self._view_box.height()
+
+    def render(self, painter: QPainter):
+        """Render the full SVG to the painter"""
+        self._renderer.render(painter)
+
+    def renderElement(self, painter: QPainter, element_id: str):
+        """Render a specific element by ID"""
+        self._renderer.render(painter, element_id)
+
+    def mapSvgToWidget(
+        self, svg_x: float, svg_y: float, widget_width: float, widget_height: float
+    ) -> QPointF:
+        """
+        Map SVG coordinates to widget coordinates.
+
+        Args:
+            svg_x: X coordinate in SVG space
+            svg_y: Y coordinate in SVG space
+            widget_width: Target widget width
+            widget_height: Target widget height
+
+        Returns:
+            QPointF in widget coordinates
+        """
+        scale_x = widget_width / self._view_box.width()
+        scale_y = widget_height / self._view_box.height()
+
+        widget_x = (svg_x - self._view_box.x()) * scale_x
+        widget_y = (svg_y - self._view_box.y()) * scale_y
+
+        return QPointF(widget_x, widget_y)
+
+    def mapSvgRectToWidget(
+        self, svg_rect: QRectF, widget_width: float, widget_height: float
+    ) -> QRectF:
+        """
+        Map an SVG rectangle to widget coordinates.
+
+        Args:
+            svg_rect: QRectF in SVG coordinates
+            widget_width: Target widget width
+            widget_height: Target widget height
+
+        Returns:
+            QRectF in widget coordinates
+        """
+        top_left = self.mapSvgToWidget(
+            svg_rect.x(), svg_rect.y(), widget_width, widget_height
+        )
+        bottom_right = self.mapSvgToWidget(
+            svg_rect.x() + svg_rect.width(),
+            svg_rect.y() + svg_rect.height(),
+            widget_width,
+            widget_height,
+        )
+
+        return QRectF(
+            top_left.x(),
+            top_left.y(),
+            bottom_right.x() - top_left.x(),
+            bottom_right.y() - top_left.y(),
+        )

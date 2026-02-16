@@ -54,7 +54,7 @@ ApplicationWindow {
     }
 
     // Reduce opacity during transcription
-    opacity: (audioBridge && audioBridge.isTranscribing) ? 0.5 : 1.0
+    opacity: (dialogBridge && dialogBridge.isTranscribing) ? 0.5 : 1.0
 
     Behavior on opacity {
         NumberAnimation { duration: 200 }
@@ -65,9 +65,9 @@ ApplicationWindow {
         id: background
         anchors.fill: parent
         radius: width / 2
-        color: (audioBridge && audioBridge.isRecording) ? "#232629" : "transparent"  // Dark background only when recording
-        border.color: (audioBridge && audioBridge.isRecording) ? "#ef2929" : "transparent"  // Red border only when recording
-        border.width: (audioBridge && audioBridge.isRecording) ? 2 : 0
+        color: (dialogBridge && dialogBridge.isRecording) ? "#232629" : "transparent"  // Dark background only when recording
+        border.color: (dialogBridge && dialogBridge.isRecording) ? "#ef2929" : "transparent"  // Red border only when recording
+        border.width: (dialogBridge && dialogBridge.isRecording) ? 2 : 0
 
         Behavior on color {
             ColorAnimation { duration: 200 }
@@ -86,15 +86,15 @@ ApplicationWindow {
     Rectangle {
         id: volumeVisualization
         anchors.centerIn: parent
-        width: iconContainer.width + 60 + ((audioBridge ? audioBridge.currentVolume : 0) * 60)  // Grow with volume
+        width: iconContainer.width + 60 + ((dialogBridge ? dialogBridge.currentVolume : 0) * 60)  // Grow with volume
         height: width
         radius: width / 2
-        visible: audioBridge && audioBridge.isRecording
+        visible: dialogBridge && dialogBridge.isRecording
 
         // Color based on volume level
         // Green: 0-60% (good), Yellow: 60-85% (high), Red: 85-100% (peaking)
         property color volumeColor: {
-            var volume = audioBridge ? audioBridge.currentVolume : 0
+            var volume = dialogBridge ? dialogBridge.currentVolume : 0
             if (volume < 0.6) {
                 // Green for good range
                 return Qt.rgba(0.2, 0.8, 0.2, 0.6 + volume * 0.4)
@@ -143,9 +143,9 @@ ApplicationWindow {
         height: width
         radius: width / 2
         color: "transparent"
-        border.width: 2 + ((audioBridge ? audioBridge.currentVolume : 0) * 3)  // 2-5px based on volume
+        border.width: 2 + ((dialogBridge ? dialogBridge.currentVolume : 0) * 3)  // 2-5px based on volume
         border.color: volumeVisualization.volumeColor
-        visible: audioBridge && audioBridge.isRecording
+        visible: dialogBridge && dialogBridge.isRecording
 
         Behavior on width {
             NumberAnimation { duration: 80; easing.type: Easing.OutCubic }
@@ -168,7 +168,7 @@ ApplicationWindow {
         height: 100
 
         // Scale animation when recording
-        scale: (audioBridge && audioBridge.isRecording) ? 1.1 : 1.0
+        scale: (dialogBridge && dialogBridge.isRecording) ? 1.1 : 1.0
 
         Behavior on scale {
             NumberAnimation { duration: 200 }
@@ -198,7 +198,7 @@ ApplicationWindow {
         anchors.fill: parent
         radius: width / 2
         color: Qt.rgba(0, 0, 0, 0.6)
-        visible: audioBridge && audioBridge.isTranscribing
+        visible: dialogBridge && dialogBridge.isTranscribing
 
         Label {
             anchors.centerIn: parent
@@ -345,7 +345,7 @@ ApplicationWindow {
         id: contextMenu
 
         MenuItem {
-            text: (audioBridge && audioBridge.isRecording) ? "Stop Recording" : "Start Recording"
+            text: (dialogBridge && dialogBridge.isRecording) ? "Stop Recording" : "Start Recording"
             onTriggered: dialogBridge.toggleRecording()
         }
 
