@@ -8,12 +8,9 @@ Syllablaze is a PyQt6 system tray application for real-time speech-to-text trans
 
 ## Current Development Status
 
-**Active Development Areas** (as of Feb 2025):
-- Recording dialog settings persistence and window behavior
-- Visibility synchronization between UI components
-- Wayland/X11 compatibility for always-on-top behavior
-
-See "Known Issues & Ongoing Work" section below for details.
+**Active Development Areas** (as of Feb 2026):
+- Always-on-top toggle requires restart to take effect (minor, deferred)
+- Window position persistence on Wayland (compositor prevents it)
 
 ## Build and Run Commands
 
@@ -25,7 +22,6 @@ python3 install.py
 python3 -m blaze.main
 
 # Dev update: copies to pipx install dir, restarts app
-# NOTE: Ruff has been DISABLED during debugging sessions
 ./blaze/dev-update.sh
 
 # Uninstall
@@ -56,36 +52,30 @@ CI uses **flake8** (max-line-length=127, max-complexity=10). Dev workflow uses *
 
 ```bash
 flake8 . --max-line-length=127
-# ruff check blaze/ --fix  # DISABLED during active debugging
+# ruff check blaze/ --fix  # optional
 ```
 
 ## Architecture
 
-**Entry point**: `blaze/main.py` - `main()` function creates the Qt application, initializes `SyllablazeOrchestrator` (the main controller), sets up D-Bus service (`SyllaDBusService`), and starts a qasync event loop.
+**Entry point**: `blaze/main.py` — `main()` creates the Qt application, initializes `SyllablazeOrchestrator` (the main controller), sets up D-Bus service (`SyllaDBusService`), and starts a qasync event loop.
 
 **Core flow**:
 ```
-SyllablazeOrchestrator (main.py) - orchestrator
+SyllablazeOrchestrator (main.py) — orchestrator / QSystemTrayIcon
   ├── AudioManager -> AudioRecorder (recorder.py) -> PyAudio microphone input
   ├── TranscriptionManager -> FasterWhisperTranscriptionWorker (transcriber.py)
   ├── UIManager -> ProgressWindow, LoadingWindow, ProcessingWindow
   ├── RecordingDialogManager -> RecordingDialog.qml (circular volume indicator)
   ├── TrayMenuManager -> Tray menu creation and updates
-  ├── SettingsCoordinator -> Settings synchronization
-  ├── WindowVisibilityCoordinator -> Recording dialog visibility management
+  ├── SettingsCoordinator -> Derives backend settings from popup_style; syncs components
+  ├── WindowVisibilityCoordinator -> Recording dialog auto-show/hide
   ├── GPUSetupManager -> GPU detection and CUDA library configuration
   ├── GlobalShortcuts (shortcuts.py) -> pynput keyboard listener
   ├── LockManager -> single-instance enforcement via lock file
   └── ClipboardManager -> copies transcription to clipboard
 ```
 
-**Recent Refactoring** (Phase 7 - Feb 2025):
-- Extracted 8 manager classes to separate orchestration from implementation
-- main.py reduced from 1229 → 1026 lines (203 lines / 16.5% reduction)
-- Improved separation of concerns, testability, and maintainability
-- Recording logic simplified with helper methods (toggle_recording: 124 → 40 lines)
-
-**Manager pattern** (`blaze/managers/`): AudioManager, TranscriptionManager, UIManager, LockManager, TrayMenuManager, SettingsCoordinator, WindowVisibilityCoordinator, and GPUSetupManager separate concerns from the main controller.
+**Manager pattern** (`blaze/managers/`): AudioManager, TranscriptionManager, UIManager, LockManager, TrayMenuManager, SettingsCoordinator, WindowVisibilityCoordinator, GPUSetupManager.
 
 **Key design decisions**:
 - All inter-component communication uses Qt signals/slots (thread-safe)
@@ -93,30 +83,53 @@ SyllablazeOrchestrator (main.py) - orchestrator
 - Audio processed entirely in memory (no temp files to disk)
 - Global shortcuts use KDE kglobalaccel D-Bus integration; default is Alt+Space
 - WhisperModelManager (`blaze/whisper_model_manager.py`) handles model download/deletion/GPU detection
-- **GPUSetupManager** (`blaze/managers/gpu_setup_manager.py`) handles CUDA library detection, LD_LIBRARY_PATH configuration, and process restart for GPU acceleration
+- **GPUSetupManager** handles CUDA library detection, LD_LIBRARY_PATH configuration, and process restart for GPU acceleration
 - Settings persisted via QSettings (`blaze/settings.py`)
 - Constants (app version, sample rates, defaults) in `blaze/constants.py`
-- **Centralized visibility control**: Dialog/window visibility managed through single-source-of-truth methods with recursion prevention
-- **QML-Python bridges**: Bidirectional communication via SettingsBridge (settings sync) and DialogBridge/AudioBridge (state/actions)
-- **Debounced persistence**: Position and size changes debounced (500ms) to prevent excessive disk writes
+- **ApplicationState** (`blaze/application_state.py`) is the single source of truth for recording/transcription/dialog state
+- **Centralized visibility control**: all dialog visibility changes go through `ApplicationState.set_recording_dialog_visible()` — never call `show()/hide()` directly
+- **QML-Python bridges**: `SettingsBridge` (settings + svgPath), `RecordingDialogBridge` (state/actions), `SvgRendererBridge` (SVG element bounds)
+- **Debounced persistence**: position and size changes debounced (500ms) to prevent excessive disk writes
 
-**UI windows** are separate classes: `KirigamiSettingsWindow` (QML-based), `ProgressWindow`, `LoadingWindow`, `ProcessingWindow`, `VolumeMeter`.
+**UI windows**: `KirigamiSettingsWindow` (QML-based), `ProgressWindow`, `LoadingWindow`, `ProcessingWindow`, `VolumeMeter`.
+
+## Settings Architecture
+
+Two high-level settings drive recording indicator behavior:
+
+| Setting | Type | Default | Values |
+|---|---|---|---|
+| `popup_style` | str | `"applet"` | `"none"` / `"traditional"` / `"applet"` |
+| `applet_autohide` | bool | `True` | relevant when `popup_style == "applet"` |
+
+`SettingsCoordinator._apply_popup_style()` derives backend settings:
+
+| popup_style | applet_autohide | show_progress_window | show_recording_dialog | applet_mode |
+|---|---|---|---|---|
+| none | — | False | False | off |
+| traditional | — | True | False | off |
+| applet | True | False | True | popup |
+| applet | False | False | True | persistent |
+
+The old backend settings (`show_recording_dialog`, `show_progress_window`, `applet_mode`) are kept — `SettingsCoordinator` writes them as derived values. `WindowVisibilityCoordinator` continues reading `applet_mode` unchanged.
 
 ## UI Architecture
 
 ### Settings Window (Kirigami QML)
 Settings window uses **Kirigami QML UI** (`blaze/kirigami_integration.py`):
 - Modern KDE Plasma styling matching the desktop environment
-- QML pages in `blaze/qml/pages/` (Models, Audio, Transcription, Shortcuts, About, **UI**)
+- QML pages in `blaze/qml/pages/` (Models, Audio, Transcription, Shortcuts, About, UI)
 - Python-QML bridge via `SettingsBridge` for bidirectional communication
 - `ActionsBridge` for user actions (open URL, system settings, etc.)
 - Display scaling support via `devicePixelRatio` detection
-- Replaces old PyQt6 widget UI (removed in commit 0031ca5)
 
-**UIPage Settings** (`blaze/qml/pages/UIPage.qml`):
-- Recording dialog visibility, size, always-on-top controls
-- Progress window visibility and always-on-top controls
-- Bidirectional sync via `Connections` block listening to `settingChanged` signals
+**UIPage** (`blaze/qml/pages/UIPage.qml`):
+- Visual 3-card radio selector: **None / Traditional / Applet**
+- Each card has a QML-drawn preview (None: em-dash; Traditional: mini progress bar; Applet: real SVG)
+- Conditional sub-options appear below selected card:
+  - Applet: auto-hide toggle, dialog size spinbox, always-on-top switch
+  - Traditional: always-on-top switch
+- `SettingsBridge.svgPath` pyqtProperty exposes the SVG file path for the Applet card image
 
 ### Recording Dialog (QML Circular Window)
 Recording indicator dialog (`blaze/recording_dialog_manager.py`, `blaze/qml/RecordingDialog.qml`):
@@ -130,90 +143,31 @@ Recording indicator dialog (`blaze/recording_dialog_manager.py`, `blaze/qml/Reco
   - Drag: Move window using Qt's `startSystemMove()`
   - Scroll wheel: Resize (100-500px range)
 - Settings persistence: position, size, always-on-top, visibility
-- **AudioBridge**: Exposes recording state, volume, transcription state to QML
-- **DialogBridge**: Handles QML→Python actions (toggle recording, open clipboard, etc.)
-- Position saves debounced (500ms after drag stops) to prevent excessive writes
+- Position saves debounced (500ms after drag stops)
 - 300ms click-ignore delay after showing to prevent accidental interactions
 
-## Known Issues & Ongoing Work
+### Popup / Visibility Mode
+- `applet_mode=popup`: dialog auto-shows when recording starts, auto-hides 500ms after transcription
+- `applet_mode=persistent`: dialog always visible
+- `applet_mode=off`: dialog never shown automatically
+- `WindowVisibilityCoordinator.connect_to_app_state()` wires up the auto-show/hide signals
 
-### Recent Testing Notes (Feb 16, 2026)
+## Settings Change Flow
 
-**Clipboard Issue - Possibly Resolved**:
-- Previous intermittent clipboard copying failures appear to be resolved
-- Issue seemed related to switching windows and copying/pasting from other applications
-- Recent testing could not trigger the issue - may be fixed by recent changes
-- Status: Monitoring - not currently reproducible
+```
+QML settingsBridge.set(key, value)
+  → Settings.set(key, value)            [validation + QSettings write]
+  → SettingsBridge.settingChanged signal
+  → SettingsCoordinator.on_setting_changed(key, value)
+  → component update (visibility, always-on-top, derived settings, etc.)
+```
 
-**Always-On-Top Toggle - Known Minor Issue**:
-- Recording dialog always-on-top setting requires manual reset to take effect
-- User must toggle setting off/on or restart app for changes to apply
-- Status: Minor annoyance - deferred for future fix
+## Known Issues
 
-### Recording Dialog Settings Persistence (Completed)
-
-**Status**: Implemented and working
-
-**Completed**:
-- Settings UI in UIPage.qml displays and updates correctly
-- Dialog size saves and restores
-- Dialog visibility toggles work from settings UI
-- SVG icon rendering with proper z-ordering (microphone visible)
-- GPU detection and CUDA library preloading working
-
-**Resolved Issues**:
-
-1. **Window Position Persistence**:
-   - **Problem**: Position not saving on drag (QML `xChanged`/`yChanged` signals don't fire from Python)
-   - **Solution**: Use QML `onXChanged`/`onYChanged` handlers to call `dialogBridge.saveWindowPosition(x, y)`
-   - **Implementation**: Added position debouncing (500ms timer) in QML, handler in Python
-   - **Wayland Note**: Position restore may not work on Wayland due to compositor restrictions
-
-2. **Always-On-Top Toggle**:
-   - **Problem**: Dialog stays on top even when setting is disabled (Wayland compositor behavior)
-   - **Root Cause**: `Qt.WindowType.Tool` windows always stay on top on Wayland
-   - **Solution**: Switch to `Qt.WindowType.Window` for better flag control
-   - **Status**: Implementation in progress
-
-3. **Visibility Synchronization**:
-   - **Problem**: Dialog visibility must sync between QML UI, Python code, and system tray menu
-   - **Solution**: Centralized control via `set_recording_dialog_visibility(visible, source)` in main.py
-   - **Features**:
-     - Single source of truth for visibility state
-     - `_updating_dialog_visibility` flag prevents recursive updates
-     - Source tracking for debugging ("startup", "settings_ui", "tray_menu", etc.)
-   - **Status**: Code written, testing in progress
-
-4. **Dialog Shows on Startup When Disabled**:
-   - **Problem**: QML `visible: true` causes brief flash before Python hides it
-   - **Solution**: Change to `visible: false` in QML, let Python show it explicitly
-   - **Status**: Fix implemented
-
-5. **Window Border on First Show**:
-   - **Problem**: Window flags set in `show()` instead of `initialize()`
-   - **Solution**: Set flags during window creation, not on show
-   - **Status**: Fix implemented
-
-### Files Modified (Uncommitted):
-- `blaze/main.py` - Centralized visibility control, recursion prevention
-- `blaze/progress_window.py` - Always-on-top setting support
-- `blaze/recording_dialog_manager.py` - Position save via QML handlers, window flag management
-- `blaze/qml/RecordingDialog.qml` - Position tracking, click-ignore delay
-- `blaze/qml/pages/UIPage.qml` - UI controls for dialog/window settings
-- `blaze/settings.py` - New UI-related settings initialization
-
-### New Files (Not Yet Integrated):
-- `blaze/kwin_rules.py` - KWin window rules manager for Wayland always-on-top fallback (168 lines)
-  - Uses `kwriteconfig6` to create window rules in `~/.config/kwinrulesrc`
-  - Not yet integrated into main application
+- **Always-on-top toggle**: requires restart or toggle off/on to take effect (Wayland compositor behavior)
+- **Window position on Wayland**: compositor controls placement; restore may not work
 
 ## Development Workflow
-
-Use standard git branch workflow:
-- `main` branch = stable production version
-- Feature branches = development work
-- Editable pipx install picks up changes immediately
-- Switch branches and restart app to test different versions
 
 ```bash
 # Work on feature
