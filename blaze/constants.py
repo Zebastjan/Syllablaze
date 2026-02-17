@@ -58,3 +58,9 @@ DEFAULT_SHORTCUT = "Alt+Space"
 # Lock file configuration - path where the application lock file will be stored
 # This is just the path string, not the actual file handle
 LOCK_FILE_PATH = os.path.expanduser("~/.cache/syllablaze/syllablaze.lock")
+
+# Applet mode constants for recording dialog behavior
+APPLET_MODE_OFF = "off"           # Dialog never shown automatically
+APPLET_MODE_PERSISTENT = "persistent"  # Dialog always visible
+APPLET_MODE_POPUP = "popup"       # Dialog auto-shows on record, auto-hides after transcription
+DEFAULT_APPLET_MODE = APPLET_MODE_POPUP

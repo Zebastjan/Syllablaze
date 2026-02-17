@@ -1,4 +1,5 @@
 from PyQt6.QtCore import QObject
+from blaze.constants import APPLET_MODE_OFF, APPLET_MODE_PERSISTENT, APPLET_MODE_POPUP
 import logging
 
 logger = logging.getLogger(__name__)
@@ -22,6 +23,18 @@ class SettingsCoordinator(QObject):
     def set_progress_window(self, progress_window):
         """Set progress window reference after creation"""
         self.progress_window = progress_window
+
+    def _apply_applet_mode(self, value):
+        """Apply dialog visibility change when applet_mode setting changes."""
+        if not self.app_state:
+            return
+        mode = str(value) if value is not None else APPLET_MODE_POPUP
+        logger.info(f"Applet mode changed to: {mode}")
+        if mode == APPLET_MODE_PERSISTENT:
+            self.app_state.set_recording_dialog_visible(True, source="applet_mode_change")
+        elif mode == APPLET_MODE_OFF:
+            self.app_state.set_recording_dialog_visible(False, source="applet_mode_change")
+        # APPLET_MODE_POPUP: no immediate change; auto-show on next record start
 
     def on_setting_changed(self, key, value):
         """Handle setting changes from settings window
@@ -56,3 +69,6 @@ class SettingsCoordinator(QObject):
                 always_on_top = bool(value) if value is not None else True
                 self.progress_window.update_always_on_top(always_on_top)
                 logger.info(f"Updated progress window always-on-top to: {always_on_top}")
+
+        elif key == "applet_mode":
+            self._apply_applet_mode(value)

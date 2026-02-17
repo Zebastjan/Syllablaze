@@ -3,7 +3,8 @@ from blaze.constants import (
     APP_NAME, VALID_LANGUAGES,
     SAMPLE_RATE_MODE_WHISPER, SAMPLE_RATE_MODE_DEVICE, DEFAULT_SAMPLE_RATE_MODE,
     DEFAULT_COMPUTE_TYPE, DEFAULT_DEVICE, DEFAULT_BEAM_SIZE, DEFAULT_VAD_FILTER, DEFAULT_WORD_TIMESTAMPS,
-    DEFAULT_SHORTCUT
+    DEFAULT_SHORTCUT,
+    APPLET_MODE_OFF, APPLET_MODE_PERSISTENT, APPLET_MODE_POPUP, DEFAULT_APPLET_MODE,
 )
 import logging
 
@@ -18,6 +19,8 @@ class Settings:
     VALID_COMPUTE_TYPES = ['float32', 'float16', 'int8']
     # Valid devices for Faster Whisper
     VALID_DEVICES = ['cpu', 'cuda']
+    # Valid applet modes for recording dialog
+    VALID_APPLET_MODES = [APPLET_MODE_OFF, APPLET_MODE_PERSISTENT, APPLET_MODE_POPUP]
     
     def __init__(self):
         self.settings = QSettings(APP_NAME, APP_NAME)
@@ -54,6 +57,10 @@ class Settings:
             self.settings.setValue('show_progress_window', True)
         if self.settings.value('progress_window_always_on_top') is None:
             self.settings.setValue('progress_window_always_on_top', True)
+
+        # Applet mode for recording dialog behavior
+        if self.settings.value('applet_mode') is None:
+            self.settings.setValue('applet_mode', DEFAULT_APPLET_MODE)
         
     def get(self, key, default=None):
         """Get a setting value with proper type conversion"""
@@ -122,6 +129,9 @@ class Settings:
         elif key == 'device' and value not in self.VALID_DEVICES:
             logger.warning(f"Invalid device in settings: {value}, using default: {DEFAULT_DEVICE}")
             return DEFAULT_DEVICE
+        elif key == 'applet_mode' and value not in self.VALID_APPLET_MODES:
+            logger.warning(f"Invalid applet_mode in settings: {value}, using default: {DEFAULT_APPLET_MODE}")
+            return DEFAULT_APPLET_MODE
         elif key == 'beam_size':
             try:
                 beam_size = int(value)
@@ -161,6 +171,8 @@ class Settings:
             raise ValueError(f"Invalid compute_type: {value}")
         elif key == 'device' and value not in self.VALID_DEVICES:
             raise ValueError(f"Invalid device: {value}")
+        elif key == 'applet_mode' and value not in self.VALID_APPLET_MODES:
+            raise ValueError(f"Invalid applet_mode: {value}")
         elif key == 'beam_size':
             try:
                 beam_size = int(value)

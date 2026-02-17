@@ -200,6 +200,7 @@ class SyllablazeOrchestrator(QSystemTrayIcon):
                 app_state=self.app_state,
                 tray_menu_manager=self.tray_menu_manager,
                 settings_bridge=self.settings_window.settings_bridge,
+                settings=self.settings,
             )
 
             # Connect to ApplicationState visibility changes
@@ -995,6 +996,10 @@ async def initialize_tray(tray, loading_window, app, ui_manager):
 
         # Connect signals
         _connect_signals(tray, loading_window, app, ui_manager)
+
+        # Wire popup mode auto-show/hide after all signals are connected
+        if hasattr(tray, "window_visibility_coordinator"):
+            tray.window_visibility_coordinator.connect_to_app_state()
 
         # Make tray visible
         ui_manager.update_loading_status(loading_window, "Starting application...", 100)
