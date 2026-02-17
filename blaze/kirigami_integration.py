@@ -5,7 +5,7 @@ This module replaces PyQt6 SettingsWindow with Kirigami QML interface.
 """
 
 import os
-from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot, QUrl, Qt
+from PyQt6.QtCore import QObject, pyqtProperty, pyqtSignal, pyqtSlot, QUrl, Qt
 from PyQt6.QtQml import QQmlApplicationEngine
 from PyQt6.QtWidgets import QWidget, QApplication
 from PyQt6.QtGui import QDesktopServices
@@ -42,6 +42,22 @@ class SettingsBridge(QObject):
     def __init__(self, settings):
         super().__init__()
         self.settings = settings
+
+    # === SVG path property ===
+
+    @pyqtProperty(str)
+    def svgPath(self):
+        """Return the absolute path to syllablaze.svg for use as file:// URL in QML."""
+        search_dirs = [
+            os.path.join(os.path.dirname(__file__), '..', 'resources'),
+            os.path.join(os.path.dirname(__file__), 'resources'),
+            os.path.expanduser('~/.local/share/icons/hicolor/256x256/apps'),
+        ]
+        for d in search_dirs:
+            p = os.path.join(d, 'syllablaze.svg')
+            if os.path.exists(p):
+                return os.path.abspath(p)
+        return ''
 
     # === Generic get/set ===
 

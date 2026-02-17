@@ -5,6 +5,7 @@ from blaze.constants import (
     DEFAULT_COMPUTE_TYPE, DEFAULT_DEVICE, DEFAULT_BEAM_SIZE, DEFAULT_VAD_FILTER, DEFAULT_WORD_TIMESTAMPS,
     DEFAULT_SHORTCUT,
     APPLET_MODE_OFF, APPLET_MODE_PERSISTENT, APPLET_MODE_POPUP, DEFAULT_APPLET_MODE,
+    POPUP_STYLE_NONE, POPUP_STYLE_TRADITIONAL, POPUP_STYLE_APPLET, DEFAULT_POPUP_STYLE, DEFAULT_APPLET_AUTOHIDE,
 )
 import logging
 
@@ -21,6 +22,8 @@ class Settings:
     VALID_DEVICES = ['cpu', 'cuda']
     # Valid applet modes for recording dialog
     VALID_APPLET_MODES = [APPLET_MODE_OFF, APPLET_MODE_PERSISTENT, APPLET_MODE_POPUP]
+    # Valid popup styles (high-level UI setting)
+    VALID_POPUP_STYLES = [POPUP_STYLE_NONE, POPUP_STYLE_TRADITIONAL, POPUP_STYLE_APPLET]
     
     def __init__(self):
         self.settings = QSettings(APP_NAME, APP_NAME)
@@ -61,6 +64,12 @@ class Settings:
         # Applet mode for recording dialog behavior
         if self.settings.value('applet_mode') is None:
             self.settings.setValue('applet_mode', DEFAULT_APPLET_MODE)
+
+        # High-level popup style selector
+        if self.settings.value('popup_style') is None:
+            self.settings.setValue('popup_style', DEFAULT_POPUP_STYLE)
+        if self.settings.value('applet_autohide') is None:
+            self.settings.setValue('applet_autohide', DEFAULT_APPLET_AUTOHIDE)
         
     def get(self, key, default=None):
         """Get a setting value with proper type conversion"""
@@ -78,6 +87,7 @@ class Settings:
             'recording_dialog_always_on_top',
             'show_progress_window',
             'progress_window_always_on_top',
+            'applet_autohide',
         ]
 
         if key in boolean_settings:
@@ -132,6 +142,9 @@ class Settings:
         elif key == 'applet_mode' and value not in self.VALID_APPLET_MODES:
             logger.warning(f"Invalid applet_mode in settings: {value}, using default: {DEFAULT_APPLET_MODE}")
             return DEFAULT_APPLET_MODE
+        elif key == 'popup_style' and value not in self.VALID_POPUP_STYLES:
+            logger.warning(f"Invalid popup_style in settings: {value}, using default: {DEFAULT_POPUP_STYLE}")
+            return DEFAULT_POPUP_STYLE
         elif key == 'beam_size':
             try:
                 beam_size = int(value)
@@ -173,6 +186,8 @@ class Settings:
             raise ValueError(f"Invalid device: {value}")
         elif key == 'applet_mode' and value not in self.VALID_APPLET_MODES:
             raise ValueError(f"Invalid applet_mode: {value}")
+        elif key == 'popup_style' and value not in self.VALID_POPUP_STYLES:
+            raise ValueError(f"Invalid popup_style: {value}")
         elif key == 'beam_size':
             try:
                 beam_size = int(value)

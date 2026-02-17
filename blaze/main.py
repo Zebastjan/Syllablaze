@@ -185,7 +185,8 @@ class SyllablazeOrchestrator(QSystemTrayIcon):
 
             # Initialize settings coordinator after recording dialog
             self.settings_coordinator = SettingsCoordinator(
-                recording_dialog=self.recording_dialog, app_state=self.app_state
+                recording_dialog=self.recording_dialog, app_state=self.app_state,
+                settings=self.settings
             )
 
             # Connect settings window to coordinator

@@ -64,3 +64,10 @@ APPLET_MODE_OFF = "off"           # Dialog never shown automatically
 APPLET_MODE_PERSISTENT = "persistent"  # Dialog always visible
 APPLET_MODE_POPUP = "popup"       # Dialog auto-shows on record, auto-hides after transcription
 DEFAULT_APPLET_MODE = APPLET_MODE_POPUP
+
+# Popup style constants — high-level UI selection for recording indicator
+POPUP_STYLE_NONE = "none"              # No indicator shown
+POPUP_STYLE_TRADITIONAL = "traditional"  # Classic progress window
+POPUP_STYLE_APPLET = "applet"          # Circular floating dialog
+DEFAULT_POPUP_STYLE = POPUP_STYLE_APPLET
+DEFAULT_APPLET_AUTOHIDE = True

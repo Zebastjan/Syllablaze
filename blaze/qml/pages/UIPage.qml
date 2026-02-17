@@ -7,192 +7,232 @@ Kirigami.ScrollablePage {
     id: uiPage
     title: "User Interface"
 
-    // Listen to setting changes from other sources (e.g., dialog dismissal)
+    // ── Listen to setting changes from other sources ──────────────────────
     Connections {
         target: settingsBridge
         function onSettingChanged(key, value) {
-            if (key === "show_recording_dialog") {
-                showDialogSwitch.checked = (value !== false)
-            } else if (key === "show_progress_window") {
-                showProgressSwitch.checked = (value !== false)
+            if (key === "popup_style") {
+                styleGroup.updateFromValue(value)
+            } else if (key === "applet_autohide") {
+                autohideSwitch.checked = (value !== false)
             } else if (key === "recording_dialog_always_on_top") {
                 alwaysOnTopSwitch.checked = (value !== false)
             } else if (key === "progress_window_always_on_top") {
-                progressAlwaysOnTopSwitch.checked = (value !== false)
-            } else if (key === "applet_mode") {
-                var modeIndex = appletModeCombo.indexOfValue(value)
-                if (modeIndex >= 0) appletModeCombo.currentIndex = modeIndex
+                if (uiPage.currentStyle === "traditional")
+                    alwaysOnTopSwitch.checked = (value !== false)
             }
         }
     }
 
-    // Applet mode options model
-    property var appletModes: [
-        { value: "popup",      label: "Popup — show on record, hide after" },
-        { value: "persistent", label: "Persistent — always visible"        },
-        { value: "off",        label: "Off — never shown automatically"    },
-    ]
+    // ── State ──────────────────────────────────────────────────────────────
+    property string currentStyle: "applet"   // drives card highlight + sub-options
 
+    Component.onCompleted: {
+        var saved = settingsBridge ? settingsBridge.get("popup_style") : "applet"
+        currentStyle = saved || "applet"
+    }
+
+    // ── Helper: exclusive card selection ──────────────────────────────────
+    QtObject {
+        id: styleGroup
+        function select(style) {
+            uiPage.currentStyle = style
+            if (settingsBridge) settingsBridge.set("popup_style", style)
+        }
+        function updateFromValue(val) {
+            uiPage.currentStyle = val || "applet"
+        }
+    }
+
+    // ── Card component ────────────────────────────────────────────────────
+    component StyleCard: Rectangle {
+        id: card
+        property string styleValue: ""
+        property alias previewContent: previewArea.data
+
+        width: 160
+        height: 120
+        radius: Kirigami.Units.smallSpacing
+        color: Kirigami.Theme.backgroundColor
+        border.width: uiPage.currentStyle === styleValue ? 2 : 1
+        border.color: uiPage.currentStyle === styleValue
+                      ? Kirigami.Theme.highlightColor
+                      : Kirigami.Theme.disabledTextColor
+
+        // Preview area
+        Item {
+            id: previewArea
+            anchors { top: parent.top; left: parent.left; right: parent.right; bottom: radioRow.top }
+            anchors.margins: Kirigami.Units.smallSpacing
+            clip: true
+        }
+
+        // Radio + label row
+        RowLayout {
+            id: radioRow
+            anchors { bottom: parent.bottom; left: parent.left; right: parent.right }
+            anchors.margins: Kirigami.Units.smallSpacing
+            spacing: Kirigami.Units.smallSpacing
+
+            QQC2.RadioButton {
+                checked: uiPage.currentStyle === card.styleValue
+                onClicked: styleGroup.select(card.styleValue)
+            }
+            QQC2.Label {
+                text: card.styleValue.charAt(0).toUpperCase() + card.styleValue.slice(1)
+                Layout.fillWidth: true
+                elide: Text.ElideRight
+            }
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            onClicked: styleGroup.select(card.styleValue)
+        }
+    }
+
+    // ── Main layout ────────────────────────────────────────────────────────
     ColumnLayout {
         spacing: Kirigami.Units.largeSpacing
 
-        // Recording Dialog Section
+        Kirigami.Separator {
+            Layout.fillWidth: true
+        }
+        QQC2.Label {
+            text: "Recording Indicator"
+            font.bold: true
+            font.pointSize: Kirigami.Theme.defaultFont.pointSize + 1
+        }
+
+        // ── Three-card grid ────────────────────────────────────────────────
+        GridLayout {
+            columns: 3
+            columnSpacing: Kirigami.Units.largeSpacing
+            rowSpacing: 0
+
+            // ── None card ─────────────────────────────────────────────────
+            StyleCard {
+                styleValue: "none"
+                previewContent: [
+                    Item {
+                        anchors.centerIn: parent
+                        width: parent.width
+                        height: parent.height
+                        QQC2.Label {
+                            anchors.centerIn: parent
+                            text: "—"
+                            font.pointSize: 20
+                            opacity: 0.4
+                        }
+                    }
+                ]
+            }
+
+            // ── Traditional card ─────────────────────────────────────────
+            StyleCard {
+                styleValue: "traditional"
+                previewContent: [
+                    Item {
+                        anchors.fill: parent
+                        // Mini progress-bar mock
+                        ColumnLayout {
+                            anchors.centerIn: parent
+                            spacing: 4
+                            Rectangle {
+                                width: 100; height: 10; radius: 5
+                                color: Kirigami.Theme.disabledTextColor
+                                Rectangle {
+                                    width: parent.width * 0.65; height: parent.height; radius: parent.radius
+                                    color: Kirigami.Theme.positiveTextColor
+                                }
+                            }
+                            QQC2.Button {
+                                text: "Stop"
+                                Layout.alignment: Qt.AlignHCenter
+                                flat: true
+                                enabled: false
+                                implicitHeight: 22
+                                implicitWidth: 60
+                            }
+                        }
+                    }
+                ]
+            }
+
+            // ── Applet card ───────────────────────────────────────────────
+            StyleCard {
+                styleValue: "applet"
+                previewContent: [
+                    Item {
+                        anchors.fill: parent
+                        Image {
+                            anchors.centerIn: parent
+                            width: Math.min(parent.width, parent.height) - 8
+                            height: width
+                            source: settingsBridge && settingsBridge.svgPath
+                                    ? "file://" + settingsBridge.svgPath
+                                    : ""
+                            fillMode: Image.PreserveAspectFit
+                            smooth: true
+                            mipmap: true
+                        }
+                    }
+                ]
+            }
+        }
+
+        // ── Sub-options (conditional) ──────────────────────────────────────
         Kirigami.FormLayout {
             Layout.fillWidth: true
+            visible: uiPage.currentStyle === "applet" || uiPage.currentStyle === "traditional"
 
-            Kirigami.Separator {
-                Kirigami.FormData.isSection: true
-                Kirigami.FormData.label: "Recording Dialog"
-            }
-
-            QQC2.ComboBox {
-                id: appletModeCombo
-                Kirigami.FormData.label: "Dialog mode:"
-                model: appletModes.map(function(m) { return m.label })
-
-                // Helper: find index by value string
-                function indexOfValue(val) {
-                    for (var i = 0; i < appletModes.length; i++) {
-                        if (appletModes[i].value === val) return i
-                    }
-                    return 0
-                }
-
-                Component.onCompleted: {
-                    var savedMode = settingsBridge ? settingsBridge.get("applet_mode") : "popup"
-                    currentIndex = indexOfValue(savedMode || "popup")
-                }
-
-                onActivated: {
-                    if (settingsBridge) {
-                        settingsBridge.set("applet_mode", appletModes[currentIndex].value)
-                    }
-                }
-            }
-
-            QQC2.Label {
-                Layout.fillWidth: true
-                text: "Popup: dialog appears when recording starts and hides after transcription. " +
-                      "Persistent: dialog stays visible. Off: dialog never shown automatically."
-                wrapMode: Text.WordWrap
-                opacity: 0.7
-                font.pointSize: Kirigami.Theme.smallFont.pointSize
-            }
-
+            // Auto-hide toggle — Applet only
             QQC2.Switch {
-                id: showDialogSwitch
-                Kirigami.FormData.label: "Show recording dialog:"
-                checked: settingsBridge ? settingsBridge.get("show_recording_dialog") !== false : true
+                id: autohideSwitch
+                Kirigami.FormData.label: "Auto-hide after transcription:"
+                visible: uiPage.currentStyle === "applet"
+                checked: settingsBridge ? settingsBridge.get("applet_autohide") !== false : true
                 onToggled: {
-                    if (settingsBridge) {
-                        settingsBridge.set("show_recording_dialog", checked)
-                    }
+                    if (settingsBridge) settingsBridge.set("applet_autohide", checked)
                 }
             }
 
-            QQC2.Label {
-                Layout.fillWidth: true
-                text: "Display a circular floating dialog that shows recording status and volume visualization"
-                wrapMode: Text.WordWrap
-                opacity: 0.7
-                font.pointSize: Kirigami.Theme.smallFont.pointSize
-            }
-
+            // Dialog size — Applet only
             QQC2.SpinBox {
                 id: dialogSizeSpinBox
                 Kirigami.FormData.label: "Dialog size (px):"
+                visible: uiPage.currentStyle === "applet"
                 from: 100
                 to: 500
                 stepSize: 10
                 value: settingsBridge ? (settingsBridge.get("recording_dialog_size") || 200) : 200
-                enabled: showDialogSwitch.checked
                 onValueModified: {
-                    if (settingsBridge) {
-                        settingsBridge.set("recording_dialog_size", value)
-                    }
+                    if (settingsBridge) settingsBridge.set("recording_dialog_size", value)
                 }
             }
 
-            QQC2.Label {
-                Layout.fillWidth: true
-                text: "Size of the circular recording indicator (100-500 pixels)"
-                wrapMode: Text.WordWrap
-                opacity: 0.7
-                font.pointSize: Kirigami.Theme.smallFont.pointSize
-            }
-
+            // Always-on-top — both Applet and Traditional
             QQC2.Switch {
                 id: alwaysOnTopSwitch
-                Kirigami.FormData.label: "Keep dialog always on top:"
-                checked: settingsBridge ? settingsBridge.get("recording_dialog_always_on_top") !== false : true
-                enabled: showDialogSwitch.checked
+                Kirigami.FormData.label: uiPage.currentStyle === "applet"
+                                         ? "Keep dialog always on top:"
+                                         : "Keep window always on top:"
+                checked: {
+                    if (uiPage.currentStyle === "applet")
+                        return settingsBridge ? settingsBridge.get("recording_dialog_always_on_top") !== false : true
+                    else
+                        return settingsBridge ? settingsBridge.get("progress_window_always_on_top") !== false : true
+                }
                 onToggled: {
-                    if (settingsBridge) {
+                    if (!settingsBridge) return
+                    if (uiPage.currentStyle === "applet")
                         settingsBridge.set("recording_dialog_always_on_top", checked)
-                    }
-                }
-            }
-
-            QQC2.Label {
-                Layout.fillWidth: true
-                text: "Recording dialog will always stay above other windows for quick access"
-                wrapMode: Text.WordWrap
-                opacity: 0.7
-                font.pointSize: Kirigami.Theme.smallFont.pointSize
-            }
-        }
-
-        // Progress Window Section
-        Kirigami.FormLayout {
-            Layout.fillWidth: true
-
-            Kirigami.Separator {
-                Kirigami.FormData.isSection: true
-                Kirigami.FormData.label: "Progress Window"
-            }
-
-            QQC2.Switch {
-                id: showProgressSwitch
-                Kirigami.FormData.label: "Show progress window:"
-                checked: settingsBridge ? settingsBridge.get("show_progress_window") !== false : true
-                onToggled: {
-                    if (settingsBridge) {
-                        settingsBridge.set("show_progress_window", checked)
-                    }
-                }
-            }
-
-            QQC2.Label {
-                Layout.fillWidth: true
-                text: "Show the traditional progress window during recording and transcription"
-                wrapMode: Text.WordWrap
-                opacity: 0.7
-                font.pointSize: Kirigami.Theme.smallFont.pointSize
-            }
-
-            QQC2.Switch {
-                id: progressAlwaysOnTopSwitch
-                Kirigami.FormData.label: "Keep progress window always on top:"
-                checked: settingsBridge ? settingsBridge.get("progress_window_always_on_top") !== false : true
-                enabled: showProgressSwitch.checked
-                onToggled: {
-                    if (settingsBridge) {
+                    else
                         settingsBridge.set("progress_window_always_on_top", checked)
-                    }
                 }
             }
-
-            QQC2.Label {
-                Layout.fillWidth: true
-                text: "Progress window will stay above other windows (for testing always-on-top functionality)"
-                wrapMode: Text.WordWrap
-                opacity: 0.7
-                font.pointSize: Kirigami.Theme.smallFont.pointSize
-            }
         }
 
-        Item {
-            Layout.fillHeight: true
-        }
+        Item { Layout.fillHeight: true }
     }
 }
