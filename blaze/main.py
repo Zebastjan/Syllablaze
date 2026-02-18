@@ -189,8 +189,9 @@ class SyllablazeOrchestrator(QSystemTrayIcon):
 
             # Initialize settings coordinator after recording dialog
             self.settings_coordinator = SettingsCoordinator(
-                recording_dialog=self.recording_dialog, app_state=self.app_state,
-                settings=self.settings
+                recording_dialog=self.recording_dialog,
+                app_state=self.app_state,
+                settings=self.settings,
             )
 
             # Connect settings window to coordinator
@@ -675,11 +676,10 @@ class SyllablazeOrchestrator(QSystemTrayIcon):
         self.ui_manager.close_progress_window(context)
 
     def handle_transcription_finished(self, text):
-        # Phase 6: Reset transcribing state via app_state
-        self.app_state.stop_transcription()
-
-        # Phase 5: update_transcribing_state() call removed - AudioBridge listens to app_state
-
+        # CRITICAL: Set clipboard BEFORE stopping transcription.
+        # On Wayland, clipboard is owned by the focused window. If we emit
+        # transcription_stopped first, the recording dialog may close before
+        # clipboard ownership is established, causing the clipboard to be cleared.
         if text:
             # Use clipboard manager to copy text and show notification
             self.clipboard_manager.copy_to_clipboard(
@@ -688,6 +688,12 @@ class SyllablazeOrchestrator(QSystemTrayIcon):
 
             # Update tooltip with recognized text
             self.update_tooltip(text)
+
+        # Phase 6: Reset transcribing state via app_state
+        # This emits transcription_stopped which triggers dialog hide in popup mode
+        self.app_state.stop_transcription()
+
+        # Phase 5: update_transcribing_state() call removed - AudioBridge listens to app_state
 
         # Close progress window
         self._close_progress_window("after transcription")

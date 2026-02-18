@@ -18,8 +18,14 @@ class WindowVisibilityCoordinator(QObject):
                        transcription completes
     """
 
-    def __init__(self, recording_dialog, app_state, tray_menu_manager, settings_bridge,
-                 settings=None):
+    def __init__(
+        self,
+        recording_dialog,
+        app_state,
+        tray_menu_manager,
+        settings_bridge,
+        settings=None,
+    ):
         """Initialize window visibility coordinator
 
         Args:
@@ -63,7 +69,9 @@ class WindowVisibilityCoordinator(QObject):
         if state:
             state.recording_started.connect(self._on_recording_started)
             state.transcription_stopped.connect(self._on_transcription_complete)
-            logger.info("WindowVisibilityCoordinator: connected to app_state for popup mode")
+            logger.info(
+                "WindowVisibilityCoordinator: connected to app_state for popup mode"
+            )
 
     def _on_recording_started(self):
         """Auto-show dialog when recording starts (popup mode only)."""
@@ -77,7 +85,9 @@ class WindowVisibilityCoordinator(QObject):
     def _on_transcription_complete(self):
         """Auto-hide dialog after transcription completes (popup mode only)."""
         if self._applet_mode() == APPLET_MODE_POPUP:
-            logger.info(f"Popup mode: scheduling dialog hide in {POPUP_HIDE_DELAY_MS}ms")
+            logger.info(
+                f"Popup mode: scheduling dialog hide in {POPUP_HIDE_DELAY_MS}ms"
+            )
             self._popup_hide_timer.start()
 
     def _popup_hide_now(self):
@@ -97,7 +107,9 @@ class WindowVisibilityCoordinator(QObject):
             source (str): Source of the toggle request for debugging
         """
         if not self.recording_dialog or not self.app_state:
-            logger.warning(f"Cannot toggle dialog visibility: components not initialized (source: {source})")
+            logger.warning(
+                f"Cannot toggle dialog visibility: components not initialized (source: {source})"
+            )
             return
 
         current_visible = self.app_state.is_recording_dialog_visible()
@@ -116,7 +128,9 @@ class WindowVisibilityCoordinator(QObject):
             source (str): Source of the change (startup, settings_ui, tray_menu, dismissal)
         """
         if not self.recording_dialog:
-            logger.warning(f"Cannot update dialog visibility: dialog not initialized (source: {source})")
+            logger.warning(
+                f"Cannot update dialog visibility: dialog not initialized (source: {source})"
+            )
             return
 
         # In 'off' mode, block all show attempts
@@ -124,7 +138,9 @@ class WindowVisibilityCoordinator(QObject):
             logger.info(f"Applet mode 'off': blocking show request from {source}")
             return
 
-        logger.info(f"WindowVisibilityCoordinator: visibility={visible}, source={source}")
+        logger.info(
+            f"WindowVisibilityCoordinator: visibility={visible}, source={source}"
+        )
 
         # Update the actual Qt window
         if visible:
