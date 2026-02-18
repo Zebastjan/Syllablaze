@@ -71,3 +71,4 @@ POPUP_STYLE_TRADITIONAL = "traditional"  # Classic progress window
 POPUP_STYLE_APPLET = "applet"          # Circular floating dialog
 DEFAULT_POPUP_STYLE = POPUP_STYLE_APPLET
 DEFAULT_APPLET_AUTOHIDE = True
+DEFAULT_APPLET_ONALLDESKTOPS = True  # Show on all virtual desktops in persistent mode

@@ -62,9 +62,17 @@ class SettingsCoordinator(QObject):
         logger.info(f"Applet mode changed to: {mode}")
         if mode == APPLET_MODE_PERSISTENT:
             self.app_state.set_recording_dialog_visible(True, source="applet_mode_change")
+            # Apply on-all-desktops for persistent mode
+            if self.recording_dialog and self.settings:
+                on_all = bool(self.settings.get("applet_onalldesktops", True))
+                self.recording_dialog.update_on_all_desktops(on_all)
         elif mode == APPLET_MODE_OFF:
             self.app_state.set_recording_dialog_visible(False, source="applet_mode_change")
-        # APPLET_MODE_POPUP: no immediate change; auto-show on next record start
+            if self.recording_dialog:
+                self.recording_dialog.update_on_all_desktops(False)
+        else:  # APPLET_MODE_POPUP: no immediate change; auto-show on next record start
+            if self.recording_dialog:
+                self.recording_dialog.update_on_all_desktops(False)
 
     def _handle_visibility(self, key, value):
         """Handle visibility-related setting changes."""
@@ -105,3 +113,8 @@ class SettingsCoordinator(QObject):
             self._apply_applet_mode(value)
         elif key in ("popup_style", "applet_autohide"):
             self._handle_popup_style_change(key, value)
+        elif key == "applet_onalldesktops":
+            if self.recording_dialog and self.settings:
+                mode = self.settings.get("applet_mode", APPLET_MODE_POPUP)
+                if mode == APPLET_MODE_PERSISTENT:
+                    self.recording_dialog.update_on_all_desktops(bool(value))

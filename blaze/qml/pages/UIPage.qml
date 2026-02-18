@@ -15,6 +15,8 @@ Kirigami.ScrollablePage {
                 styleGroup.updateFromValue(value)
             } else if (key === "applet_autohide") {
                 autohideSwitch.checked = (value !== false)
+            } else if (key === "applet_onalldesktops") {
+                onAllDesktopsSwitch.checked = (value !== false)
             } else if (key === "recording_dialog_always_on_top") {
                 alwaysOnTopSwitch.checked = (value !== false)
             } else if (key === "progress_window_always_on_top") {
@@ -194,6 +196,17 @@ Kirigami.ScrollablePage {
                 checked: settingsBridge ? settingsBridge.get("applet_autohide") !== false : true
                 onToggled: {
                     if (settingsBridge) settingsBridge.set("applet_autohide", checked)
+                }
+            }
+
+            // Show on all desktops — Applet + persistent mode only
+            QQC2.Switch {
+                id: onAllDesktopsSwitch
+                Kirigami.FormData.label: "Show on all virtual desktops:"
+                visible: uiPage.currentStyle === "applet" && !autohideSwitch.checked
+                checked: settingsBridge ? settingsBridge.get("applet_onalldesktops") !== false : true
+                onToggled: {
+                    if (settingsBridge) settingsBridge.set("applet_onalldesktops", checked)
                 }
             }
 

@@ -100,7 +100,7 @@ def find_or_create_rule_group():
         return "1"  # Default to group 1
 
 
-def create_or_update_kwin_rule(enable_keep_above=True, position=None, size=None):
+def create_or_update_kwin_rule(enable_keep_above=True, position=None, size=None, on_all_desktops=None):
     """
     Create or update KWin window rule for Syllablaze recording dialog
 
@@ -108,6 +108,7 @@ def create_or_update_kwin_rule(enable_keep_above=True, position=None, size=None)
         enable_keep_above (bool): Whether to enable "keep above" property
         position (tuple): Optional (x, y) position to force
         size (tuple): Optional (width, height) size to force
+        on_all_desktops (bool or None): True/False to force all-desktops; None leaves the rule untouched
     """
     if not ensure_kwriteconfig_available():
         return False
@@ -248,6 +249,33 @@ def create_or_update_kwin_rule(enable_keep_above=True, position=None, size=None)
                         "sizerule",
                         "3",
                     ],  # 3 = Force
+                ]
+            )
+
+        # Add on-all-desktops if specified
+        if on_all_desktops is not None:
+            commands.extend(
+                [
+                    [
+                        "kwriteconfig6",
+                        "--file",
+                        KWINRULESRC,
+                        "--group",
+                        group,
+                        "--key",
+                        "onalldesktops",
+                        "true" if on_all_desktops else "false",
+                    ],
+                    [
+                        "kwriteconfig6",
+                        "--file",
+                        KWINRULESRC,
+                        "--group",
+                        group,
+                        "--key",
+                        "onalldesktopsrule",
+                        "3" if on_all_desktops else "0",
+                    ],  # 3=Force, 0=Don't affect
                 ]
             )
 

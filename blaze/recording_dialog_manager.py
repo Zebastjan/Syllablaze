@@ -14,6 +14,7 @@ from blaze.kwin_rules import (
     get_saved_position_from_rule,
     is_wayland,
 )
+from blaze.constants import APPLET_MODE_PERSISTENT
 from blaze.svg_renderer_bridge import SvgRendererBridge
 
 logger = logging.getLogger(__name__)
@@ -234,7 +235,10 @@ class RecordingDialogManager(QObject):
                 # Initialize KWin rule
                 from blaze.kwin_rules import create_or_update_kwin_rule
 
-                create_or_update_kwin_rule(enable_keep_above=always_on_top)
+                create_or_update_kwin_rule(
+                    enable_keep_above=always_on_top,
+                    on_all_desktops=self._effective_on_all_desktops(),
+                )
             else:
                 logger.error("RecordingDialogManager: Failed to load QML window")
 
@@ -253,7 +257,10 @@ class RecordingDialogManager(QObject):
             # Sync KWin rule
             from blaze.kwin_rules import create_or_update_kwin_rule
 
-            create_or_update_kwin_rule(enable_keep_above=always_on_top)
+            create_or_update_kwin_rule(
+                enable_keep_above=always_on_top,
+                on_all_desktops=self._effective_on_all_desktops(),
+            )
 
             # Set flags
             base_flags = Qt.WindowType.FramelessWindowHint | Qt.WindowType.Window
@@ -282,6 +289,17 @@ class RecordingDialogManager(QObject):
         """Check if dialog should be visible"""
         return self.app_state.is_recording_dialog_visible() if self.app_state else False
 
+    def _effective_on_all_desktops(self):
+        """Return on_all_desktops value to pass to KWin rule.
+
+        Returns True/False only in persistent mode (where it matters).
+        Returns False for popup/off modes so the rule is cleared.
+        """
+        applet_mode = self.settings.get("applet_mode", "popup")
+        if applet_mode == APPLET_MODE_PERSISTENT:
+            return bool(self.settings.get("applet_onalldesktops", True))
+        return False
+
     def update_always_on_top(self, always_on_top):
         """Update always-on-top setting live"""
         if not self.window:
@@ -291,6 +309,13 @@ class RecordingDialogManager(QObject):
             self.hide()
             self.show()
         logger.info(f"Always-on-top updated: {always_on_top}")
+
+    def update_on_all_desktops(self, on_all_desktops):
+        """Update on-all-desktops KWin rule live (persistent mode only)"""
+        always_on_top = bool(self.settings.get("recording_dialog_always_on_top", True))
+        from blaze.kwin_rules import create_or_update_kwin_rule
+        create_or_update_kwin_rule(enable_keep_above=always_on_top, on_all_desktops=on_all_desktops)
+        logger.info(f"On-all-desktops updated: {on_all_desktops}")
 
     def update_volume(self, volume):
         """Update volume display"""
