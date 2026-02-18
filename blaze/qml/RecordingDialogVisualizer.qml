@@ -24,7 +24,7 @@ Window {
     maximumWidth: 500
     maximumHeight: 500
     
-    visible: true
+    visible: false
     
     // Properties from bridges
     property bool isRecording: dialogBridge ? dialogBridge.isRecording : false
@@ -33,8 +33,9 @@ Window {
     property bool isTranscribing: dialogBridge ? dialogBridge.isTranscribing : false
     
     // SVG element bounds (mapped to widget coordinates)
-    property rect statusBounds: svgBridge ? mapSvgRectToWidget(svgBridge.statusIndicatorBounds) : Qt.rect(0, 0, width, height)
+    property rect inputLevelBounds: svgBridge ? mapSvgRectToWidget(svgBridge.inputLevelBounds) : Qt.rect(0, 0, width, height)
     property rect waveformBounds: svgBridge ? mapSvgRectToWidget(svgBridge.waveformBounds) : Qt.rect(0, 0, width, height)
+    property rect activeAreaBounds: svgBridge ? mapSvgRectToWidget(svgBridge.activeAreaBounds) : Qt.rect(0, 0, width, height)
     property real viewBoxWidth: svgBridge ? svgBridge.viewBoxWidth : 512
     property real viewBoxHeight: svgBridge ? svgBridge.viewBoxHeight : 512
     
@@ -57,11 +58,14 @@ Window {
     function getStatusColor() {
         if (!isRecording) return "#3498db"
         
-        if (currentVolume < 0.5) {
-            var t = currentVolume * 2
+        // Amplify volume for better visualization (input is often very quiet)
+        var displayVolume = Math.min(1.0, currentVolume * 10)
+        
+        if (displayVolume < 0.5) {
+            var t = displayVolume * 2
             return Qt.rgba(0.2 + (t * 0.8), 0.8, 0.2, 1.0)
         } else {
-            var t = (currentVolume - 0.5) * 2
+            var t = (displayVolume - 0.5) * 2
             return Qt.rgba(1.0, 0.8 - (t * 0.8), 0.2, 1.0)
         }
     }
@@ -70,49 +74,15 @@ Window {
     Item {
         anchors.fill: parent
         
-        // Layer 1: SVG Base (render on top)
-        Image {
-            id: svgBase
-            anchors.fill: parent
-            source: svgBridge ? "file://" + svgBridge.svgPath : ""
-            smooth: true
-            antialiasing: true
-            mipmap: true
-            z: 2  // Render on top to show microphone icon
-        }
-        
-        // Layer 2: Status Indicator Color Overlay (middle layer)
-        // Positioned exactly over the status_indicator element from SVG
-        Rectangle {
-            id: statusOverlay
-            x: statusBounds.x
-            y: statusBounds.y
-            width: statusBounds.width
-            height: statusBounds.height
-            color: getStatusColor()
-            opacity: isRecording ? 0.85 : 0.0
-            z: 1  // Middle layer - behind icon, on top of waveform
-
-            // Match the rounded corners of the SVG element
-            // Using radius proportional to size
-            radius: Math.min(width, height) * 0.25
-            
-            Behavior on opacity {
-                NumberAnimation { duration: 200 }
-            }
-            
-            Behavior on color {
-                ColorAnimation { duration: 150 }
-            }
-        }
-        
-        // Layer 3: Waveform Visualization (background layer)
+        // Layer 1: Waveform Visualization (bottom layer - respects SVG z-order)
         // Draws radial bars in the waveform element area
         Canvas {
             id: waveformCanvas
             anchors.fill: parent
             visible: isRecording
-            z: 0  // Background layer - render behind everything
+            
+            // SVG z-order: background -> input_levels -> waveform -> mic/border
+            // We render visualization in waveform area, let SVG handle the rest
             
             onPaint: {
                 var ctx = getContext("2d")
@@ -136,11 +106,15 @@ Window {
                     
                     // Get sample for this bar
                     var sampleIndex = Math.floor((i / numBars) * audioSamples.length)
-                    var sample = Math.abs(audioSamples[sampleIndex] || 0)
+                    var rawSample = Math.abs(audioSamples[sampleIndex] || 0)
                     
-                    // Calculate bar length
+                    // Amplify sample for visualization (input is often very quiet)
+                    var sample = Math.min(1.0, rawSample * 10)
+                    
+                    // Calculate bar length with minimum visible length
                     var maxLength = outerRadius - innerRadius - 4
-                    var barLength = 3 + (sample * maxLength * 0.8)
+                    var minLength = 5  // Minimum visible length
+                    var barLength = minLength + (sample * maxLength * 0.8)
                     
                     // Calculate color
                     var r, g, b
@@ -181,6 +155,40 @@ Window {
             }
         }
         
+        // Layer 2: Input Level Color Overlay (middle layer)
+        // Positioned exactly over the input_levels element from SVG
+        // Blocks out everything below it to show audio activity clearly
+        Rectangle {
+            id: inputLevelOverlay
+            x: inputLevelBounds.x
+            y: inputLevelBounds.y
+            width: inputLevelBounds.width
+            height: inputLevelBounds.height
+            color: getStatusColor()
+            opacity: isRecording ? 0.85 : 0.0
+
+            // Match the rounded corners of the SVG element
+            radius: Math.min(width, height) * 0.25
+            
+            Behavior on opacity {
+                NumberAnimation { duration: 200 }
+            }
+            
+            Behavior on color {
+                ColorAnimation { duration: 150 }
+            }
+        }
+        
+        // Layer 3: SVG Base (top layer - respects SVG's natural z-order)
+        Image {
+            id: svgBase
+            anchors.fill: parent
+            source: svgBridge ? "file://" + svgBridge.svgPath : ""
+            smooth: true
+            antialiasing: true
+            mipmap: true
+        }
+        
         // Layer 4: Mouse Interaction
         MouseArea {
             anchors.fill: parent
@@ -191,13 +199,13 @@ Window {
             
             acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
             
-            // Check if point is in clickable area (inside status indicator)
+            // Check if point is in clickable area (inside active_area element)
             function isInClickableArea(x, y) {
-                // Clickable if inside statusBounds
-                return x >= statusBounds.x && 
-                       x <= statusBounds.x + statusBounds.width &&
-                       y >= statusBounds.y && 
-                       y <= statusBounds.y + statusBounds.height
+                // Clickable if inside activeAreaBounds (as defined in SVG)
+                return x >= activeAreaBounds.x &&
+                       x <= activeAreaBounds.x + activeAreaBounds.width &&
+                       y >= activeAreaBounds.y &&
+                       y <= activeAreaBounds.y + activeAreaBounds.height
             }
             
             onPressed: (mouse) => {
@@ -320,8 +328,9 @@ Window {
     // Initialization
     Component.onCompleted: {
         console.log("RecordingDialogVisualizer: Window created")
-        console.log("Status bounds: " + statusBounds)
+        console.log("Input level bounds: " + inputLevelBounds)
         console.log("Waveform bounds: " + waveformBounds)
+        console.log("Active area bounds: " + activeAreaBounds)
         
         // Restore saved size
         if (dialogBridge) {
