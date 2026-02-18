@@ -90,6 +90,7 @@ SyllablazeOrchestrator (main.py) — orchestrator / QSystemTrayIcon
 - **Centralized visibility control**: all dialog visibility changes go through `ApplicationState.set_recording_dialog_visible()` — never call `show()/hide()` directly
 - **QML-Python bridges**: `SettingsBridge` (settings + svgPath), `RecordingDialogBridge` (state/actions), `SvgRendererBridge` (SVG element bounds)
 - **Debounced persistence**: position and size changes debounced (500ms) to prevent excessive disk writes
+- **Post-show window properties on Wayland**: Never use `QTimer.singleShot(N, ...)` to wait for a window to be mapped. Instead connect to `QWindow::visibilityChanged` and disconnect after the first non-Hidden call. This is deterministic; arbitrary delays are a race condition.
 
 **UI windows**: `KirigamiSettingsWindow` (QML-based), `ProgressWindow`, `LoadingWindow`, `ProcessingWindow`, `VolumeMeter`.
 

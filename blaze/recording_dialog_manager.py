@@ -6,7 +6,7 @@ Manages the recording indicator dialog with volume visualization.
 
 import os
 import logging
-from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot, QUrl, QTimer
+from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot, QUrl
 from PyQt6.QtQml import QQmlApplicationEngine
 from blaze.settings import Settings
 from blaze.kwin_rules import (
@@ -244,11 +244,19 @@ class RecordingDialogManager(QObject):
 
                 # In persistent mode the QML window auto-shows via `visible: true`
                 # before Python's show() is ever called, so set_window_on_all_desktops()
-                # never runs.  Schedule a deferred call to apply it after the Wayland
-                # surface is fully mapped (engine.load() is asynchronous).
+                # never runs.  Connect to visibilityChanged and fire once on the first
+                # non-Hidden event — this is deterministic (compositor has acknowledged
+                # the surface) unlike an arbitrary QTimer delay.
                 on_all = self._effective_on_all_desktops()
                 if on_all:
-                    QTimer.singleShot(400, lambda: set_window_on_all_desktops(WINDOW_TITLE, True))
+                    from PyQt6.QtGui import QWindow as _QWindow
+
+                    def _apply_on_all_desktops(visibility):
+                        if visibility != _QWindow.Visibility.Hidden:
+                            self.window.visibilityChanged.disconnect(_apply_on_all_desktops)
+                            set_window_on_all_desktops(WINDOW_TITLE, True)
+
+                    self.window.visibilityChanged.connect(_apply_on_all_desktops)
             else:
                 logger.error("RecordingDialogManager: Failed to load QML window")
 
