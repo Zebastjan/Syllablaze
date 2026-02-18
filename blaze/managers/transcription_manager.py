@@ -285,9 +285,14 @@ class TranscriptionManager(QObject):
         try:
             # Wait for worker to finish if running
             if hasattr(self.transcriber, 'worker') and self.transcriber.worker:
-                if self.transcriber.worker.isRunning():
+                worker = self.transcriber.worker
+                if worker.isRunning():
                     logger.info("Waiting for transcription worker to finish...")
-                    self.transcriber.worker.wait(5000)  # Wait up to 5 seconds
+                    worker.quit()          # ask the event loop to stop
+                    if not worker.wait(3000):  # wait up to 3 s
+                        logger.warning("Transcription worker did not stop in time; forcefully terminating")
+                        worker.terminate()     # send POSIX pthread_cancel
+                        worker.wait(1000)      # give it 1 s to die
 
             # Explicitly release model resources (CTranslate2 semaphores, etc.)
             if hasattr(self.transcriber, 'model') and self.transcriber.model is not None:

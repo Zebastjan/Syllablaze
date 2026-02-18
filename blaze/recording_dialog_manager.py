@@ -357,6 +357,19 @@ class RecordingDialogManager(QObject):
             self.settings.set("recording_dialog_size", int(width))
             logger.info(f"Saved window size: {width}px")
 
+    def cleanup(self):
+        """Hide the dialog and destroy the QML engine"""
+        try:
+            if self.window:
+                self.window.hide()
+                self.window = None
+            if self.engine:
+                self.engine.deleteLater()
+                self.engine = None
+            logger.info("RecordingDialogManager: cleaned up")
+        except Exception as e:
+            logger.error(f"RecordingDialogManager: cleanup failed: {e}")
+
     def _on_dismiss(self):
         """Handle dialog dismissal"""
         if self.bridge.isRecording:

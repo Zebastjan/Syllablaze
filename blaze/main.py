@@ -103,6 +103,10 @@ class SyllablazeOrchestrator(QSystemTrayIcon):
         self.settings = settings if settings is not None else Settings()
         self.app_state = app_state
 
+        # Shutdown state
+        self._is_shutting_down = False
+        self._dbus_bus = None
+
         # Window references
         self.settings_window = None
         self.processing_window = None
@@ -251,6 +255,9 @@ class SyllablazeOrchestrator(QSystemTrayIcon):
 
     def toggle_recording(self):
         """Toggle recording state"""
+        if self._is_shutting_down:
+            logger.info("Ignoring toggle_recording during shutdown")
+            return
         # Acquire lock to prevent concurrent operations
         if not self.audio_manager.acquire_recording_lock():
             logger.info("Recording toggle already in progress, ignoring request")
@@ -505,11 +512,18 @@ class SyllablazeOrchestrator(QSystemTrayIcon):
             self._activation_lock = False
 
     def quit_application(self):
+        if self._is_shutting_down:
+            return
+        self._is_shutting_down = True
         try:
-            self._cleanup_recorder()
-            self._close_windows()
+            # 1. Stop recording first (before touching audio hardware)
             self._stop_active_recording()
+            # 2. Wait for transcription thread (with force-terminate fallback)
             self._wait_for_threads()
+            # 3. Close all UI windows (including recording dialog)
+            self._close_windows()
+            # 4. Release audio hardware last
+            self._cleanup_recorder()
 
             logger.info("Application shutdown complete, exiting...")
 
@@ -530,15 +544,21 @@ class SyllablazeOrchestrator(QSystemTrayIcon):
             self.audio_manager = None
 
     def _close_windows(self):
+        # Close recording dialog (QML engine + window)
+        if self.recording_dialog:
+            try:
+                self.recording_dialog.cleanup()
+            except Exception as e:
+                logger.error(f"Error cleaning up recording dialog: {e}")
+
         # Close settings window
         if hasattr(self, "settings_window") and self.settings_window:
             self.ui_manager.safely_close_window(self.settings_window, "settings")
 
-        # Phase 6: Close progress window via UIManager
+        # Close progress window via UIManager
         self.ui_manager.close_progress_window("shutdown")
 
     def _stop_active_recording(self):
-        # Phase 6: Check recording state from app_state
         if self.app_state and self.app_state.is_recording():
             try:
                 self._stop_recording()
@@ -551,6 +571,15 @@ class SyllablazeOrchestrator(QSystemTrayIcon):
                 self.transcription_manager.cleanup()
             except Exception as thread_error:
                 logger.error(f"Error waiting for transcription worker: {thread_error}")
+
+    async def _cleanup_dbus(self):
+        """Disconnect the D-Bus bus if we hold one"""
+        if self._dbus_bus:
+            try:
+                self._dbus_bus.disconnect()
+            except Exception as e:
+                logger.warning(f"Error disconnecting D-Bus: {e}")
+            self._dbus_bus = None
 
     def _update_volume_display(self, volume_level):
         """Update the UI with current volume level"""
@@ -791,6 +820,9 @@ def main():
                 else:
                     raise
 
+            # Disconnect D-Bus bus
+            await tray._cleanup_dbus()
+
             # Clean up (assuming cleanup_lock_file is defined)
             cleanup_lock_file()
             return 0
@@ -962,6 +994,7 @@ async def initialize_tray(tray, loading_window, app, ui_manager):
 
             # Setup D-Bus and get bus connection for shortcuts
             bus = await setup_dbus(service)
+            tray._dbus_bus = bus  # store for cleanup on shutdown
 
         except Exception as e:
             logger.error(f"D-Bus setup failed: {e}")
