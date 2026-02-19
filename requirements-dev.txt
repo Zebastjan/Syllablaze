@@ -1,0 +1,32 @@
+# Development dependencies for Syllablaze
+
+# Testing
+pytest>=7.4.0
+pytest-cov>=4.1.0
+pytest-qt>=4.2.0
+pytest-mock>=3.11.1
+
+# Linting
+flake8>=6.1.0
+ruff>=0.1.0  # Optional, faster alternative to flake8
+
+# Documentation
+mkdocs>=1.5.0
+mkdocs-material>=9.4.0
+mkdocstrings[python]>=0.24.0
+pymdown-extensions>=10.3.0
+
+# API Documentation (optional)
+# sphinx>=7.2.0
+# sphinx-rtd-theme>=2.0.0
+
+# Type checking (optional)
+# mypy>=1.7.0
+# types-PyQt6
+
+# Code formatting (optional, not enforced)
+# black>=23.11.0
+# autopep8>=2.0.4
+
+# Development tools
+ipython>=8.17.0  # Better REPL for debugging

@@ -7,6 +7,8 @@ Real-time audio transcription app using OpenAI's Whisper with **working global k
 > - [PabloVitasso's Syllablaze](https://github.com/PabloVitasso/Syllablaze) (privacy improvements)
 > - New: Working global keyboard shortcuts for KDE Wayland
 
+📚 **[Read the full documentation →](https://pablovitasso.github.io/Syllablaze/)**
+
 ## Features
 
 - **🎹 Global Keyboard Shortcuts** - Works system-wide on KDE Wayland, X11, and other desktop environments
@@ -114,6 +116,8 @@ python3 install.py
 2. Click tray icon to start/stop recording
 3. Transcribed text is copied to clipboard
 
+**New to Syllablaze?** Check out the [Quick Start Guide](https://pablovitasso.github.io/Syllablaze/getting-started/quick-start/) for a detailed walkthrough.
+
 ## Configuration
 
 Right-click tray icon → Settings to configure:
@@ -121,10 +125,33 @@ Right-click tray icon → Settings to configure:
 - Whisper model
 - Language
 
+📖 **[Complete Settings Reference](https://pablovitasso.github.io/Syllablaze/user-guide/settings-reference/)** - Detailed documentation of all settings
+
+## Troubleshooting
+
+Having issues? Check the [Troubleshooting Guide](https://pablovitasso.github.io/Syllablaze/getting-started/troubleshooting/) for common problems and solutions.
+
 ## Uninstall
 ```bash
 python3 uninstall.py
 ```
+
+## Documentation
+
+- 📚 **[Full Documentation](https://pablovitasso.github.io/Syllablaze/)** - Complete user and developer guides
+- 🚀 **[Quick Start](https://pablovitasso.github.io/Syllablaze/getting-started/quick-start/)** - Get started in 5 minutes
+- ⚙️ **[Settings Reference](https://pablovitasso.github.io/Syllablaze/user-guide/settings-reference/)** - All settings explained
+- 🐛 **[Troubleshooting](https://pablovitasso.github.io/Syllablaze/getting-started/troubleshooting/)** - Common issues and solutions
+- 💻 **[Developer Guide](https://pablovitasso.github.io/Syllablaze/developer-guide/setup/)** - Contributing to Syllablaze
+- 🤔 **[Design Decisions](https://pablovitasso.github.io/Syllablaze/explanation/design-decisions/)** - Why we built it this way
+
+## Contributing
+
+We welcome contributions! Please read the [Contributing Guide](CONTRIBUTING.md) for:
+- Development setup
+- Code style guidelines
+- Pull request process
+- Testing requirements
 or
 ```bash
 pipx uninstall syllablaze

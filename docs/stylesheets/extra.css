@@ -1,0 +1,45 @@
+/* Extra CSS for Syllablaze documentation */
+
+/* Improve code block readability */
+.highlight {
+  border-radius: 0.2rem;
+}
+
+/* ADR status badges */
+.admonition.note p strong:first-child {
+  color: var(--md-primary-fg-color);
+}
+
+/* Better table styling */
+table {
+  border-collapse: collapse;
+  margin: 1em 0;
+}
+
+table th {
+  background-color: var(--md-primary-fg-color--light);
+  font-weight: 600;
+}
+
+/* Improve task list styling */
+.task-list-item {
+  list-style-type: none;
+}
+
+.task-list-control {
+  margin-right: 0.5em;
+}
+
+/* File path styling */
+code {
+  border-radius: 0.2rem;
+}
+
+/* Keyboard key styling */
+kbd {
+  background-color: var(--md-code-bg-color);
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 0.2rem;
+  padding: 0.1em 0.4em;
+  font-family: var(--md-code-font-family);
+}

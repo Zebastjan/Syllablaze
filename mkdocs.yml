@@ -1,0 +1,132 @@
+site_name: Syllablaze Documentation
+site_description: Real-time speech-to-text transcription for KDE Plasma using OpenAI Whisper
+site_url: https://github.com/PabloVitasso/Syllablaze
+repo_url: https://github.com/PabloVitasso/Syllablaze
+repo_name: PabloVitasso/Syllablaze
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    # Light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: teal
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: teal
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [blaze]
+          options:
+            show_source: true
+            show_root_heading: true
+            heading_level: 2
+            docstring_style: google
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Installation: getting-started/installation.md
+      - Quick Start: getting-started/quick-start.md
+      - Troubleshooting: getting-started/troubleshooting.md
+  - User Guide:
+      - Features: user-guide/features.md
+      - Settings Reference: user-guide/settings-reference.md
+      - Recording Modes: user-guide/recording-modes.md
+      - Keyboard Shortcuts: user-guide/keyboard-shortcuts.md
+  - Developer Guide:
+      - Development Setup: developer-guide/setup.md
+      - Architecture Overview: developer-guide/architecture.md
+      - Testing Guide: developer-guide/testing.md
+      - Patterns & Pitfalls: developer-guide/patterns-and-pitfalls.md
+      - Contributing: developer-guide/contributing.md
+  - Explanation:
+      - Design Decisions: explanation/design-decisions.md
+      - Settings Architecture: explanation/settings-architecture.md
+      - Wayland Support: explanation/wayland-support.md
+      - Privacy Design: explanation/privacy-design.md
+  - ADRs:
+      - Overview: adr/README.md
+      - 0001 Manager Pattern: adr/0001-manager-pattern.md
+      - 0002 QML Kirigami UI: adr/0002-qml-kirigami-ui.md
+      - 0003 Settings Coordinator: adr/0003-settings-coordinator.md
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - codehilite:
+      guess_lang: false
+  - footnotes
+  - meta
+  - pymdownx.arithmatex
+  - pymdownx.betterem:
+      smart_enable: all
+  - pymdownx.caret
+  - pymdownx.critic
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.magiclink:
+      repo_url_shorthand: true
+      user: PabloVitasso
+      repo: Syllablaze
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+  - toc:
+      permalink: true
+      toc_depth: 3
+
+extra:
+  version:
+    provider: mike
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/PabloVitasso/Syllablaze
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/syllablaze/
+
+extra_css:
+  - stylesheets/extra.css
+
+copyright: Copyright &copy; 2026 Syllablaze Contributors
