@@ -447,7 +447,11 @@ class RecordingApplet(QWidget):
         self.toggleRecordingRequested.emit()
 
     def _on_dismiss_clicked(self):
-        """Handle dismiss action."""
+        """Handle dismiss action.
+
+        Emits dismissRequested signal which is handled by WindowVisibilityCoordinator
+        to switch from persistent to popup mode.
+        """
         self._save_position()
         self.dismissRequested.emit()
 
@@ -468,21 +472,23 @@ class RecordingApplet(QWidget):
         self._ignore_clicks = True
         self._show_ignore_timer.start(300)
 
-        # Apply window properties via KWin on first show
-        if not hasattr(self, '_properties_applied'):
-            self._properties_applied = False
-
-        if not self._properties_applied:
-            # Use QTimer to ensure window is fully mapped before applying KWin properties
-            from PyQt6.QtCore import QTimer
-            QTimer.singleShot(100, self._apply_kwin_properties)
+        # Apply window properties via KWin every time window is shown
+        # This ensures on-all-desktops is correctly set when switching modes
+        # Use QTimer to ensure window is fully mapped before applying KWin properties
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(100, self._apply_kwin_properties)
 
     def _apply_kwin_properties(self):
-        """Apply window properties via KWin (called after window is shown)."""
+        """Apply window properties via KWin (called after window is shown).
+
+        This method is called every time the window is shown to ensure properties
+        are correctly applied, especially when switching between modes.
+        """
         from . import kwin_rules
 
-        # Mark as applied
-        self._properties_applied = True
+        if not self.windowHandle() or not self.isVisible():
+            logger.warning("Cannot apply KWin properties - window not ready")
+            return
 
         always_on_top = self.settings.get("recording_dialog_always_on_top", True)
         applet_mode = self.settings.get("applet_mode", "popup")
@@ -503,8 +509,7 @@ class RecordingApplet(QWidget):
         )
 
         # Apply on-all-desktops immediately via D-Bus
-        if applet_mode == "persistent":
-            kwin_rules.set_window_on_all_desktops("Syllablaze Recording", on_all_value)
+        kwin_rules.set_window_on_all_desktops("Syllablaze Recording", on_all_value)
 
     def requestActivate(self):
         """Request window activation."""

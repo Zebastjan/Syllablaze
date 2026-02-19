@@ -1,4 +1,4 @@
-from PyQt6.QtCore import QObject, pyqtSlot, QMimeData
+from PyQt6.QtCore import QObject, pyqtSlot, QMimeData, QTimer, Qt
 from PyQt6.QtWidgets import QApplication, QWidget
 import subprocess
 import logging
@@ -30,13 +30,21 @@ class ClipboardManager(QObject):
         self.ui_manager = ui_manager
         self.clipboard = QApplication.clipboard()
 
-        # Create a persistent hidden widget to own the clipboard on Wayland
-        # This ensures clipboard survives when other windows close
+        # Create a persistent widget to own the clipboard on Wayland
+        # This window is shown briefly during each clipboard operation to anchor ownership
         self._clipboard_owner = QWidget()
         self._clipboard_owner.setWindowTitle("Syllablaze Clipboard Owner")
+        self._clipboard_owner.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self._clipboard_owner.setWindowFlags(
+            Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint
+        )
+        self._clipboard_owner.resize(1, 1)  # Minimal size
+
+        # Initially hide the window
         self._clipboard_owner.hide()
         self._current_mime_data = None
-        logger.info("ClipboardManager: Initialized with persistent clipboard owner")
+
+        logger.info("ClipboardManager: Initialized with Wayland-compatible clipboard owner")
 
     def paste_text(self, text):
         """Copy text to clipboard for auto-paste functionality."""
@@ -46,11 +54,18 @@ class ClipboardManager(QObject):
 
         logger.info(f"Copying text to clipboard: {text[:50]}...")
 
-        # Use mime data with persistent ownership (same as copy_to_clipboard)
+        # WAYLAND FIX: Show clipboard owner during operation
+        logger.debug("Showing clipboard owner window for Wayland ownership")
+        self._clipboard_owner.show()
+
+        # Use mime data with persistent ownership
         mime_data = QMimeData()
         mime_data.setText(text)
         self._current_mime_data = mime_data
         self.clipboard.setMimeData(mime_data, mode=self.clipboard.Mode.Clipboard)
+
+        # Keep visible during paste operation, hide after
+        QTimer.singleShot(500, self._hide_clipboard_owner)
 
         # If set to paste to active window, simulate Ctrl+V
         if self.should_paste_to_active_window():
@@ -71,9 +86,7 @@ class ClipboardManager(QObject):
     def copy_to_clipboard(self, text, tray_icon=None, normal_icon=None):
         """Copy transcribed text to clipboard and show notification.
 
-        This is the main method called when transcription completes.
-        Uses a persistent hidden window to own the clipboard on Wayland,
-        preventing clipboard loss when transient windows close.
+        WAYLAND FIX: Shows clipboard owner window during operation to maintain ownership.
 
         Parameters:
         -----------
@@ -89,10 +102,10 @@ class ClipboardManager(QObject):
             return
 
         try:
-            # On Wayland, we need to use a persistent window to own the clipboard.
-            # If a transient window (like the recording dialog) sets the clipboard
-            # and then closes, the compositor may clear the clipboard.
-            # By using a persistent hidden widget, we ensure the clipboard survives.
+            # CRITICAL WAYLAND FIX: Show clipboard owner window BEFORE setting clipboard
+            # This ensures a visible window owns the clipboard when other windows (like applet) hide
+            logger.debug("Showing clipboard owner window for Wayland ownership")
+            self._clipboard_owner.show()
 
             # Create mime data with the text
             mime_data = QMimeData()
@@ -100,12 +113,16 @@ class ClipboardManager(QObject):
             self._current_mime_data = mime_data
 
             # Set the clipboard from our persistent owner window
-            # This ensures the clipboard persists even if the recording dialog closes
+            # The window being visible ensures Wayland grants and maintains ownership
             self.clipboard.setMimeData(mime_data, mode=self.clipboard.Mode.Clipboard)
 
             logger.info(f"Copied transcription to clipboard: {text[:50]}...")
 
-            # Truncate text for notification if it's too long
+            # Keep clipboard owner visible for 500ms to ensure ownership is fully established
+            # Then hide it after clipboard is secured
+            QTimer.singleShot(500, self._hide_clipboard_owner)
+
+            # Truncate text for notification if too long
             display_text = text
             if len(text) > 100:
                 display_text = text[:100] + "..."
@@ -119,6 +136,8 @@ class ClipboardManager(QObject):
 
         except Exception as e:
             logger.error(f"Failed to copy to clipboard: {e}")
+            # Hide clipboard owner even on error
+            self._clipboard_owner.hide()
             # Show error notification
             if self.ui_manager and tray_icon:
                 self.ui_manager.show_notification(
@@ -127,3 +146,8 @@ class ClipboardManager(QObject):
                     f"Failed to copy transcription: {str(e)}",
                     normal_icon,
                 )
+
+    def _hide_clipboard_owner(self):
+        """Hide clipboard owner window after clipboard operation completes."""
+        self._clipboard_owner.hide()
+        logger.debug("Clipboard owner window hidden after operation")
