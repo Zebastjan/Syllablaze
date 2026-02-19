@@ -61,7 +61,11 @@ class SettingsCoordinator(QObject):
         mode = str(value) if value is not None else APPLET_MODE_POPUP
         logger.info(f"Applet mode changed to: {mode}")
         if mode == APPLET_MODE_PERSISTENT:
-            self.app_state.set_recording_dialog_visible(True, source="applet_mode_change")
+            # force=True: ApplicationState may be initialized from persisted settings
+            # (True) while the window is actually hidden. Without force, the
+            # deduplication check silently swallows this signal and the dialog
+            # never appears when the user first switches to persistent mode.
+            self.app_state.set_recording_dialog_visible(True, source="applet_mode_change", force=True)
             # Apply on-all-desktops for persistent mode
             if self.recording_dialog and self.settings:
                 on_all = bool(self.settings.get("applet_onalldesktops", True))

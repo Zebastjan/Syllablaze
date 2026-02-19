@@ -165,7 +165,7 @@ class ApplicationState(QObject):
         """
         return self._recording_dialog_visible
 
-    def set_recording_dialog_visible(self, visible, source="unknown"):
+    def set_recording_dialog_visible(self, visible, source="unknown", force=False):
         """Set recording dialog visibility state.
 
         This is the single source of truth for dialog visibility.
@@ -177,8 +177,12 @@ class ApplicationState(QObject):
             True to show dialog, False to hide
         source : str
             Source of the visibility change (for debugging)
+        force : bool
+            If True, emit signal even when value is unchanged. Used by
+            _apply_applet_mode to handle the case where ApplicationState is
+            initialized from persisted settings but the window is actually hidden.
         """
-        if self._recording_dialog_visible == visible:
+        if not force and self._recording_dialog_visible == visible:
             logger.debug(
                 f"Recording dialog visibility unchanged ({visible}) from {source}"
             )
