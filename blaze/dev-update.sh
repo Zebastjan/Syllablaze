@@ -10,7 +10,7 @@ PY_FILES=(
   ./blaze/*.py
 )
 
-SUB_DIRS=("ui" "utils" "managers" "qml")
+SUB_DIRS=("ui" "utils" "managers" "qml" "services")
 RUN_SCRIPT="./run-syllablaze.sh"
 
 # Detect current branch and set target package

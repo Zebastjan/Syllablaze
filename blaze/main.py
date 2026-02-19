@@ -34,6 +34,9 @@ from blaze.managers.window_visibility_coordinator import WindowVisibilityCoordin
 from blaze.managers.gpu_setup_manager import GPUSetupManager
 from blaze.clipboard_manager import ClipboardManager
 from blaze.application_state import ApplicationState
+from blaze.services.notification_service import NotificationService
+from blaze.services.clipboard_persistence_service import ClipboardPersistenceService
+from blaze import orchestration
 
 import asyncio
 from dbus_next.service import ServiceInterface, method
@@ -161,10 +164,47 @@ class SyllablazeOrchestrator(QSystemTrayIcon):
         # Create menu
         self.setup_menu()
 
-        # Initialize clipboard manager early (needed by transcription handler)
+        # Initialize notification service (decoupled from clipboard)
+        logger.info("Initializing notification service...")
+        self.notification_service = NotificationService(self.settings)
+        logger.info("Notification service initialized")
+
+        # Initialize clipboard persistence service (long-running for Wayland)
+        logger.info("Initializing clipboard persistence service...")
+        self.clipboard_persistence_service = ClipboardPersistenceService(self.settings)
+        logger.info("Clipboard persistence service initialized")
+
+        # Initialize clipboard manager (pure service, no UI deps)
         logger.info("Initializing clipboard manager...")
-        self.clipboard_manager = ClipboardManager(self.settings, self.ui_manager)
+        self.clipboard_manager = ClipboardManager(
+            self.settings, self.clipboard_persistence_service
+        )
         logger.info("Clipboard manager initialized")
+
+        # Connect clipboard signals to notification service
+        self.clipboard_manager.transcription_copied.connect(
+            self.notification_service.notify_transcription_complete
+        )
+        self.clipboard_manager.clipboard_error.connect(
+            lambda err: self.notification_service.notify_error("Clipboard Error", err)
+        )
+
+        # Connect notification service signals to UI
+        self.notification_service.notification_requested.connect(
+            lambda title, msg, icon: self.ui_manager.show_notification(
+                self, title, msg, self.ui_manager.normal_icon
+            )
+        )
+        self.notification_service.transcription_complete.connect(
+            lambda text: self.ui_manager.show_notification(
+                self, "Transcription Complete", text, self.ui_manager.normal_icon
+            )
+        )
+        self.notification_service.error_occurred.connect(
+            lambda title, msg: self.ui_manager.show_notification(
+                self, title, msg, self.ui_manager.normal_icon
+            )
+        )
 
         # Initialize settings window early to connect signals
         logger.info("Initializing settings window for signal connections...")
@@ -203,6 +243,7 @@ class SyllablazeOrchestrator(QSystemTrayIcon):
                 tray_menu_manager=self.tray_menu_manager,
                 settings_bridge=self.settings_window.settings_bridge,
                 settings=self.settings,
+                settings_coordinator=self.settings_coordinator,
             )
 
             # Connect to ApplicationState visibility changes
@@ -421,17 +462,21 @@ class SyllablazeOrchestrator(QSystemTrayIcon):
             self.settings_window.hide()
         else:
             logger.info("Showing settings window")
-            # Show the window (not maximized)
             self.settings_window.show()
-            logger.info("Called show() on settings window")
-            # Bring to front and activate
-            self.settings_window.raise_()
-            logger.info("Called raise_() on settings window")
-            self.settings_window.activateWindow()
-            logger.info("Called activateWindow() on settings window")
-            logger.info(
-                f"Final visibility after show: {self.settings_window.isVisible()}"
-            )
+
+            # Wayland-proper window activation
+            # On Wayland, QWindow.requestActivate() is the correct method
+            # On X11, raise_() + activateWindow() work as fallback
+            if self.settings_window.windowHandle():
+                logger.info("Using QWindow.requestActivate() for Wayland")
+                self.settings_window.windowHandle().requestActivate()
+            else:
+                # Fallback for X11 or if window handle not ready
+                logger.info("Using raise_() + activateWindow() for X11 fallback")
+                self.settings_window.raise_()
+                self.settings_window.activateWindow()
+
+            logger.info("Settings window shown and activated")
 
     def _toggle_recording_dialog(self):
         """Toggle recording dialog visibility via tray menu"""
@@ -521,7 +566,9 @@ class SyllablazeOrchestrator(QSystemTrayIcon):
             self._wait_for_threads()
             # 3. Close all UI windows (including recording dialog)
             self._close_windows()
-            # 4. Release audio hardware last
+            # 4. Cleanup clipboard persistence service
+            self._cleanup_clipboard_service()
+            # 5. Release audio hardware last
             self._cleanup_recorder()
 
             logger.info("Application shutdown complete, exiting...")
@@ -541,6 +588,27 @@ class SyllablazeOrchestrator(QSystemTrayIcon):
             except Exception as rec_error:
                 logger.error(f"Error cleaning up recorder: {rec_error}")
             self.audio_manager = None
+
+    def _cleanup_clipboard_service(self):
+        """Cleanup clipboard persistence service."""
+        if (
+            hasattr(self, "clipboard_persistence_service")
+            and self.clipboard_persistence_service
+        ):
+            try:
+                logger.info("Shutting down clipboard persistence service...")
+                self.clipboard_persistence_service.shutdown()
+            except Exception as e:
+                logger.error(f"Error shutting down clipboard persistence service: {e}")
+            self.clipboard_persistence_service = None
+
+        if hasattr(self, "clipboard_manager") and self.clipboard_manager:
+            try:
+                logger.info("Shutting down clipboard manager...")
+                self.clipboard_manager.shutdown()
+            except Exception as e:
+                logger.error(f"Error shutting down clipboard manager: {e}")
+            self.clipboard_manager = None
 
     def _close_windows(self):
         # Close recording dialog (QML engine + window)
@@ -679,10 +747,8 @@ class SyllablazeOrchestrator(QSystemTrayIcon):
         # transcription_stopped first, the recording dialog may close before
         # clipboard ownership is established, causing the clipboard to be cleared.
         if text:
-            # Use clipboard manager to copy text and show notification
-            self.clipboard_manager.copy_to_clipboard(
-                text, self, self.ui_manager.normal_icon
-            )
+            # Use clipboard manager to copy text (signals handle notification)
+            self.clipboard_manager.copy_to_clipboard(text)
 
             # Update tooltip with recognized text
             self.update_tooltip(text)
@@ -964,18 +1030,27 @@ def _connect_signals(tray, loading_window, app, ui_manager):
     if tray.recording_dialog:
         tray.recording_dialog.set_audio_manager(tray.audio_manager)
         # Connect bridge signals now that the applet is created
+        dismiss_cb = (
+            tray.window_visibility_coordinator.on_dialog_dismissed
+            if tray.window_visibility_coordinator
+            else None
+        )
         tray.recording_dialog.connect_bridge_signals(
             toggle_recording_callback=tray.toggle_recording,
             open_settings_callback=tray.toggle_settings,
-            dismiss_callback=tray.window_visibility_coordinator.on_dialog_dismissed if tray.window_visibility_coordinator else None
+            dismiss_callback=dismiss_cb,
         )
 
         # Show applet in persistent mode (KWin properties applied in showEvent)
         if tray.settings:
             applet_mode = tray.settings.get("applet_mode", "popup")
             if applet_mode == "persistent":
-                logger.info("Showing recording dialog after applet creation (persistent mode)")
-                tray.app_state.set_recording_dialog_visible(True, source="persistent_mode_startup")
+                logger.info(
+                    "Showing recording dialog after applet creation (persistent mode)"
+                )
+                tray.app_state.set_recording_dialog_visible(
+                    True, source="persistent_mode_startup"
+                )
                 tray.recording_dialog.show()
 
     # Connect transcription manager signals
