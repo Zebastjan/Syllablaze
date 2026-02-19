@@ -11,25 +11,29 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 class UIState:
     """Base class for UI states"""
+
     def __init__(self, window):
         self.window = window
-        
+
     def enter(self):
         """Called when entering this state"""
         pass
-        
+
     def exit(self):
         """Called when exiting this state"""
         pass
-        
+
     def update(self, **kwargs):
         """Update the state with new data"""
         pass
 
+
 class RecordingState(UIState):
     """State for recording mode"""
+
     def enter(self):
         """Set up the UI for recording mode"""
         logger.info("Entering recording state")
@@ -38,8 +42,8 @@ class RecordingState(UIState):
         self.window.progress_bar.hide()
         self.window.stop_button.show()
         self.window.status_label.setText("Recording...")
-        self.window.setFixedHeight(320)
-        
+        self.window.setFixedHeight(160)
+
     def update(self, volume=None, status=None, **kwargs):
         """Update the recording state"""
         if volume is not None:
@@ -47,8 +51,10 @@ class RecordingState(UIState):
         if status is not None:
             self.window.status_label.setText(status)
 
+
 class ProcessingState(UIState):
     """State for processing mode"""
+
     def enter(self):
         """Set up the UI for processing mode"""
         logger.info("Entering processing state")
@@ -58,8 +64,8 @@ class ProcessingState(UIState):
         self.window.progress_bar.show()
         self.window.progress_bar.setValue(0)
         self.window.status_label.setText("Processing audio with Whisper...")
-        self.window.setFixedHeight(220)
-        
+        self.window.setFixedHeight(110)
+
     def update(self, progress=None, status=None, **kwargs):
         """Update the processing state"""
         if progress is not None:
