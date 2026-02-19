@@ -251,7 +251,7 @@ See [Patterns & Pitfalls](docs/developer-guide/patterns-and-pitfalls.md) for det
 
 ## 🐛 Reporting Bugs
 
-Use [GitHub Issues](https://github.com/PabloVitasso/Syllablaze/issues) to report bugs.
+Use [GitHub Issues](https://github.com/Zebastjan/Syllablaze/issues) to report bugs.
 
 ### Bug Report Template
 

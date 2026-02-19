@@ -55,7 +55,7 @@ pipx --version
 ## Step 3: Clone the Repository
 
 ```bash
-git clone https://github.com/PabloVitasso/Syllablaze.git
+git clone https://github.com/Zebastjan/Syllablaze.git
 cd Syllablaze
 ```
 
@@ -185,4 +185,4 @@ This removes:
 
 ---
 
-**Need help?** Check the [Troubleshooting Guide](troubleshooting.md) or [open an issue](https://github.com/PabloVitasso/Syllablaze/issues).
+**Need help?** Check the [Troubleshooting Guide](troubleshooting.md) or [open an issue](https://github.com/Zebastjan/Syllablaze/issues).

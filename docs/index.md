@@ -40,8 +40,8 @@ Understand design decisions:
 
 ## Project Links
 
-- **GitHub Repository:** [PabloVitasso/Syllablaze](https://github.com/PabloVitasso/Syllablaze)
-- **Issue Tracker:** [GitHub Issues](https://github.com/PabloVitasso/Syllablaze/issues)
+- **GitHub Repository:** [Zebastjan/Syllablaze](https://github.com/Zebastjan/Syllablaze)
+- **Issue Tracker:** [GitHub Issues](https://github.com/Zebastjan/Syllablaze/issues)
 - **License:** MIT
 
 ## Quick Reference
@@ -68,4 +68,4 @@ This documentation follows the [Divio documentation system](https://documentatio
 
 ---
 
-**Need help?** Check the [Troubleshooting Guide](getting-started/troubleshooting.md) or [open an issue](https://github.com/PabloVitasso/Syllablaze/issues).
+**Need help?** Check the [Troubleshooting Guide](getting-started/troubleshooting.md) or [open an issue](https://github.com/Zebastjan/Syllablaze/issues).

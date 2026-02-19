@@ -1,8 +1,8 @@
 site_name: Syllablaze Documentation
 site_description: Real-time speech-to-text transcription for KDE Plasma using OpenAI Whisper
-site_url: https://github.com/PabloVitasso/Syllablaze
-repo_url: https://github.com/PabloVitasso/Syllablaze
-repo_name: PabloVitasso/Syllablaze
+site_url: https://github.com/Zebastjan/Syllablaze
+repo_url: https://github.com/Zebastjan/Syllablaze
+repo_name: Zebastjan/Syllablaze
 edit_uri: edit/main/docs/
 
 theme:
@@ -76,6 +76,9 @@ nav:
       - 0001 Manager Pattern: adr/0001-manager-pattern.md
       - 0002 QML Kirigami UI: adr/0002-qml-kirigami-ui.md
       - 0003 Settings Coordinator: adr/0003-settings-coordinator.md
+  - Roadmap:
+      - Changelog: roadmap/CHANGELOG.md
+      - Project Milestones: roadmap/Syllablaze Project Milestones.md
 
 markdown_extensions:
   - admonition
@@ -99,7 +102,7 @@ markdown_extensions:
   - pymdownx.keys
   - pymdownx.magiclink:
       repo_url_shorthand: true
-      user: PabloVitasso
+      user: Zebastjan
       repo: Syllablaze
   - pymdownx.mark
   - pymdownx.smartsymbols
@@ -122,7 +125,7 @@ extra:
     provider: mike
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/PabloVitasso/Syllablaze
+      link: https://github.com/Zebastjan/Syllablaze
     - icon: fontawesome/brands/python
       link: https://pypi.org/project/syllablaze/
 

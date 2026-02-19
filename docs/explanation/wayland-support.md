@@ -226,7 +226,7 @@ class ClipboardManager:
 
 **Reference:**
 - `blaze/clipboard_manager.py`
-- [GitHub Issue: Clipboard not working on Wayland](https://github.com/PabloVitasso/Syllablaze/issues/XX)
+    - [GitHub Issue: Clipboard not working on Wayland](https://github.com/Zebastjan/Syllablaze/issues/XX)
 
 ---
 

@@ -1,6 +1,6 @@
 # Troubleshooting Guide
 
-This guide helps you resolve common issues with Syllablaze. If you don't find a solution here, check the [Known Issues Bug Tracker](../roadmap/Syllablaze%20Known%20Issues%20Bug%20Tracker.md) or [open an issue](https://github.com/PabloVitasso/Syllablaze/issues).
+This guide helps you resolve common issues with Syllablaze. If you don't find a solution here, check the [Known Issues Bug Tracker](../roadmap/Syllablaze%20Known%20Issues%20Bug%20Tracker.md) or [open an issue](https://github.com/Zebastjan/Syllablaze/issues).
 
 ## Installation Issues
 
@@ -384,7 +384,7 @@ tail -f ~/.local/state/syllablaze/syllablaze.log | grep -i "state\|shortcut"
    - Or restart application
 
 2. **Report bug:**
-   This shouldn't happen. Please [open an issue](https://github.com/PabloVitasso/Syllablaze/issues) with logs.
+    This shouldn't happen. Please [open an issue](https://github.com/Zebastjan/Syllablaze/issues) with logs.
 
 ## UI Issues
 
@@ -501,7 +501,7 @@ If you've tried troubleshooting and the issue persists:
 1. Enable debug logging
 2. Reproduce the issue
 3. Collect relevant log excerpt
-4. [Open a GitHub issue](https://github.com/PabloVitasso/Syllablaze/issues) with:
+4. [Open a GitHub issue](https://github.com/Zebastjan/Syllablaze/issues) with:
    - Environment details (KDE version, X11/Wayland, distro)
    - Steps to reproduce
    - Expected vs actual behavior
@@ -513,4 +513,4 @@ Before reporting, check the [Known Issues Bug Tracker](../roadmap/Syllablaze%20K
 
 ---
 
-**Still stuck?** Ask in [GitHub Discussions](https://github.com/PabloVitasso/Syllablaze/discussions) for community support.
+**Still stuck?** Ask in [GitHub Discussions](https://github.com/Zebastjan/Syllablaze/discussions) for community support.

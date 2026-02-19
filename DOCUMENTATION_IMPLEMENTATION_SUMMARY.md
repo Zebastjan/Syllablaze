@@ -136,7 +136,7 @@ mkdocs serve  # http://localhost:8000
 
 **Deployment:**
 - Automatic deployment to GitHub Pages via `mkdocs gh-deploy`
-- Documentation URL: https://pablovitasso.github.io/Syllablaze/
+- Documentation URL: https://zebastjan.github.io/Syllablaze/
 
 ### Phase 5: Enhance CLAUDE.md for Agents ✅
 
@@ -271,7 +271,7 @@ mkdocs serve  # http://localhost:8000
    ```
 
 3. **Verify deployment:**
-   - Visit https://pablovitasso.github.io/Syllablaze/
+   - Visit https://zebastjan.github.io/Syllablaze/
    - Check all navigation links
    - Verify search works
 
@@ -387,4 +387,4 @@ The project now has professional, maintainable documentation serving three audie
 **Files Created:** 33
 **Files Modified:** 3
 **Files Archived:** 53
-**Documentation Site:** https://pablovitasso.github.io/Syllablaze/ (pending deployment)
+**Documentation Site:** https://zebastjan.github.io/Syllablaze/ (pending deployment)

@@ -9,7 +9,7 @@ import os
 APP_NAME = "Syllablaze"
 
 # Application version
-APP_VERSION = "0.5"
+APP_VERSION = "0.8"
 
 # Organization name
 ORG_NAME = "KDE"
@@ -60,15 +60,17 @@ DEFAULT_SHORTCUT = "Alt+Space"
 LOCK_FILE_PATH = os.path.expanduser("~/.cache/syllablaze/syllablaze.lock")
 
 # Applet mode constants for recording dialog behavior
-APPLET_MODE_OFF = "off"           # Dialog never shown automatically
+APPLET_MODE_OFF = "off"  # Dialog never shown automatically
 APPLET_MODE_PERSISTENT = "persistent"  # Dialog always visible
-APPLET_MODE_POPUP = "popup"       # Dialog auto-shows on record, auto-hides after transcription
+APPLET_MODE_POPUP = (
+    "popup"  # Dialog auto-shows on record, auto-hides after transcription
+)
 DEFAULT_APPLET_MODE = APPLET_MODE_POPUP
 
 # Popup style constants — high-level UI selection for recording indicator
-POPUP_STYLE_NONE = "none"              # No indicator shown
+POPUP_STYLE_NONE = "none"  # No indicator shown
 POPUP_STYLE_TRADITIONAL = "traditional"  # Classic progress window
-POPUP_STYLE_APPLET = "applet"          # Circular floating dialog
+POPUP_STYLE_APPLET = "applet"  # Circular floating dialog
 DEFAULT_POPUP_STYLE = POPUP_STYLE_APPLET
 DEFAULT_APPLET_AUTOHIDE = True
 DEFAULT_APPLET_ONALLDESKTOPS = True  # Show on all virtual desktops in persistent mode

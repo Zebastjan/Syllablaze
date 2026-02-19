@@ -59,7 +59,7 @@ Thank you for your interest in contributing! This page is a quick reference - se
 
 ### Good First Issues
 
-Check [GitHub Issues](https://github.com/PabloVitasso/Syllablaze/issues) labeled `good-first-issue`.
+Check [GitHub Issues](https://github.com/Zebastjan/Syllablaze/issues) labeled `good-first-issue`.
 
 ### Documentation
 

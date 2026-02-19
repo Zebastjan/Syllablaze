@@ -1,4 +1,4 @@
-# Syllablaze v0.5 - Actively Maintained Fork
+# Syllablaze v0.8 - Actively Maintained Fork
 
 Real-time audio transcription app using OpenAI's Whisper with **working global keyboard shortcuts**.
 
@@ -7,7 +7,7 @@ Real-time audio transcription app using OpenAI's Whisper with **working global k
 > - [PabloVitasso's Syllablaze](https://github.com/PabloVitasso/Syllablaze) (privacy improvements)
 > - New: Working global keyboard shortcuts for KDE Wayland
 
-📚 **[Read the full documentation →](https://pablovitasso.github.io/Syllablaze/)**
+📚 **[Read the full documentation →](https://zebastjan.github.io/Syllablaze/)**
 
 ## Features
 
@@ -35,6 +35,15 @@ Real-time audio transcription app using OpenAI's Whisper with **working global k
 - Model download with progress tracking
 - Audio device selection with intelligent filtering
 - UI customization: dialog visibility, size, always-on-top behavior
+
+## What's New in v0.8
+
+- **📚 Complete Documentation Overhaul**: Professional MkDocs documentation with user guides, developer guides, and troubleshooting
+- **🏗️ Orchestration Layer Refactor**: Clean separation of concerns between UI and backend
+- **🎨 Enhanced Applet Mode**: Improved circular recording dialog with real-time volume visualization
+- **⚙️ Settings Architecture**: New coordinator pattern for better settings management
+- **🐛 Improved Stability**: Fixed clipboard issues on Wayland, better error handling
+- **📖 Architecture Decision Records**: Documented key design decisions for contributors
 
 ## What's New in v0.5
 
@@ -105,7 +114,7 @@ sudo dnf install -y python3-libs python3-devel python3 portaudio-devel pipx
 
 ### Install
 ```bash
-git clone https://github.com/PabloVitasso/Syllablaze.git
+git clone https://github.com/Zebastjan/Syllablaze.git
 cd Syllablaze
 python3 install.py
 ```
@@ -116,7 +125,7 @@ python3 install.py
 2. Click tray icon to start/stop recording
 3. Transcribed text is copied to clipboard
 
-**New to Syllablaze?** Check out the [Quick Start Guide](https://pablovitasso.github.io/Syllablaze/getting-started/quick-start/) for a detailed walkthrough.
+**New to Syllablaze?** Check out the [Quick Start Guide](https://zebastjan.github.io/Syllablaze/getting-started/quick-start/) for a detailed walkthrough.
 
 ## Configuration
 
@@ -125,11 +134,11 @@ Right-click tray icon → Settings to configure:
 - Whisper model
 - Language
 
-📖 **[Complete Settings Reference](https://pablovitasso.github.io/Syllablaze/user-guide/settings-reference/)** - Detailed documentation of all settings
+📖 **[Complete Settings Reference](https://zebastjan.github.io/Syllablaze/user-guide/settings-reference/)** - Detailed documentation of all settings
 
 ## Troubleshooting
 
-Having issues? Check the [Troubleshooting Guide](https://pablovitasso.github.io/Syllablaze/getting-started/troubleshooting/) for common problems and solutions.
+Having issues? Check the [Troubleshooting Guide](https://zebastjan.github.io/Syllablaze/getting-started/troubleshooting/) for common problems and solutions.
 
 ## Uninstall
 ```bash
@@ -138,12 +147,12 @@ python3 uninstall.py
 
 ## Documentation
 
-- 📚 **[Full Documentation](https://pablovitasso.github.io/Syllablaze/)** - Complete user and developer guides
-- 🚀 **[Quick Start](https://pablovitasso.github.io/Syllablaze/getting-started/quick-start/)** - Get started in 5 minutes
-- ⚙️ **[Settings Reference](https://pablovitasso.github.io/Syllablaze/user-guide/settings-reference/)** - All settings explained
-- 🐛 **[Troubleshooting](https://pablovitasso.github.io/Syllablaze/getting-started/troubleshooting/)** - Common issues and solutions
-- 💻 **[Developer Guide](https://pablovitasso.github.io/Syllablaze/developer-guide/setup/)** - Contributing to Syllablaze
-- 🤔 **[Design Decisions](https://pablovitasso.github.io/Syllablaze/explanation/design-decisions/)** - Why we built it this way
+- 📚 **[Full Documentation](https://zebastjan.github.io/Syllablaze/)** - Complete user and developer guides
+- 🚀 **[Quick Start](https://zebastjan.github.io/Syllablaze/getting-started/quick-start/)** - Get started in 5 minutes
+- ⚙️ **[Settings Reference](https://zebastjan.github.io/Syllablaze/user-guide/settings-reference/)** - All settings explained
+- 🐛 **[Troubleshooting](https://zebastjan.github.io/Syllablaze/getting-started/troubleshooting/)** - Common issues and solutions
+- 💻 **[Developer Guide](https://zebastjan.github.io/Syllablaze/developer-guide/setup/)** - Contributing to Syllablaze
+- 🤔 **[Design Decisions](https://zebastjan.github.io/Syllablaze/explanation/design-decisions/)** - Why we built it this way
 
 ## Contributing
 

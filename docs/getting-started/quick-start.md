@@ -147,4 +147,4 @@ Now that you've made your first recording:
 
 ---
 
-**Enjoying Syllablaze?** Star the [GitHub repository](https://github.com/PabloVitasso/Syllablaze) and share with others!
+**Enjoying Syllablaze?** Star the [GitHub repository](https://github.com/Zebastjan/Syllablaze) and share with others!

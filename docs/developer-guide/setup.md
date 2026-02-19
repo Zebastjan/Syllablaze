@@ -22,7 +22,7 @@ cd Syllablaze
 3. Add upstream remote:
 
 ```bash
-git remote add upstream https://github.com/PabloVitasso/Syllablaze.git
+git remote add upstream https://github.com/Zebastjan/Syllablaze.git
 ```
 
 ## Step 2: Install Dependencies
@@ -181,7 +181,7 @@ git push origin main
    git push origin feature/my-feature
    ```
 
-2. Open PR on GitHub from your fork to `PabloVitasso/Syllablaze:main`
+2. Open PR on GitHub from your fork to `Zebastjan/Syllablaze:main`
 
 3. Fill PR template and pass CI checks
 

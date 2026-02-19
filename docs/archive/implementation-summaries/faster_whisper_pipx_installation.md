@@ -27,7 +27,7 @@ sudo dnf install pipx
 
 1. Clone the repository or download the source code:
    ```bash
-   git clone https://github.com/PabloVitasso/Syllablaze.git
+    git clone https://github.com/Zebastjan/Syllablaze.git
    cd Syllablaze
    ```
 
