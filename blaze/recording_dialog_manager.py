@@ -1,318 +1,150 @@
 """
 Recording Dialog Manager for Syllablaze
 
-Manages the recording indicator dialog with volume visualization.
+Manages the recording indicator applet with volume visualization.
+Now uses plain QWidget (RecordingApplet) instead of QML for better Wayland/KWin support.
 """
 
-import os
 import logging
-from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty, pyqtSlot, QUrl
-from PyQt6.QtQml import QQmlApplicationEngine
-from blaze.settings import Settings
-from blaze.kwin_rules import (
-    save_window_position_to_rule,
-    get_saved_position_from_rule,
-    is_wayland,
-    set_window_on_all_desktops,
-    WINDOW_TITLE,
-)
+from PyQt6.QtCore import QObject, pyqtSignal
 from blaze.constants import APPLET_MODE_PERSISTENT
-from blaze.svg_renderer_bridge import SvgRendererBridge
 
 logger = logging.getLogger(__name__)
 
 
-class RecordingDialogBridge(QObject):
-    """Bridge between Python backend and QML dialog.
+class _AppletBridge(QObject):
+    """Backward-compatible bridge wrapper for RecordingApplet signals.
 
-    Provides:
-    - State properties (recording status, volume, samples) - READ from ApplicationState
-    - User action slots (toggle, dismiss, etc.) - emit signals to Python
-    - Window management (size persistence)
+    Exposes signals in the same format as the old QML RecordingDialogBridge.
     """
 
-    # State change signals (Python -> QML)
-    recordingStateChanged = pyqtSignal(bool)
-    transcribingStateChanged = pyqtSignal(bool)
-    volumeChanged = pyqtSignal(float)
-    audioSamplesChanged = pyqtSignal("QVariantList")
-
-    # User action signals (QML -> Python)
     toggleRecordingRequested = pyqtSignal()
     openClipboardRequested = pyqtSignal()
     openSettingsRequested = pyqtSignal()
     dismissRequested = pyqtSignal()
-    dialogClosedSignal = pyqtSignal()
+    recordingStateChanged = pyqtSignal(bool)
+    transcribingStateChanged = pyqtSignal(bool)
 
-    def __init__(self, app_state=None):
-        super().__init__()
-        self.app_state = app_state
+    def __init__(self, applet, app_state, parent=None):
+        super().__init__(parent)
+        self._applet = applet
+        self._app_state = app_state
 
-        # Audio state (not in ApplicationState)
-        self._current_volume = 0.0
-        self._audio_samples = []
+        # Connect applet signals to bridge signals
+        applet.toggleRecordingRequested.connect(self.toggleRecordingRequested)
+        applet.openClipboardRequested.connect(self.openClipboardRequested)
+        applet.openSettingsRequested.connect(self.openSettingsRequested)
+        applet.dismissRequested.connect(self.dismissRequested)
 
-        # Connect to ApplicationState signals
-        if self.app_state:
-            self.app_state.recording_state_changed.connect(
-                self._on_recording_state_changed
-            )
-            self.app_state.transcription_state_changed.connect(
-                self._on_transcription_state_changed
-            )
-
-    # --- Properties (QML reads these) ---
-
-    @pyqtProperty(bool, notify=recordingStateChanged)
-    def isRecording(self):
-        """Recording status from ApplicationState"""
-        return self.app_state.is_recording() if self.app_state else False
-
-    @pyqtProperty(bool, notify=transcribingStateChanged)
-    def isTranscribing(self):
-        """Transcribing status from ApplicationState"""
-        return self.app_state.is_transcribing() if self.app_state else False
-
-    @pyqtProperty(float, notify=volumeChanged)
-    def currentVolume(self):
-        """Current audio volume level (0.0-1.0)"""
-        return self._current_volume
-
-    @pyqtProperty("QVariantList", notify=audioSamplesChanged)
-    def audioSamples(self):
-        """Audio waveform samples for visualization"""
-        return self._audio_samples
-
-    # --- Slots (QML calls these) ---
-
-    @pyqtSlot()
-    def toggleRecording(self):
-        """User clicked to toggle recording"""
-        logger.info("RecordingDialogBridge: toggleRecording() called from QML")
-        self.toggleRecordingRequested.emit()
-
-    @pyqtSlot()
-    def openClipboard(self):
-        """User wants to open clipboard manager"""
-        logger.info("RecordingDialogBridge: openClipboard() called from QML")
-        self.openClipboardRequested.emit()
-
-    @pyqtSlot()
-    def openSettings(self):
-        """User wants to open settings window"""
-        logger.info("RecordingDialogBridge: openSettings() called from QML")
-        self.openSettingsRequested.emit()
-
-    @pyqtSlot()
-    def dismissDialog(self):
-        """User dismissed the dialog"""
-        logger.info("RecordingDialogBridge: dismissDialog() called from QML")
-        self.dismissRequested.emit()
-
-    @pyqtSlot()
-    def dialogClosed(self):
-        """Dialog window was closed"""
-        logger.info("RecordingDialogBridge: dialogClosed() called from QML")
-        self.dialogClosedSignal.emit()
-
-    @pyqtSlot(int)
-    def saveWindowSize(self, size):
-        """Save window size when user resizes with scroll wheel"""
-        logger.info(f"RecordingDialogBridge: saveWindowSize({size}) called from QML")
-        settings = Settings()
-        settings.set("recording_dialog_size", size)
-        # Also update KWin rule
-        from blaze.kwin_rules import save_window_position_to_rule
-
-        save_window_position_to_rule(0, 0, size, size)
-
-    @pyqtSlot()
-    def getWindowSize(self):
-        """Get saved window size"""
-        settings = Settings()
-        return settings.get("recording_dialog_size", 200)
-
-    # --- Methods (Python calls these) ---
-
-    def _on_recording_state_changed(self, is_recording):
-        """Relay recording state change from ApplicationState to QML"""
-        logger.info(f"RecordingDialogBridge: Recording state changed to {is_recording}")
-        self.recordingStateChanged.emit(is_recording)
-
-    def _on_transcription_state_changed(self, is_transcribing):
-        """Relay transcription state change from ApplicationState to QML"""
-        logger.info(
-            f"RecordingDialogBridge: Transcribing state changed to {is_transcribing}"
-        )
-        self.transcribingStateChanged.emit(is_transcribing)
-
-    def setVolume(self, volume):
-        """Update volume level (called by AudioManager)"""
-        volume = max(0.0, min(1.0, volume))
-        self._current_volume = volume
-        self.volumeChanged.emit(volume)
-
-    def setAudioSamples(self, samples):
-        """Update audio samples (called by AudioManager)"""
-        if isinstance(samples, (list, tuple)) and len(samples) > 0:
-            # Keep only last 128 samples for performance
-            self._audio_samples = list(samples[-128:])
-            self.audioSamplesChanged.emit(self._audio_samples)
+        # Connect app state signals
+        if app_state:
+            app_state.recording_state_changed.connect(self.recordingStateChanged)
+            app_state.transcription_state_changed.connect(self.transcribingStateChanged)
 
 
 class RecordingDialogManager(QObject):
-    """Manages the recording indicator dialog.
+    """Manages the recording indicator applet.
 
     This is a VIEW component - responds to ApplicationState but doesn't own state.
+    Uses RecordingApplet (plain QWidget) for better Wayland/KWin compatibility.
     """
 
-    def __init__(self, settings, app_state, parent=None):
+    def __init__(self, settings, app_state, audio_manager=None, parent=None):
         super().__init__(parent)
         self.settings = settings
         self.app_state = app_state
-        self.engine = None
-        self.window = None
-        self.bridge = RecordingDialogBridge(app_state)
-        self.svg_bridge = None  # Will be initialized in initialize()
+        self._audio_manager = audio_manager
+        self.applet = None
+        self.bridge = None  # Backward compatibility
 
-        # Connect bridge signals
-        self.bridge.dismissRequested.connect(self._on_dismiss)
-        self.bridge.openClipboardRequested.connect(self._on_open_clipboard)
+    def set_audio_manager(self, audio_manager):
+        """Set audio manager after initialization (called after audio_manager is created)."""
+        self._audio_manager = audio_manager
+        self._create_applet()
+
+    @property
+    def audio_manager(self):
+        return self._audio_manager
+
+    def _create_applet(self):
+        """Create the RecordingApplet widget (internal)."""
+        from blaze.recording_applet import RecordingApplet
+
+        self.applet = RecordingApplet(
+            settings=self.settings,
+            app_state=self.app_state,
+            audio_manager=self._audio_manager,
+        )
+
+        # Create backward-compatible bridge
+        self.bridge = _AppletBridge(self.applet, self.app_state, self)
+
+        # Connect applet signals to manager handlers
+        self.applet.toggleRecordingRequested.connect(self._on_toggle_recording)
+        self.applet.openClipboardRequested.connect(self._on_open_clipboard)
+        self.applet.openSettingsRequested.connect(self._on_open_settings)
+        self.applet.dismissRequested.connect(self._on_dismiss)
+        self.applet.windowPositionChanged.connect(self._on_position_changed)
+        self.applet.windowSizeChanged.connect(self._on_size_changed)
+
+        # Apply settings
+        on_all = self._effective_on_all_desktops()
+        if on_all:
+            self.applet.set_on_all_desktops(on_all)
+
+        logger.info("RecordingDialogManager: RecordingApplet created")
 
     def initialize(self):
-        """Create QML engine and load dialog"""
-        try:
-            logger.info("RecordingDialogManager: Initializing...")
+        """Initialize the recording dialog manager.
 
-            self.engine = QQmlApplicationEngine()
-            self.engine.addImportPath("/usr/lib/qt6/qml")
+        Note: The applet is created later when set_audio_manager() is called,
+        after the audio manager is ready.
+        """
+        logger.info("RecordingDialogManager: Initialized (applet will be created when audio_manager is set)")
 
-            # Register bridges
-            context = self.engine.rootContext()
-            context.setContextProperty("dialogBridge", self.bridge)
+    def connect_bridge_signals(self, toggle_recording_callback=None, open_settings_callback=None, dismiss_callback=None):
+        """Connect bridge signals to external callbacks.
 
-            # Create and register SVG renderer bridge
-            self.svg_bridge = SvgRendererBridge()
-            context.setContextProperty("svgBridge", self.svg_bridge)
-            logger.info("RecordingDialogManager: SVG bridge registered")
+        Should be called after set_audio_manager() creates the bridge.
+        """
+        if not self.bridge:
+            logger.warning("RecordingDialogManager: Cannot connect bridge signals - bridge not created yet")
+            return
 
-            # Load QML - use the new visualizer
-            qml_path = os.path.join(
-                os.path.dirname(__file__), "qml", "RecordingDialogVisualizer.qml"
-            )
-            logger.info(f"RecordingDialogManager: Loading QML from {qml_path}")
+        if toggle_recording_callback:
+            self.bridge.toggleRecordingRequested.connect(toggle_recording_callback)
+        if open_settings_callback:
+            self.bridge.openSettingsRequested.connect(open_settings_callback)
+        if dismiss_callback:
+            self.bridge.dismissRequested.connect(dismiss_callback)
 
-            if not os.path.exists(qml_path):
-                logger.error(f"QML file not found: {qml_path}")
-                return
-
-            self.engine.load(QUrl.fromLocalFile(qml_path))
-
-            # Get window reference
-            root_objects = self.engine.rootObjects()
-            if root_objects:
-                self.window = root_objects[0]
-                logger.info("RecordingDialogManager: QML window loaded successfully")
-
-                # Set window flags
-                from PyQt6.QtCore import Qt
-
-                always_on_top = self.settings.get(
-                    "recording_dialog_always_on_top", True
-                )
-                base_flags = Qt.WindowType.FramelessWindowHint | Qt.WindowType.Window
-                if always_on_top:
-                    initial_flags = base_flags | Qt.WindowType.WindowStaysOnTopHint
-                else:
-                    initial_flags = base_flags
-                self.window.setFlags(initial_flags)
-
-                # Restore size
-                self._restore_window_size()
-
-                # Connect size handler
-                if hasattr(self.window, "widthChanged"):
-                    self.window.widthChanged.connect(self._on_window_size_changed)
-
-                # Initialize KWin rule
-                from blaze.kwin_rules import create_or_update_kwin_rule
-
-                create_or_update_kwin_rule(
-                    enable_keep_above=always_on_top,
-                    on_all_desktops=self._effective_on_all_desktops(),
-                )
-
-                # In persistent mode the QML window auto-shows via `visible: true`
-                # before Python's show() is ever called, so set_window_on_all_desktops()
-                # never runs.  Connect to visibilityChanged and fire once on the first
-                # non-Hidden event — this is deterministic (compositor has acknowledged
-                # the surface) unlike an arbitrary QTimer delay.
-                on_all = self._effective_on_all_desktops()
-                if on_all:
-                    from PyQt6.QtGui import QWindow as _QWindow
-
-                    def _apply_on_all_desktops(visibility):
-                        if visibility != _QWindow.Visibility.Hidden:
-                            self.window.visibilityChanged.disconnect(_apply_on_all_desktops)
-                            set_window_on_all_desktops(WINDOW_TITLE, True)
-
-                    self.window.visibilityChanged.connect(_apply_on_all_desktops)
-            else:
-                logger.error("RecordingDialogManager: Failed to load QML window")
-
-        except Exception as e:
-            logger.error(
-                f"RecordingDialogManager: Initialization failed: {e}", exc_info=True
-            )
+        logger.info("RecordingDialogManager: Bridge signals connected")
 
     def show(self):
-        """Show the dialog window"""
-        if self.window:
-            from PyQt6.QtCore import Qt
+        """Show the applet window.
 
-            always_on_top = bool(self.settings.get("recording_dialog_always_on_top"))
+        Window properties (always-on-top, on-all-desktops) are applied via KWin
+        automatically in the applet's showEvent handler.
+        """
+        if self.applet:
+            self.applet.show()
+            self.applet.raise_()
+            self.applet.requestActivate()
 
-            # Sync KWin rule
-            from blaze.kwin_rules import create_or_update_kwin_rule
-
-            create_or_update_kwin_rule(
-                enable_keep_above=always_on_top,
-                on_all_desktops=self._effective_on_all_desktops(),
-            )
-
-            # Set flags
-            base_flags = Qt.WindowType.FramelessWindowHint | Qt.WindowType.Window
-            if always_on_top:
-                new_flags = base_flags | Qt.WindowType.WindowStaysOnTopHint
-            else:
-                new_flags = base_flags
-            self.window.setFlags(new_flags)
-
-            # Show window
-            self.window.show()
-            self.window.raise_()
-            self.window.requestActivate()
-
-            # Apply on-all-desktops live (KWin rules only fire at window creation)
-            on_all = self._effective_on_all_desktops()
-            set_window_on_all_desktops(WINDOW_TITLE, on_all)
-
-            logger.info(
-                f"RecordingDialogManager: Dialog shown (always_on_top={always_on_top}, on_all_desktops={on_all})"
-            )
+            logger.info("RecordingDialogManager: Applet shown (KWin properties will be applied)")
 
     def hide(self):
-        """Hide the dialog window"""
-        if self.window:
-            self.window.hide()
-            logger.info("RecordingDialogManager: Dialog hidden")
+        """Hide the applet window."""
+        if self.applet:
+            self.applet.hide()
+            logger.info("RecordingDialogManager: Applet hidden")
 
     def is_visible(self):
-        """Check if dialog should be visible"""
+        """Check if applet should be visible."""
         return self.app_state.is_recording_dialog_visible() if self.app_state else False
 
     def _effective_on_all_desktops(self):
-        """Return on_all_desktops value to pass to KWin rule.
+        """Return on_all_desktops value based on settings.
 
         Returns True/False only in persistent mode (where it matters).
         Returns False for popup/off modes so the rule is cleared.
@@ -323,117 +155,54 @@ class RecordingDialogManager(QObject):
         return False
 
     def update_always_on_top(self, always_on_top):
-        """Update always-on-top setting live"""
-        if not self.window:
+        """Update always-on-top setting live."""
+        if not self.applet:
             return
 
-        if self.window.isVisible():
-            self.hide()
-            self.show()
+        self.applet.update_always_on_top_setting(always_on_top)
         logger.info(f"Always-on-top updated: {always_on_top}")
 
     def update_on_all_desktops(self, on_all_desktops):
-        """Update on-all-desktops KWin rule and apply live to current window"""
-        always_on_top = bool(self.settings.get("recording_dialog_always_on_top", True))
-        from blaze.kwin_rules import create_or_update_kwin_rule
-        create_or_update_kwin_rule(enable_keep_above=always_on_top, on_all_desktops=on_all_desktops)
-        # Also apply immediately to the running window via KWin scripting
-        set_window_on_all_desktops(WINDOW_TITLE, on_all_desktops)
-        logger.info(f"On-all-desktops updated: {on_all_desktops}")
+        """Update on-all-desktops setting."""
+        if self.settings:
+            self.settings.set("applet_onalldesktops", on_all_desktops)
+
+        logger.info(f"On-all-desktops setting changed to: {on_all_desktops}")
+
+        if self.applet and self.applet.isVisible():
+            self.applet.set_on_all_desktops(on_all_desktops)
 
     def update_volume(self, volume):
-        """Update volume display"""
-        self.bridge.setVolume(volume)
+        """Update volume display - now handled directly by RecordingApplet."""
+        pass  # No longer needed - RecordingApplet connects directly to AudioManager
 
     def update_audio_samples(self, samples):
-        """Update audio visualization"""
-        self.bridge.setAudioSamples(samples)
-
-    def _restore_window_size(self):
-        """Restore saved window size"""
-        if not self.window:
-            return
-
-        saved_size = None
-
-        # Try KWin rules first
-        try:
-            from blaze.kwin_rules import find_or_create_rule_group, KWINRULESRC
-            import subprocess
-
-            group = find_or_create_rule_group()
-            result = subprocess.run(
-                [
-                    "kreadconfig6",
-                    "--file",
-                    KWINRULESRC,
-                    "--group",
-                    group,
-                    "--key",
-                    "size",
-                ],
-                capture_output=True,
-                text=True,
-                timeout=1,
-            )
-            if result.returncode == 0 and result.stdout.strip():
-                parts = result.stdout.strip().split(",")
-                if len(parts) == 2:
-                    saved_size = int(parts[0])
-        except Exception as e:
-            logger.debug(f"Could not read size from KWin: {e}")
-
-        # Fallback to settings
-        if saved_size is None:
-            saved_size = self.settings.get("recording_dialog_size", 200)
-
-        # Apply size
-        try:
-            saved_size = max(100, min(500, int(saved_size)))
-            self.window.setProperty("width", saved_size)
-            self.window.setProperty("height", saved_size)
-            logger.info(f"Restored window size: {saved_size}px")
-        except (ValueError, TypeError) as e:
-            logger.warning(f"Failed to restore size: {e}")
-
-    def _on_window_size_changed(self):
-        """Save size when changed"""
-        if not self.window:
-            return
-
-        width = self.window.property("width")
-        if width:
-            self.settings.set("recording_dialog_size", int(width))
-            logger.info(f"Saved window size: {width}px")
+        """Update audio visualization - now handled directly by RecordingApplet."""
+        pass  # No longer needed - RecordingApplet connects directly to AudioManager
 
     def cleanup(self):
-        """Hide the dialog and destroy the QML engine"""
+        """Hide the applet and clean up."""
         try:
-            if self.window:
-                self.window.hide()
-                self.window = None
-            if self.engine:
-                self.engine.deleteLater()
-                self.engine = None
+            if self.applet:
+                self.applet.hide()
+                self.applet = None
             logger.info("RecordingDialogManager: cleaned up")
         except Exception as e:
             logger.error(f"RecordingDialogManager: cleanup failed: {e}")
 
-    def _on_dismiss(self):
-        """Handle dialog dismissal"""
-        if self.bridge.isRecording:
-            logger.info("Recording active - stopping first")
-            self.bridge.toggleRecordingRequested.emit()
-        self.hide()
+    # --- Signal handlers ---
+
+    def _on_toggle_recording(self):
+        """Handle toggle recording request from applet."""
+        logger.info("RecordingDialogManager: toggleRecording requested")
 
     def _on_open_clipboard(self):
-        """Open clipboard manager"""
+        """Open clipboard manager."""
         import subprocess
         from PyQt6.QtWidgets import QApplication, QMessageBox
 
         logger.info("Opening clipboard manager...")
 
-        # Try multiple methods
         methods = [
             [
                 "qdbus",
@@ -449,10 +218,9 @@ class RecordingDialogManager(QObject):
                 if result.returncode == 0:
                     logger.info("Opened clipboard via qdbus")
                     return
-            except:
+            except Exception:
                 continue
 
-        # Fallback: show clipboard content
         try:
             clipboard = QApplication.clipboard()
             text = clipboard.text()
@@ -463,3 +231,25 @@ class RecordingDialogManager(QObject):
                 msg.exec()
         except Exception as e:
             logger.error(f"Failed to access clipboard: {e}")
+
+    def _on_open_settings(self):
+        """Open settings window."""
+        logger.info("RecordingDialogManager: openSettings requested")
+
+    def _on_dismiss(self):
+        """Handle applet dismissal."""
+        if self.applet and self.applet.is_recording:
+            logger.info("Recording active - stopping first")
+            self._on_toggle_recording()
+        self.hide()
+
+    def _on_position_changed(self, x, y):
+        """Save window position when changed."""
+        self.settings.set("recording_dialog_position_x", x)
+        self.settings.set("recording_dialog_position_y", y)
+        logger.info(f"Saved applet position: ({x}, {y})")
+
+    def _on_size_changed(self, size):
+        """Save window size when changed."""
+        self.settings.set("recording_dialog_size", size)
+        logger.info(f"Saved applet size: {size}")

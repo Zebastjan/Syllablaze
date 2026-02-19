@@ -130,19 +130,20 @@ class RecordingApplet(QWidget):
             self._active_area_bounds = QRectF(0, 0, 512, 512)
 
     def _setup_window(self):
-        """Configure window flags and properties."""
+        """Configure window flags and properties.
+
+        Note: We use KWin window rules for always-on-top and on-all-desktops.
+        Qt window hints are unreliable on Wayland - KWin is the proper way.
+        """
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
 
-        # Base flags: frameless tool window
+        # Base flags: frameless tool window (no window hints for properties)
         flags = Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint
-
-        # Always on top
-        always_on_top = self.settings.get("recording_dialog_always_on_top", True)
-        if always_on_top:
-            flags |= Qt.WindowType.WindowStaysOnTopHint
-
         self.setWindowFlags(flags)
+
+        # Set window title so KWin rules can target it
+        self.setWindowTitle("Syllablaze Recording")
 
     def _build_context_menu(self):
         """Build the right-click context menu."""
@@ -467,6 +468,44 @@ class RecordingApplet(QWidget):
         self._ignore_clicks = True
         self._show_ignore_timer.start(300)
 
+        # Apply window properties via KWin on first show
+        if not hasattr(self, '_properties_applied'):
+            self._properties_applied = False
+
+        if not self._properties_applied:
+            # Use QTimer to ensure window is fully mapped before applying KWin properties
+            from PyQt6.QtCore import QTimer
+            QTimer.singleShot(100, self._apply_kwin_properties)
+
+    def _apply_kwin_properties(self):
+        """Apply window properties via KWin (called after window is shown)."""
+        from . import kwin_rules
+
+        # Mark as applied
+        self._properties_applied = True
+
+        always_on_top = self.settings.get("recording_dialog_always_on_top", True)
+        applet_mode = self.settings.get("applet_mode", "popup")
+        on_all = self.settings.get("applet_onalldesktops", True)
+
+        # Only apply on-all-desktops in persistent mode
+        on_all_value = on_all if applet_mode == "persistent" else False
+
+        logger.info(
+            f"RecordingApplet: Applying KWin properties - "
+            f"always_on_top={always_on_top}, on_all_desktops={on_all_value}, mode={applet_mode}"
+        )
+
+        # Update KWin rule
+        kwin_rules.create_or_update_kwin_rule(
+            enable_keep_above=always_on_top,
+            on_all_desktops=on_all_value
+        )
+
+        # Apply on-all-desktops immediately via D-Bus
+        if applet_mode == "persistent":
+            kwin_rules.set_window_on_all_desktops("Syllablaze Recording", on_all_value)
+
     def requestActivate(self):
         """Request window activation."""
         if self.windowHandle():
@@ -475,39 +514,46 @@ class RecordingApplet(QWidget):
             self.activateWindow()
 
     def set_on_all_desktops(self, on_all: bool):
-        """Set whether window appears on all desktops.
+        """Set whether window appears on all desktops via KWin.
 
         Uses KWin scripting D-Bus API to set the property on the running window,
-        and also updates the KWin rule for future window creation.
+        and also updates the KWin rule for persistence.
         """
         from . import kwin_rules
 
         logger.info(f"RecordingApplet: set_on_all_desktops({on_all})")
 
-        # First, update the KWin rule so the setting persists for future launches
+        always_on_top = self.settings.get("recording_dialog_always_on_top", True)
+
+        # Update the KWin rule for persistence
         kwin_rules.create_or_update_kwin_rule(
-            enable_keep_above=self.settings.get("recording_dialog_always_on_top", True),
+            enable_keep_above=always_on_top,
             on_all_desktops=on_all
         )
 
-        # Then, immediately apply to the current window using KWin scripting
-        if self.isVisible():
-            kwin_rules.set_window_on_all_desktops("Syllablaze Recording", on_all)
+        # Apply to the current window via KWin D-Bus (works immediately)
+        kwin_rules.set_window_on_all_desktops("Syllablaze Recording", on_all)
 
     def set_always_on_top(self, always_on_top: bool):
-        """Update always-on-top setting."""
-        flags = self.windowFlags()
-        if always_on_top:
-            flags |= Qt.WindowType.WindowStaysOnTopHint
-        else:
-            flags &= ~Qt.WindowType.WindowStaysOnTopHint
+        """Update always-on-top setting via KWin.
 
-        # Need to hide and re-show to apply flag change
-        was_visible = self.isVisible()
-        self.setWindowFlags(flags)
-        if was_visible:
-            self.show()
-            self.raise_()
+        Uses KWin window rules instead of Qt window hints (Wayland-friendly).
+        """
+        from . import kwin_rules
+
+        logger.info(f"RecordingApplet: set_always_on_top({always_on_top})")
+
+        on_all = self.settings.get("applet_onalldesktops", True)
+        applet_mode = self.settings.get("applet_mode", "popup")
+
+        # Only apply on-all-desktops in persistent mode
+        on_all_value = on_all if applet_mode == "persistent" else False
+
+        # Update KWin rule with new always-on-top setting
+        kwin_rules.create_or_update_kwin_rule(
+            enable_keep_above=always_on_top,
+            on_all_desktops=on_all_value
+        )
 
     def update_always_on_top_setting(self, always_on_top: bool):
         """Update always-on-top from settings."""

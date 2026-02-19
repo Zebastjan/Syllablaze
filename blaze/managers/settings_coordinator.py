@@ -11,19 +11,28 @@ logger = logging.getLogger(__name__)
 class SettingsCoordinator(QObject):
     """Coordinates settings changes to appropriate components"""
 
-    def __init__(self, recording_dialog, app_state, settings=None):
+    def __init__(self, recording_dialog, app_state, settings=None, tray_menu_manager=None):
         """Initialize settings coordinator
 
         Args:
             recording_dialog: RecordingDialogManager instance
             app_state: ApplicationState instance
             settings: Settings instance (needed for popup_style derivation)
+            tray_menu_manager: TrayMenuManager instance (for updating menu text)
         """
         super().__init__()
         self.recording_dialog = recording_dialog
         self.app_state = app_state
         self.settings = settings
+        self.tray_menu_manager = tray_menu_manager
         self.progress_window = None  # Set later when created
+
+        # Derive backend settings from popup_style at startup
+        if self.settings:
+            popup_style = self.settings.get("popup_style", POPUP_STYLE_APPLET)
+            autohide = bool(self.settings.get("applet_autohide", True))
+            logger.info(f"SettingsCoordinator: Initial settings - popup_style={popup_style}, autohide={autohide}")
+            self._apply_popup_style(popup_style, autohide, self.settings)
 
     def set_progress_window(self, progress_window):
         """Set progress window reference after creation"""
@@ -60,23 +69,35 @@ class SettingsCoordinator(QObject):
             return
         mode = str(value) if value is not None else APPLET_MODE_POPUP
         logger.info(f"Applet mode changed to: {mode}")
+
+        # Check if recording_dialog and applet exist
+        has_applet = self.recording_dialog and self.recording_dialog.applet
+
         if mode == APPLET_MODE_PERSISTENT:
             # force=True: ApplicationState may be initialized from persisted settings
             # (True) while the window is actually hidden. Without force, the
             # deduplication check silently swallows this signal and the dialog
             # never appears when the user first switches to persistent mode.
             self.app_state.set_recording_dialog_visible(True, source="applet_mode_change", force=True)
-            # Apply on-all-desktops for persistent mode
-            if self.recording_dialog and self.settings:
-                on_all = bool(self.settings.get("applet_onalldesktops", True))
-                self.recording_dialog.update_on_all_desktops(on_all)
+            # If applet exists, show it immediately (KWin properties applied in showEvent)
+            if has_applet:
+                logger.info("Persistent mode: showing applet now")
+                self.recording_dialog.show()
+            else:
+                logger.info("Persistent mode: applet not created yet, will show when created")
         elif mode == APPLET_MODE_OFF:
             self.app_state.set_recording_dialog_visible(False, source="applet_mode_change")
-            if self.recording_dialog:
-                self.recording_dialog.update_on_all_desktops(False)
-        else:  # APPLET_MODE_POPUP: no immediate change; auto-show on next record start
-            if self.recording_dialog:
-                self.recording_dialog.update_on_all_desktops(False)
+            if has_applet:
+                self.recording_dialog.hide()
+        else:  # APPLET_MODE_POPUP
+            # When switching to popup mode, hide the dialog immediately (unless recording)
+            if self.app_state.is_recording():
+                logger.info("Popup mode: keeping dialog visible while recording")
+            else:
+                logger.info("Popup mode: hiding dialog (will auto-show on next recording)")
+                self.app_state.set_recording_dialog_visible(False, source="applet_mode_change")
+                if has_applet:
+                    self.recording_dialog.hide()
 
     def _handle_visibility(self, key, value):
         """Handle visibility-related setting changes."""
@@ -102,9 +123,15 @@ class SettingsCoordinator(QObject):
         if key == "popup_style":
             autohide = self.settings.get('applet_autohide', True)
             self._apply_popup_style(str(value), bool(autohide), self.settings)
+            # Update tray menu text based on new mode
+            if self.tray_menu_manager:
+                self.tray_menu_manager.update_dialog_action(bool(autohide))
         elif key == "applet_autohide":
             popup_style = self.settings.get('popup_style', POPUP_STYLE_APPLET)
             self._apply_popup_style(str(popup_style), bool(value), self.settings)
+            # Update tray menu text based on new mode
+            if self.tray_menu_manager:
+                self.tray_menu_manager.update_dialog_action(bool(value))
 
     def on_setting_changed(self, key, value):
         """Handle setting changes from settings window."""

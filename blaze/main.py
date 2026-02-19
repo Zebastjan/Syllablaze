@@ -179,19 +179,15 @@ class SyllablazeOrchestrator(QSystemTrayIcon):
             )
             self.recording_dialog.initialize()
 
-            # Connect dialog bridge signals to app methods
-            self.recording_dialog.bridge.toggleRecordingRequested.connect(
-                self.toggle_recording
-            )
-            self.recording_dialog.bridge.openSettingsRequested.connect(
-                self.toggle_settings
-            )
+            # Note: Bridge signal connections happen later in _connect_signals()
+            # after set_audio_manager() creates the applet and bridge
 
             # Initialize settings coordinator after recording dialog
             self.settings_coordinator = SettingsCoordinator(
                 recording_dialog=self.recording_dialog,
                 app_state=self.app_state,
                 settings=self.settings,
+                tray_menu_manager=self.tray_menu_manager,
             )
 
             # Connect settings window to coordinator
@@ -215,10 +211,8 @@ class SyllablazeOrchestrator(QSystemTrayIcon):
                     self.window_visibility_coordinator.on_dialog_visibility_changed
                 )
 
-            # Connect dialog dismissal to coordinator
-            self.recording_dialog.bridge.dismissRequested.connect(
-                self.window_visibility_coordinator.on_dialog_dismissed
-            )
+            # Note: Dialog dismissal signal connected later in _connect_signals()
+            # after the bridge is created
             logger.info(
                 "Window visibility coordinator initialized and signals connected"
             )
@@ -249,6 +243,10 @@ class SyllablazeOrchestrator(QSystemTrayIcon):
             quit_callback=self.quit_application,
         )
         self.setContextMenu(menu)
+
+        # Set initial tray menu text based on current applet_autohide setting
+        autohide = bool(self.settings.get("applet_autohide", True))
+        self.tray_menu_manager.update_dialog_action(autohide)
 
     @staticmethod
     def isSystemTrayAvailable():
@@ -962,12 +960,23 @@ def _connect_signals(tray, loading_window, app, ui_manager):
     tray.audio_manager.recording_completed.connect(tray._handle_recording_completed)
     tray.audio_manager.recording_failed.connect(tray.handle_recording_error)
 
-    # Connect volume and audio sample updates to recording dialog
+    # Connect audio manager to recording dialog (for volume/samples - new applet handles this directly)
     if tray.recording_dialog:
-        tray.audio_manager.volume_changing.connect(tray.recording_dialog.update_volume)
-        tray.audio_manager.audio_samples_changing.connect(
-            tray.recording_dialog.update_audio_samples
+        tray.recording_dialog.set_audio_manager(tray.audio_manager)
+        # Connect bridge signals now that the applet is created
+        tray.recording_dialog.connect_bridge_signals(
+            toggle_recording_callback=tray.toggle_recording,
+            open_settings_callback=tray.toggle_settings,
+            dismiss_callback=tray.window_visibility_coordinator.on_dialog_dismissed if tray.window_visibility_coordinator else None
         )
+
+        # Show applet in persistent mode (KWin properties applied in showEvent)
+        if tray.settings:
+            applet_mode = tray.settings.get("applet_mode", "popup")
+            if applet_mode == "persistent":
+                logger.info("Showing recording dialog after applet creation (persistent mode)")
+                tray.app_state.set_recording_dialog_visible(True, source="persistent_mode_startup")
+                tray.recording_dialog.show()
 
     # Connect transcription manager signals
     tray.transcription_manager.transcription_progress.connect(
