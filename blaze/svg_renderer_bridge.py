@@ -34,7 +34,9 @@ class SvgRendererBridge(QObject):
                 # Installed: resources/ in site-packages
                 os.path.join(os.path.dirname(base_dir), "resources", "syllablaze.svg"),
                 # System icons: where install.py copies it
-                os.path.expanduser("~/.local/share/icons/hicolor/256x256/apps/syllablaze.svg"),
+                os.path.expanduser(
+                    "~/.local/share/icons/hicolor/256x256/apps/syllablaze.svg"
+                ),
             ]
 
             svg_path = None
@@ -44,7 +46,9 @@ class SvgRendererBridge(QObject):
                     break
 
             if svg_path is None:
-                logger.error(f"Could not find syllablaze.svg in any of: {possible_paths}")
+                logger.error(
+                    f"Could not find syllablaze.svg in any of: {possible_paths}"
+                )
                 # Fallback to first path even though it doesn't exist
                 svg_path = possible_paths[0]
 
@@ -57,26 +61,38 @@ class SvgRendererBridge(QObject):
             logger.info(f"SVG Renderer loaded: {svg_path}")
 
         # Cache element bounds
-        self._status_bounds = None
+        self._background_bounds = None
+        self._input_level_bounds = None
         self._waveform_bounds = None
+        self._active_area_bounds = None
         self._view_box = self._renderer.viewBoxF()
 
         logger.info(f"SVG viewBox: {self._view_box}")
 
     @pyqtProperty(QRectF)
-    def statusIndicatorBounds(self):
-        """Get the bounds of the status_indicator element"""
-        if self._status_bounds is None:
-            self._status_bounds = self._renderer.boundsOnElement("status_indicator")
-            if self._status_bounds.isNull():
-                logger.warning(
-                    "status_indicator element not found in SVG, using fallback"
-                )
-                # Fallback to approximate center area
-                self._status_bounds = QRectF(100, 100, 312, 312)
+    def backgroundBounds(self):
+        """Get the bounds of the background element"""
+        if self._background_bounds is None:
+            self._background_bounds = self._renderer.boundsOnElement("background")
+            if self._background_bounds.isNull():
+                logger.warning("background element not found in SVG, using fallback")
+                self._background_bounds = QRectF(0, 0, 512, 512)
             else:
-                logger.info(f"status_indicator bounds: {self._status_bounds}")
-        return self._status_bounds
+                logger.info(f"background bounds: {self._background_bounds}")
+        return self._background_bounds
+
+    @pyqtProperty(QRectF)
+    def inputLevelBounds(self):
+        """Get the bounds of the input_levels element for audio level overlay"""
+        if self._input_level_bounds is None:
+            self._input_level_bounds = self._renderer.boundsOnElement("input_levels")
+            if self._input_level_bounds.isNull():
+                logger.warning("input_levels element not found in SVG, using fallback")
+                # Fallback to approximate center area
+                self._input_level_bounds = QRectF(100, 100, 312, 312)
+            else:
+                logger.info(f"input_levels bounds: {self._input_level_bounds}")
+        return self._input_level_bounds
 
     @pyqtProperty(QRectF)
     def waveformBounds(self):
@@ -90,6 +106,19 @@ class SvgRendererBridge(QObject):
             else:
                 logger.info(f"waveform bounds: {self._waveform_bounds}")
         return self._waveform_bounds
+
+    @pyqtProperty(QRectF)
+    def activeAreaBounds(self):
+        """Get the bounds of the active_area element for click detection"""
+        if self._active_area_bounds is None:
+            self._active_area_bounds = self._renderer.boundsOnElement("active_area")
+            if self._active_area_bounds.isNull():
+                logger.warning("active_area element not found in SVG, using fallback")
+                # Fallback to full window
+                self._active_area_bounds = QRectF(0, 0, 512, 512)
+            else:
+                logger.info(f"active_area bounds: {self._active_area_bounds}")
+        return self._active_area_bounds
 
     @pyqtProperty(QRectF)
     def viewBox(self):

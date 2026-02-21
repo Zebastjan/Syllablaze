@@ -25,6 +25,7 @@ class WindowVisibilityCoordinator(QObject):
         tray_menu_manager,
         settings_bridge,
         settings=None,
+        settings_coordinator=None,
     ):
         """Initialize window visibility coordinator
 
@@ -34,6 +35,7 @@ class WindowVisibilityCoordinator(QObject):
             tray_menu_manager: TrayMenuManager instance
             settings_bridge: SettingsBridge from settings window
             settings: Settings instance (needed for applet_mode lookup)
+            settings_coordinator: SettingsCoordinator instance (for manual trigger)
         """
         super().__init__()
         self.recording_dialog = recording_dialog
@@ -41,6 +43,7 @@ class WindowVisibilityCoordinator(QObject):
         self.tray_menu_manager = tray_menu_manager
         self.settings_bridge = settings_bridge
         self.settings = settings
+        self.settings_coordinator = settings_coordinator
 
         # Timer used to delay hiding in popup mode
         self._popup_hide_timer = QTimer(self)
@@ -101,19 +104,46 @@ class WindowVisibilityCoordinator(QObject):
     # ------------------------------------------------------------------
 
     def toggle_visibility(self, source="unknown"):
-        """Toggle recording dialog visibility
+        """Toggle between persistent and popup mode (open/close applet)
+
+        This changes the applet_autohide setting:
+        - If currently in popup mode (autohide=True) → switch to persistent (autohide=False) = "Open Applet"
+        - If currently in persistent mode (autohide=False) → switch to popup (autohide=True) = "Close Applet"
 
         Args:
             source (str): Source of the toggle request for debugging
         """
-        if not self.recording_dialog or not self.app_state:
+        if not self.settings:
             logger.warning(
-                f"Cannot toggle dialog visibility: components not initialized (source: {source})"
+                f"Cannot toggle applet mode: settings not initialized (source: {source})"
             )
             return
 
-        current_visible = self.app_state.is_recording_dialog_visible()
-        self.app_state.set_recording_dialog_visible(not current_visible, source)
+        # Check if we're using applet style at all
+        popup_style = self.settings.get("popup_style", "applet")
+        if popup_style != "applet":
+            logger.info(f"Applet toggle ignored: popup_style is '{popup_style}', not 'applet'")
+            return
+
+        # Toggle between popup (autohide=True) and persistent (autohide=False)
+        current_autohide = bool(self.settings.get("applet_autohide", True))
+        new_autohide = not current_autohide
+        mode_name = "popup" if new_autohide else "persistent"
+
+        logger.info(
+            f"Tray menu toggling applet mode: autohide {current_autohide} → {new_autohide} ({mode_name} mode)"
+        )
+
+        # Setting this will trigger SettingsCoordinator to apply the mode change
+        self.settings.set("applet_autohide", new_autohide)
+
+        # CRITICAL FIX: Programmatic settings.set() doesn't emit the settingChanged signal
+        # that SettingsCoordinator listens to. We need to manually trigger the coordinator.
+        if self.settings_coordinator:
+            logger.info("Manually triggering settings coordinator for applet_autohide change")
+            self.settings_coordinator.on_setting_changed("applet_autohide", new_autohide)
+        else:
+            logger.warning("settings_coordinator not available - mode change may not apply")
 
     def on_dialog_visibility_changed(self, visible, source):
         """Handle recording dialog visibility changes from ApplicationState
@@ -150,15 +180,36 @@ class WindowVisibilityCoordinator(QObject):
             self.recording_dialog.hide()
             logger.info(f"Recording dialog hidden (source: {source})")
 
-        # Update tray menu text
-        self.tray_menu_manager.update_dialog_action(visible)
-
         # Update settings UI (emit signal to QML)
         if self.settings_bridge:
             self.settings_bridge.settingChanged.emit("show_recording_dialog", visible)
 
     def on_dialog_dismissed(self):
-        """Handle recording dialog being manually dismissed"""
+        """Handle recording dialog being manually dismissed.
+
+        When user dismisses the applet (double-click or menu), switch to popup mode
+        so it auto-shows on next recording without being persistent.
+        """
         logger.info("WindowVisibilityCoordinator: Dialog manually dismissed")
-        if self.app_state:
+
+        # Switch from persistent to popup mode when dismissed
+        if self.settings:
+            popup_style = self.settings.get("popup_style", "applet")
+            if popup_style == "applet":
+                current_autohide = bool(self.settings.get("applet_autohide", True))
+                if not current_autohide:  # Only if we're in persistent mode
+                    logger.info("Dismiss: switching from persistent to popup mode")
+                    self.settings.set("applet_autohide", True)
+                    # Manually trigger settings coordinator (programmatic set() doesn't emit signal)
+                    if self.settings_coordinator:
+                        self.settings_coordinator.on_setting_changed("applet_autohide", True)
+                else:
+                    logger.info("Dismiss: already in popup mode, just hiding")
+                    if self.app_state:
+                        self.app_state.set_recording_dialog_visible(False, source="dismissal")
+            else:
+                logger.info(f"Dismiss: popup_style is '{popup_style}', just hiding")
+                if self.app_state:
+                    self.app_state.set_recording_dialog_visible(False, source="dismissal")
+        elif self.app_state:
             self.app_state.set_recording_dialog_visible(False, source="dismissal")

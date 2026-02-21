@@ -39,7 +39,7 @@ class TrayMenuManager(QObject):
         self.menu.addAction(self.settings_action)
 
         # Recording dialog toggle action
-        self.dialog_action = QAction("Show Recording Dialog", self.menu)
+        self.dialog_action = QAction("Open Applet", self.menu)
         self.dialog_action.triggered.connect(toggle_dialog_callback)
         self.menu.addAction(self.dialog_action)
 
@@ -63,12 +63,14 @@ class TrayMenuManager(QObject):
             text = "Stop Recording" if is_recording else "Start Recording"
             self.record_action.setText(text)
 
-    def update_dialog_action(self, is_visible):
-        """Update dialog action text based on visibility
+    def update_dialog_action(self, autohide):
+        """Update dialog action text based on applet mode
 
         Args:
-            is_visible (bool): True if dialog is visible
+            autohide (bool): True if in popup mode (autohide=True), False if in persistent mode
         """
         if self.dialog_action:
-            text = "Hide Recording Dialog" if is_visible else "Show Recording Dialog"
+            # If autohide is True (popup mode), the action is "Open Applet" (switch to persistent)
+            # If autohide is False (persistent mode), the action is "Close Applet" (switch to popup)
+            text = "Open Applet" if autohide else "Close Applet"
             self.dialog_action.setText(text)

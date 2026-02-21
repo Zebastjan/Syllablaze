@@ -547,6 +547,15 @@ class KirigamiSettingsWindow(QWidget):
                 )
                 logger.info("Set window flags for standalone display")
 
+            # Create KWin rule to prevent settings window from being on all desktops
+            # (unlike recording applet, settings should stay on current desktop)
+            try:
+                from blaze import kwin_rules
+                kwin_rules.create_settings_window_rule()
+                logger.info("Created KWin rule for settings window")
+            except Exception as e:
+                logger.warning(f"Failed to create settings window KWin rule: {e}")
+
             logger.info("Kirigami SettingsWindow loaded successfully")
         else:
             logger.error("Failed to load Kirigami SettingsWindow")

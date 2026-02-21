@@ -437,6 +437,179 @@ def get_saved_position_from_rule():
         return (None, None)
 
 
+def set_window_on_all_desktops(window_title, on_all_desktops):
+    """
+    Immediately apply on-all-desktops to a running window via KWin scripting.
+
+    KWin window rules only take effect at window creation time; this function
+    uses the KWin JavaScript scripting D-Bus interface to update the property
+    on the already-visible window.
+
+    Args:
+        window_title (str): Exact window caption to target
+        on_all_desktops (bool): True to show on all desktops, False to pin to current
+    """
+    import tempfile
+
+    value_str = "true" if on_all_desktops else "false"
+    script = (
+        "var wins = workspace.windows !== undefined"
+        " ? workspace.windows : workspace.windowList();\n"
+        "for (var i = 0; i < wins.length; i++) {\n"
+        f'    if (wins[i].caption === "{window_title}") {{\n'
+        f"        wins[i].onAllDesktops = {value_str};\n"
+        "    }\n"
+        "}\n"
+    )
+
+    plugin_name = f"syllablaze_onalldesktops_{value_str}"
+
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".js", delete=False, prefix="syl_oad_"
+        ) as f:
+            f.write(script)
+            script_path = f.name
+
+        # Unload stale copy, then load fresh and start
+        subprocess.run(
+            ["qdbus", "org.kde.KWin", "/Scripting",
+             "org.kde.kwin.Scripting.unloadScript", plugin_name],
+            capture_output=True, timeout=2,
+        )
+        subprocess.run(
+            ["qdbus", "org.kde.KWin", "/Scripting",
+             "org.kde.kwin.Scripting.loadScript", script_path, plugin_name],
+            capture_output=True, timeout=2,
+        )
+        subprocess.run(
+            ["qdbus", "org.kde.KWin", "/Scripting",
+             "org.kde.kwin.Scripting.start"],
+            capture_output=True, timeout=2,
+        )
+
+        logger.info(
+            f"KWin script applied: onAllDesktops={on_all_desktops} for '{window_title}'"
+        )
+        return True
+
+    except Exception as e:
+        logger.warning(f"Failed to apply on-all-desktops via KWin scripting: {e}")
+        return False
+    finally:
+        try:
+            os.unlink(script_path)
+        except Exception:
+            pass
+
+
+def create_settings_window_rule():
+    """Create KWin rule for settings window to prevent on-all-desktops.
+
+    The settings window should NOT be on all desktops (unlike the recording applet).
+    This function creates a KWin rule to explicitly disable on-all-desktops for it.
+    """
+    if not ensure_kwriteconfig_available():
+        return False
+
+    try:
+        # Find or create a new group for the settings window rule
+        group = None
+        if os.path.exists(KWINRULESRC):
+            with open(KWINRULESRC, "r") as f:
+                content = f.read()
+                # Look for existing settings window rule
+                if "Syllablaze Settings" in content:
+                    # Find the group number
+                    lines = content.split('\n')
+                    for i, line in enumerate(lines):
+                        if "Syllablaze Settings" in line and "title=" in line:
+                            # Look backwards for the group header
+                            for j in range(i, -1, -1):
+                                if lines[j].startswith('[') and lines[j].endswith(']'):
+                                    potential_group = lines[j][1:-1]
+                                    if potential_group not in ["General", "$Version"]:
+                                        group = potential_group
+                                        logger.info(f"Found existing settings window rule in group: {group}")
+                                        break
+                            break
+
+        # If no existing rule found, create new group
+        if not group:
+            group = find_or_create_settings_rule_group()
+            logger.info(f"Creating new settings window rule in group: {group}")
+
+        # Set the rule properties
+        commands = [
+            ["kwriteconfig6", "--file", KWINRULESRC, "--group", group, "--key", "Description", "Syllablaze Settings Window"],
+            ["kwriteconfig6", "--file", KWINRULESRC, "--group", group, "--key", "title", "Syllablaze Settings"],
+            ["kwriteconfig6", "--file", KWINRULESRC, "--group", group, "--key", "titlematch", "1"],  # Exact match
+            ["kwriteconfig6", "--file", KWINRULESRC, "--group", group, "--key", "onalldesktops", "false"],
+            ["kwriteconfig6", "--file", KWINRULESRC, "--group", group, "--key", "onalldesktopsrule", "2"],  # Force (2 = Force)
+        ]
+
+        for cmd in commands:
+            subprocess.run(cmd, capture_output=True, timeout=2)
+
+        # Update rule count in [General] section
+        # We need to count all rule groups and update the General section
+        try:
+            rule_groups = []
+            if os.path.exists(KWINRULESRC):
+                with open(KWINRULESRC, "r") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line.startswith("[") and line.endswith("]"):
+                            group_name = line[1:-1]
+                            if group_name not in ["General", "$Version"] and group_name.isdigit():
+                                rule_groups.append(group_name)
+
+            if rule_groups:
+                # Set count to number of rules
+                subprocess.run([
+                    "kwriteconfig6", "--file", KWINRULESRC,
+                    "--group", "General", "--key", "count", str(len(rule_groups))
+                ], capture_output=True, timeout=2)
+
+                # Set rules to comma-separated list of group numbers
+                subprocess.run([
+                    "kwriteconfig6", "--file", KWINRULESRC,
+                    "--group", "General", "--key", "rules", ",".join(rule_groups)
+                ], capture_output=True, timeout=2)
+
+                logger.info(f"Updated General section: count={len(rule_groups)}, rules={','.join(rule_groups)}")
+        except Exception as e:
+            logger.warning(f"Failed to update rule count: {e}")
+
+        reconfigure_kwin()
+
+        logger.info("Created KWin rule for settings window (on-all-desktops=false)")
+        return True
+
+    except Exception as e:
+        logger.warning(f"Failed to create settings window rule: {e}")
+        return False
+
+
+def find_or_create_settings_rule_group():
+    """Find next available group number for settings window rule."""
+    try:
+        max_num = 0
+        if os.path.exists(KWINRULESRC):
+            with open(KWINRULESRC, "r") as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith("[") and line.endswith("]"):
+                        group_name = line[1:-1]
+                        if group_name.isdigit():
+                            max_num = max(max_num, int(group_name))
+
+        return str(max_num + 1)
+    except Exception as e:
+        logger.warning(f"Error finding settings rule group: {e}")
+        return "2"  # Default to group 2 if applet is in group 1
+
+
 def reconfigure_kwin():
     """Tell KWin to reload its configuration"""
     try:

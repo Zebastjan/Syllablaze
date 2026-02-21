@@ -162,7 +162,46 @@ Transcription is garbled or contains artifacts.
 3. **Disable GPU if unstable:**
    Settings → Transcription → Compute Type → Switch from `auto` to `int8` (CPU only)
 
-## Transcription Issues
+### GPU Out of Memory
+
+**Symptoms:**
+- Application crashes during transcription with "Aborted (core dumped)"
+- "leaked semaphore" warning in logs
+- Transcription works initially but crashes after running for a while
+- Happens when other GPU applications are running (other AI workloads, CUDA programs)
+
+**Cause:**
+GPU memory exhaustion. When other applications use GPU VRAM, Whisper may fail to allocate enough memory for transcription.
+
+**Diagnostic:**
+1. Check logs for CUDA/memory errors:
+   ```bash
+   journalctl --user -u syllablaze -n 50 | grep -i cuda
+   # or
+   syllablaze 2>&1 | grep -i cuda
+   ```
+
+2. Monitor GPU memory:
+   ```bash
+   nvidia-smi  # Check GPU memory usage
+   ```
+
+**Solution:**
+
+1. **Automatic CPU fallback (default behavior):**
+   The app now automatically detects GPU OOM errors and falls back to CPU. You should see a message: "GPU memory exhausted, switching to CPU..."
+
+2. **Disable GPU acceleration:**
+   Settings → Transcription → Compute Type → `int8` (CPU only)
+
+3. **Reduce GPU memory usage:**
+   - Close other GPU applications during transcription
+   - Use a smaller Whisper model (Settings → Models → tiny or base)
+
+4. **Check for memory leaks:**
+   If OOM happens frequently, restart the application periodically.
+
+### Transcription Issues
 
 ### Model download fails
 

@@ -6,17 +6,22 @@ reducing code duplication and improving maintainability.
 """
 
 import logging
+import gc
+import traceback
 from PyQt6.QtCore import QObject, pyqtSignal
 from blaze.constants import (
-    DEFAULT_WHISPER_MODEL, DEFAULT_BEAM_SIZE, DEFAULT_VAD_FILTER, 
-    DEFAULT_WORD_TIMESTAMPS
+    DEFAULT_WHISPER_MODEL,
+    DEFAULT_BEAM_SIZE,
+    DEFAULT_VAD_FILTER,
+    DEFAULT_WORD_TIMESTAMPS,
 )
 
 logger = logging.getLogger(__name__)
 
+
 class TranscriptionManager(QObject):
     """Manager class for transcription operations"""
-    
+
     # Define signals
     transcription_progress = pyqtSignal(str)  # Signal for progress updates
     transcription_progress_percent = pyqtSignal(int)  # Signal for progress percentage
@@ -24,10 +29,10 @@ class TranscriptionManager(QObject):
     transcription_error = pyqtSignal(str)  # Signal for transcription errors
     model_changed = pyqtSignal(str)  # Signal for model changes
     language_changed = pyqtSignal(str)  # Signal for language changes
-    
+
     def __init__(self, settings):
         """Initialize the transcription manager
-        
+
         Parameters:
         -----------
         settings : Settings
@@ -38,7 +43,7 @@ class TranscriptionManager(QObject):
         self.transcriber = None
         self.current_model = None
         self.current_language = None
-    
+
     def configure_optimal_settings(self):
         """Configure optimal settings for Faster Whisper
 
@@ -52,12 +57,12 @@ class TranscriptionManager(QObject):
         """
         try:
             # Set transcription defaults if this is the first run
-            if self.settings.get('beam_size') is None:
-                self.settings.set('beam_size', DEFAULT_BEAM_SIZE)
-            if self.settings.get('vad_filter') is None:
-                self.settings.set('vad_filter', DEFAULT_VAD_FILTER)
-            if self.settings.get('word_timestamps') is None:
-                self.settings.set('word_timestamps', DEFAULT_WORD_TIMESTAMPS)
+            if self.settings.get("beam_size") is None:
+                self.settings.set("beam_size", DEFAULT_BEAM_SIZE)
+            if self.settings.get("vad_filter") is None:
+                self.settings.set("vad_filter", DEFAULT_VAD_FILTER)
+            if self.settings.get("word_timestamps") is None:
+                self.settings.set("word_timestamps", DEFAULT_WORD_TIMESTAMPS)
 
             logger.info("Transcription settings configured with optimal defaults.")
 
@@ -65,10 +70,10 @@ class TranscriptionManager(QObject):
         except Exception as e:
             logger.error(f"Failed to configure optimal settings: {e}")
             return False
-    
+
     def initialize(self):
         """Initialize the transcriber
-        
+
         Returns:
         --------
         bool
@@ -76,34 +81,39 @@ class TranscriptionManager(QObject):
         """
         try:
             from blaze.transcriber import WhisperTranscriber
-            
+
             # Configure optimal settings
             self.configure_optimal_settings()
-            
+
             # Create transcriber instance
             self.transcriber = WhisperTranscriber()
-            
+
             # Connect signals
             self.transcriber.transcription_progress.connect(self.transcription_progress)
-            self.transcriber.transcription_progress_percent.connect(self.transcription_progress_percent)
+            self.transcriber.transcription_progress_percent.connect(
+                self.transcription_progress_percent
+            )
             self.transcriber.transcription_finished.connect(self.transcription_finished)
             self.transcriber.transcription_error.connect(self.transcription_error)
             self.transcriber.model_changed.connect(self.model_changed)
             self.transcriber.language_changed.connect(self.language_changed)
-            
+
             # Store current model and language
-            self.current_model = self.settings.get('model', DEFAULT_WHISPER_MODEL)
-            self.current_language = self.settings.get('language', 'auto')
-            
-            logger.info(f"Transcription manager initialized with model: {self.current_model}, language: {self.current_language}")
+            self.current_model = self.settings.get("model", DEFAULT_WHISPER_MODEL)
+            self.current_language = self.settings.get("language", "auto")
+
+            logger.info(
+                f"Transcription manager initialized with model: {self.current_model}, language: {self.current_language}"
+            )
             return True
         except Exception as e:
             logger.error(f"Failed to initialize transcription manager: {e}")
             self._create_dummy_transcriber()
             return False
-    
+
     def _create_dummy_transcriber(self):
         """Create a dummy transcriber when initialization fails"""
+
         # Create a dummy transcriber that will show a message when used
         class DummyTranscriber(QObject):
             # Define signals at the class level
@@ -113,42 +123,48 @@ class TranscriptionManager(QObject):
             transcription_error = pyqtSignal(str)
             model_changed = pyqtSignal(str)
             language_changed = pyqtSignal(str)
-            
+
             def __init__(self):
                 super().__init__()  # Initialize the QObject base class
                 self.model = None
-                
+
             def transcribe_audio(self, *args, **kwargs):
-                self.transcription_error.emit("No models downloaded. Please go to Settings to download a model.")
-                
+                self.transcription_error.emit(
+                    "No models downloaded. Please go to Settings to download a model."
+                )
+
             def transcribe(self, *args, **kwargs):
-                self.transcription_error.emit("No models downloaded. Please go to Settings to download a model.")
-                
+                self.transcription_error.emit(
+                    "No models downloaded. Please go to Settings to download a model."
+                )
+
             def update_model(self, *args, **kwargs):
                 return False
-                
+
             def update_language(self, *args, **kwargs):
                 return False
-        
+
         # Create a dummy transcriber with the same interface
         self.transcriber = DummyTranscriber()
-        
+
         # Connect signals
         self.transcriber.transcription_progress.connect(self.transcription_progress)
-        self.transcriber.transcription_progress_percent.connect(self.transcription_progress_percent)
+        self.transcriber.transcription_progress_percent.connect(
+            self.transcription_progress_percent
+        )
         self.transcriber.transcription_finished.connect(self.transcription_finished)
         self.transcriber.transcription_error.connect(self.transcription_error)
-        
+
         logger.warning("Created dummy transcriber due to initialization failure")
-    
+
     def transcribe_audio(self, audio_data):
         """Transcribe audio data
-        
+
         Parameters:
         -----------
         audio_data : numpy.ndarray
             Audio data to transcribe
-            
+
         Returns:
         --------
         bool
@@ -158,7 +174,7 @@ class TranscriptionManager(QObject):
             logger.error("Cannot transcribe: transcriber not initialized")
             self.transcription_error.emit("Transcriber not initialized")
             return False
-            
+
         try:
             self.transcriber.transcribe_audio(audio_data)
             return True
@@ -166,15 +182,15 @@ class TranscriptionManager(QObject):
             logger.error(f"Failed to start transcription: {e}")
             self.transcription_error.emit(f"Failed to start transcription: {str(e)}")
             return False
-    
+
     def update_model(self, model_name=None):
         """Update the transcription model
-        
+
         Parameters:
         -----------
         model_name : str
             Name of the model to use (optional)
-            
+
         Returns:
         --------
         bool
@@ -183,24 +199,24 @@ class TranscriptionManager(QObject):
         if not self.transcriber:
             logger.error("Cannot update model: transcriber not initialized")
             return False
-            
+
         try:
             # Get model name from settings if not provided
             if model_name is None:
-                model_name = self.settings.get('model', DEFAULT_WHISPER_MODEL)
-                
+                model_name = self.settings.get("model", DEFAULT_WHISPER_MODEL)
+
             # Update model
             result = self.transcriber.update_model(model_name)
-            
+
             if result:
                 self.current_model = model_name
                 logger.info(f"Model updated to: {model_name}")
-                
+
             return result
         except Exception as e:
             logger.error(f"Failed to update model: {e}")
             return False
-    
+
     def update_language(self, language=None):
         """Update the transcription language
 
@@ -221,7 +237,7 @@ class TranscriptionManager(QObject):
         try:
             # Get language from settings if not provided
             if language is None:
-                language = self.settings.get('language', 'auto')
+                language = self.settings.get("language", "auto")
 
             # Update language
             result = self.transcriber.update_language(language)
@@ -270,10 +286,10 @@ class TranscriptionManager(QObject):
 
         model_name = self.current_model or "unknown"
         return f"Model loaded: {model_name}"
-    
+
     def cleanup(self):
         """Clean up transcription resources
-        
+
         Returns:
         --------
         bool
@@ -281,31 +297,53 @@ class TranscriptionManager(QObject):
         """
         if not self.transcriber:
             return True
-            
+
         try:
-            # Wait for worker to finish if running
-            if hasattr(self.transcriber, 'worker') and self.transcriber.worker:
+            logger.info("Starting transcription manager cleanup...")
+
+            if hasattr(self.transcriber, "worker") and self.transcriber.worker:
                 worker = self.transcriber.worker
                 if worker.isRunning():
                     logger.info("Waiting for transcription worker to finish...")
-                    worker.quit()          # ask the event loop to stop
-                    if not worker.wait(3000):  # wait up to 3 s
-                        logger.warning("Transcription worker did not stop in time; forcefully terminating")
-                        worker.terminate()     # send POSIX pthread_cancel
-                        worker.wait(1000)      # give it 1 s to die
+                    worker.quit()
+                    if not worker.wait(3000):
+                        logger.warning(
+                            "Transcription worker did not stop in time; forcefully terminating"
+                        )
+                        worker.terminate()
+                        worker.wait(1000)
 
-            # Explicitly release model resources (CTranslate2 semaphores, etc.)
-            if hasattr(self.transcriber, 'model') and self.transcriber.model is not None:
+            if (
+                hasattr(self.transcriber, "model")
+                and self.transcriber.model is not None
+            ):
                 logger.info("Releasing Whisper model resources")
-                del self.transcriber.model
-                self.transcriber.model = None
-                import gc
+                try:
+                    self.transcriber.model = None
+                except Exception as e:
+                    logger.warning(f"Error releasing model: {e}")
+
                 gc.collect()
 
-            # Clean up transcriber
+                try:
+                    import torch
+
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                        torch.cuda.synchronize()
+                        logger.info("Cleared CUDA cache")
+                except ImportError:
+                    pass
+                except Exception as e:
+                    logger.warning(f"Error clearing CUDA cache: {e}")
+
             self.transcriber = None
-            logger.info("Transcription manager cleaned up")
+
+            gc.collect()
+
+            logger.info("Transcription manager cleaned up successfully")
             return True
         except Exception as e:
             logger.error(f"Failed to clean up transcription manager: {e}")
+            logger.debug(traceback.format_exc())
             return False

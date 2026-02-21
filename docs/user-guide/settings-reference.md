@@ -144,6 +144,7 @@ Settings are organized into six pages:
   - Detects NVIDIA GPU with CUDA
   - Uses `float16` on GPU or `int8` on CPU
   - Best balance of speed and quality
+  - **Note:** If GPU memory is exhausted during transcription, automatically falls back to CPU
 
   **float32:**
   - Full precision, CPU only

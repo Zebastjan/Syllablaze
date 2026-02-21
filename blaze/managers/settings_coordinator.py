@@ -83,6 +83,12 @@ class SettingsCoordinator(QObject):
             if has_applet:
                 logger.info("Persistent mode: showing applet now")
                 self.recording_dialog.show()
+                # CRITICAL FIX: Apply on-all-desktops setting when entering persistent mode
+                # This ensures the applet appears on all desktops when the user toggles to persistent
+                if self.settings:
+                    on_all = bool(self.settings.get("applet_onalldesktops", True))
+                    logger.info(f"Applying on-all-desktops={on_all} in persistent mode")
+                    self.recording_dialog.update_on_all_desktops(on_all)
             else:
                 logger.info("Persistent mode: applet not created yet, will show when created")
         elif mode == APPLET_MODE_OFF:

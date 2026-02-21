@@ -197,40 +197,74 @@ class RecordingDialogManager(QObject):
         logger.info("RecordingDialogManager: toggleRecording requested")
 
     def _on_open_clipboard(self):
-        """Open clipboard manager."""
+        """Open clipboard manager (Klipper)."""
         import subprocess
         from PyQt6.QtWidgets import QApplication, QMessageBox
 
-        logger.info("Opening clipboard manager...")
+        logger.info("Attempting to open Klipper clipboard history...")
 
+        # Try multiple D-Bus methods for different KDE/Klipper versions
         methods = [
+            # qdbus (Qt5 tool)
             [
                 "qdbus",
                 "org.kde.klipper",
                 "/klipper",
                 "org.kde.klipper.klipper.showKlipperManuallyInvokeActionMenu",
             ],
+            # qdbus6 (Qt6 tool) - same method
+            [
+                "qdbus6",
+                "org.kde.klipper",
+                "/klipper",
+                "org.kde.klipper.klipper.showKlipperManuallyInvokeActionMenu",
+            ],
+            # Alternative method name for newer KDE versions
+            [
+                "qdbus",
+                "org.kde.klipper",
+                "/klipper",
+                "org.kde.klipper.klipper.showKlipperPopupMenu",
+            ],
+            [
+                "qdbus6",
+                "org.kde.klipper",
+                "/klipper",
+                "org.kde.klipper.klipper.showKlipperPopupMenu",
+            ],
         ]
 
         for cmd in methods:
             try:
-                result = subprocess.run(cmd, capture_output=True, timeout=2)
+                logger.debug(f"Trying: {' '.join(cmd)}")
+                result = subprocess.run(cmd, capture_output=True, timeout=2, text=True)
                 if result.returncode == 0:
-                    logger.info("Opened clipboard via qdbus")
+                    logger.info(f"Successfully opened Klipper via: {cmd[0]} {cmd[3].split('.')[-1]}")
                     return
-            except Exception:
-                continue
+                else:
+                    logger.debug(f"Command failed (exit {result.returncode}): {result.stderr.strip()}")
+            except FileNotFoundError:
+                logger.debug(f"Command not found: {cmd[0]}")
+            except subprocess.TimeoutExpired:
+                logger.warning(f"Command timed out: {' '.join(cmd)}")
+            except Exception as e:
+                logger.error(f"Error calling {cmd[0]}: {e}")
 
+        # If all D-Bus methods fail, show fallback dialog
+        logger.warning("All Klipper D-Bus methods failed, showing basic clipboard fallback")
         try:
             clipboard = QApplication.clipboard()
             text = clipboard.text()
             if text:
                 msg = QMessageBox()
-                msg.setWindowTitle("Clipboard")
+                msg.setWindowTitle("Clipboard Content")
                 msg.setText(text[:200] + ("..." if len(text) > 200 else ""))
+                msg.setInformativeText("Klipper clipboard manager could not be opened via D-Bus.")
                 msg.exec()
+            else:
+                logger.info("Clipboard is empty")
         except Exception as e:
-            logger.error(f"Failed to access clipboard: {e}")
+            logger.error(f"Failed to access clipboard for fallback: {e}")
 
     def _on_open_settings(self):
         """Open settings window."""
