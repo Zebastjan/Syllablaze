@@ -287,6 +287,105 @@ class TranscriptionManager(QObject):
         model_name = self.current_model or "unknown"
         return f"Model loaded: {model_name}"
 
+    def is_worker_running(self):
+        """Check if transcription worker thread is actually running
+
+        This catches race conditions where the ApplicationState flag
+        is cleared but the worker thread is still executing CTranslate2
+        inference (common under high system load).
+
+        Returns:
+        --------
+        bool
+            True if worker thread exists and is running
+        """
+        if not self.transcriber:
+            return False
+        if not hasattr(self.transcriber, 'worker') or not self.transcriber.worker:
+            return False
+        return self.transcriber.worker.isRunning()
+
+    def cancel_transcription(self, timeout_ms=5000):
+        """Cancel in-progress transcription with graceful resource cleanup
+
+        Uses three-phase shutdown pattern (same as cleanup()) to ensure
+        CTranslate2 semaphores are properly released even if thread is
+        blocked in a C++ call.
+
+        Parameters:
+        -----------
+        timeout_ms : int
+            Total timeout in milliseconds (default 5000)
+
+        Returns:
+        --------
+        bool
+            True if cancellation successful, False otherwise
+        """
+        if not self.transcriber:
+            return True
+
+        if not hasattr(self.transcriber, 'worker') or not self.transcriber.worker:
+            return True
+
+        worker = self.transcriber.worker
+        if not worker.isRunning():
+            logger.debug("Worker not running, nothing to cancel")
+            return True
+
+        try:
+            logger.info("Cancelling in-progress transcription...")
+
+            # Phase 1: Graceful quit (60% of timeout)
+            graceful_timeout = int(timeout_ms * 0.6)
+            worker.quit()
+            if worker.wait(graceful_timeout):
+                logger.info("Worker stopped gracefully")
+                self._cleanup_worker_resources()
+                return True
+
+            # Phase 2: Force terminate (40% of timeout)
+            logger.warning("Worker did not stop gracefully; forcefully terminating")
+            worker.terminate()
+            forced_timeout = int(timeout_ms * 0.4)
+            worker.wait(forced_timeout)
+
+            self._cleanup_worker_resources()
+            logger.info("Worker terminated and resources cleaned up")
+            return True
+
+        except Exception as e:
+            logger.error(f"Failed to cancel transcription: {e}")
+            logger.debug(traceback.format_exc())
+            return False
+
+    def _cleanup_worker_resources(self):
+        """Clean up CTranslate2 model resources after worker termination
+
+        Releases model reference, collects garbage, and clears CUDA cache
+        to ensure CTranslate2's internal semaphores are properly released.
+        """
+        try:
+            if hasattr(self.transcriber, 'model') and self.transcriber.model is not None:
+                logger.debug("Releasing model reference after worker termination")
+                self.transcriber.model = None
+
+            gc.collect()
+
+            try:
+                import torch
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                    torch.cuda.synchronize()
+                    logger.debug("Cleared CUDA cache after worker termination")
+            except ImportError:
+                pass
+            except Exception as e:
+                logger.warning(f"Error clearing CUDA cache: {e}")
+
+        except Exception as e:
+            logger.warning(f"Error cleaning up worker resources: {e}")
+
     def cleanup(self):
         """Clean up transcription resources
 
@@ -301,18 +400,13 @@ class TranscriptionManager(QObject):
         try:
             logger.info("Starting transcription manager cleanup...")
 
+            # Use cancel_transcription for worker shutdown (reuses three-phase pattern)
             if hasattr(self.transcriber, "worker") and self.transcriber.worker:
-                worker = self.transcriber.worker
-                if worker.isRunning():
+                if self.transcriber.worker.isRunning():
                     logger.info("Waiting for transcription worker to finish...")
-                    worker.quit()
-                    if not worker.wait(3000):
-                        logger.warning(
-                            "Transcription worker did not stop in time; forcefully terminating"
-                        )
-                        worker.terminate()
-                        worker.wait(1000)
+                    self.cancel_transcription(timeout_ms=4000)
 
+            # Additional cleanup for application shutdown
             if (
                 hasattr(self.transcriber, "model")
                 and self.transcriber.model is not None

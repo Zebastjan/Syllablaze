@@ -1,21 +1,31 @@
 import os
 import sys
+import multiprocessing
+
+# CRITICAL: Set multiprocessing start method to 'fork' before any other imports
+# Python 3.14+ uses 'forkserver' by default, which is incompatible with
+# CTranslate2's internal worker pool (causes semaphore leaks and SIGABRT)
+try:
+    multiprocessing.set_start_method('fork', force=True)
+except RuntimeError:
+    # Already set (e.g., in tests), ignore
+    pass
 
 # Set QML import path for Kirigami before importing any Qt modules
 os.environ["QML2_IMPORT_PATH"] = "/usr/lib/qt6/qml"
 
-from PyQt6.QtWidgets import QApplication, QMessageBox, QSystemTrayIcon, QMenu
-from PyQt6.QtCore import QCoreApplication
-from PyQt6.QtGui import QIcon, QAction
-import logging
-from blaze.kirigami_integration import KirigamiSettingsWindow as SettingsWindow
-from blaze.progress_window import ProgressWindow
-from blaze.loading_window import LoadingWindow
-from blaze.recording_dialog_manager import RecordingDialogManager
-from PyQt6.QtCore import pyqtSignal
-from blaze.settings import Settings
-from blaze.shortcuts import GlobalShortcuts
-from blaze.constants import (
+# Imports must come after multiprocessing setup and env vars (noqa for E402)
+from PyQt6.QtWidgets import QApplication, QMessageBox, QSystemTrayIcon  # noqa: E402
+from PyQt6.QtCore import QCoreApplication  # noqa: E402
+from PyQt6.QtGui import QIcon  # noqa: E402
+import logging  # noqa: E402
+from blaze.kirigami_integration import KirigamiSettingsWindow as SettingsWindow  # noqa: E402
+from blaze.loading_window import LoadingWindow  # noqa: E402
+from blaze.recording_dialog_manager import RecordingDialogManager  # noqa: E402
+from PyQt6.QtCore import pyqtSignal  # noqa: E402
+from blaze.settings import Settings  # noqa: E402
+from blaze.shortcuts import GlobalShortcuts  # noqa: E402
+from blaze.constants import (  # noqa: E402
     APP_NAME,
     APP_VERSION,
     DEFAULT_WHISPER_MODEL,
@@ -24,24 +34,23 @@ from blaze.constants import (
     VALID_LANGUAGES,
     LOCK_FILE_PATH,
 )
-from blaze.managers.ui_manager import UIManager
-from blaze.managers.lock_manager import LockManager
-from blaze.managers.audio_manager import AudioManager
-from blaze.managers.transcription_manager import TranscriptionManager
-from blaze.managers.tray_menu_manager import TrayMenuManager
-from blaze.managers.settings_coordinator import SettingsCoordinator
-from blaze.managers.window_visibility_coordinator import WindowVisibilityCoordinator
-from blaze.managers.gpu_setup_manager import GPUSetupManager
-from blaze.clipboard_manager import ClipboardManager
-from blaze.application_state import ApplicationState
-from blaze.services.notification_service import NotificationService
-from blaze.services.clipboard_persistence_service import ClipboardPersistenceService
-from blaze import orchestration
+from blaze.managers.ui_manager import UIManager  # noqa: E402
+from blaze.managers.lock_manager import LockManager  # noqa: E402
+from blaze.managers.audio_manager import AudioManager  # noqa: E402
+from blaze.managers.transcription_manager import TranscriptionManager  # noqa: E402
+from blaze.managers.tray_menu_manager import TrayMenuManager  # noqa: E402
+from blaze.managers.settings_coordinator import SettingsCoordinator  # noqa: E402
+from blaze.managers.window_visibility_coordinator import WindowVisibilityCoordinator  # noqa: E402
+from blaze.managers.gpu_setup_manager import GPUSetupManager  # noqa: E402
+from blaze.clipboard_manager import ClipboardManager  # noqa: E402
+from blaze.application_state import ApplicationState  # noqa: E402
+from blaze.services.notification_service import NotificationService  # noqa: E402
+from blaze.services.clipboard_persistence_service import ClipboardPersistenceService  # noqa: E402
 
-import asyncio
-from dbus_next.service import ServiceInterface, method
-from dbus_next.aio import MessageBus
-import qasync
+import asyncio  # noqa: E402
+from dbus_next.service import ServiceInterface, method  # noqa: E402
+from dbus_next.aio import MessageBus  # noqa: E402
+import qasync  # noqa: E402
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -523,6 +532,41 @@ class SyllablazeOrchestrator(QSystemTrayIcon):
             if reason == QSystemTrayIcon.ActivationReason.Trigger:  # Left click
                 logger.info("Tray icon left-clicked")
 
+                # Check if transcription worker is still running (race condition under high load)
+                if (hasattr(self, 'transcription_manager') and
+                        self.transcription_manager and
+                        hasattr(self.transcription_manager, 'is_worker_running') and
+                        self.transcription_manager.is_worker_running()):
+
+                    logger.info("Transcription worker still running; cancelling before allowing new operation")
+
+                    # Show brief notification
+                    self.ui_manager.show_notification(
+                        self,
+                        "Cancelling Transcription",
+                        "Waiting for current transcription to complete...",
+                        self.ui_manager.normal_icon
+                    )
+
+                    # Cancel the running transcription
+                    if self.transcription_manager.cancel_transcription(timeout_ms=5000):
+                        logger.info("Transcription cancelled successfully")
+
+                        # Update application state
+                        if hasattr(self, 'app_state') and self.app_state:
+                            self.app_state.stop_transcription()
+
+                        # Close progress window if visible
+                        progress_window = self.ui_manager.get_progress_window()
+                        if progress_window and progress_window.isVisible():
+                            progress_window.hide()
+                    else:
+                        logger.warning("Transcription cancellation failed; proceeding anyway")
+
+                    # Release activation lock and return - user can click again to start new operation
+                    self._activation_lock = False
+                    return
+
                 # Phase 6: Check if we're in the middle of processing a recording
                 progress_window = self.ui_manager.get_progress_window()
                 if progress_window and progress_window.isVisible():
@@ -814,7 +858,7 @@ def main():
             # Setup GPU/CUDA if available
             print("Syllablaze - Initializing...")
             gpu_manager = GPUSetupManager()
-            gpu_available = gpu_manager.setup()
+            gpu_manager.setup()
 
             # Configure settings based on GPU availability
             settings = Settings()

@@ -215,6 +215,7 @@ def test_is_ready_to_record_success(audio_manager):
     transcription_manager = Mock()
     transcription_manager.transcriber = Mock()
     transcription_manager.transcriber.model = Mock()
+    transcription_manager.is_worker_running = Mock(return_value=False)
 
     app_state = Mock()
     app_state.is_transcribing.return_value = False
@@ -249,6 +250,7 @@ def test_is_ready_to_record_no_transcriber(audio_manager):
     """Test is_ready_to_record without transcriber"""
     transcription_manager = Mock()
     transcription_manager.transcriber = None
+    transcription_manager.is_worker_running = Mock(return_value=False)
 
     ready, error = audio_manager.is_ready_to_record(transcription_manager)
 
@@ -261,6 +263,7 @@ def test_is_ready_to_record_no_model(audio_manager):
     transcription_manager = Mock()
     transcription_manager.transcriber = Mock()
     transcription_manager.transcriber.model = None
+    transcription_manager.is_worker_running = Mock(return_value=False)
 
     ready, error = audio_manager.is_ready_to_record(transcription_manager)
 

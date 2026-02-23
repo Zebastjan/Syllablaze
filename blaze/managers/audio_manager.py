@@ -206,6 +206,10 @@ class AudioManager(QObject):
         if app_state and app_state.is_transcribing():
             return False, "Cannot start recording while transcription is in progress"
 
+        # Check if worker thread is actually running (catches race conditions)
+        if hasattr(transcription_manager, 'is_worker_running') and transcription_manager.is_worker_running():
+            return False, "Please wait for current transcription to complete"
+
         # Check if transcriber is properly initialized
         if not transcription_manager:
             return False, "Transcription manager not initialized"
