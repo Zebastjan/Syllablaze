@@ -425,6 +425,32 @@ tail -f ~/.local/state/syllablaze/syllablaze.log | grep -i "state\|shortcut"
 2. **Report bug:**
     This shouldn't happen. Please [open an issue](https://github.com/Zebastjan/Syllablaze/issues) with logs.
 
+### Clicking Tray During Transcription
+
+**Symptoms:**
+You click the tray icon while transcription is in progress (especially when system is under heavy load).
+
+**Behavior:**
+Syllablaze will:
+1. Show a "Cancelling Transcription" notification
+2. Wait up to 5 seconds for the current transcription to complete
+3. Allow you to start a new recording once cancelled
+
+**Context:**
+On systems under heavy load (e.g., running Ollama or other AI workloads), transcription may be slower than usual. The application detects when you try to interact during active transcription and gracefully cancels the in-progress work to prevent resource leaks.
+
+**Expected:**
+- Brief notification appears: "Waiting for current transcription to complete..."
+- Transcription stops within 5 seconds
+- You can click the tray icon again to start a new recording
+
+**If transcription doesn't cancel:**
+This is rare, but if transcription appears stuck for more than 10 seconds:
+```bash
+pkill syllablaze
+syllablaze
+```
+
 ## UI Issues
 
 ### Settings window doesn't open

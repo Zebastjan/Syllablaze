@@ -227,6 +227,34 @@ self.audio_manager.recording_stopped.connect(
 
 **Rule:** Cross-thread communication via Qt signals (thread-safe)
 
+### Transcription Cancellation
+
+When users interrupt transcription (by clicking the tray icon during active transcription), Syllablaze uses a two-phase shutdown to prevent CTranslate2 semaphore leaks:
+
+**Phase 1: Graceful quit (3 seconds)**
+- `worker.quit()` + `worker.wait(3000)`
+- Allows worker to finish current operation cleanly
+
+**Phase 2: Forced terminate (2 seconds)**
+- `worker.terminate()` + `worker.wait(2000)`
+- Used if graceful quit fails (e.g., blocked in C++ call)
+
+**Phase 3: Resource cleanup**
+- Release model: `self.transcriber.model = None`
+- Garbage collection: `gc.collect()`
+- CUDA cache clear: `torch.cuda.empty_cache()`, `torch.cuda.synchronize()`
+
+This pattern ensures CTranslate2's POSIX semaphores (`/dev/shm/sem.mp-*`) are properly released even when the worker thread is blocked in inference under high system load (e.g., when Ollama is running).
+
+**Implementation:**
+- `TranscriptionManager.is_worker_running()` - Check if worker thread is actually running
+- `TranscriptionManager.cancel_transcription(timeout_ms)` - Graceful cancellation with resource cleanup
+- `AudioManager.is_ready_to_record()` - Blocks if worker is still running (prevents race conditions)
+- `main.py on_activate()` - Cancels in-progress transcription before allowing new operations
+
+**Why this is needed:**
+Under high system load, the `ApplicationState.is_transcribing()` flag may be cleared before the worker thread finishes executing CTranslate2 inference. This creates a race condition where the user can trigger new operations while the worker still holds model resources, leading to semaphore leaks and crashes.
+
 ## Dependency Management
 
 ### Runtime Dependencies
