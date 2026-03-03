@@ -3,7 +3,7 @@ from blaze.constants import (
     APP_NAME, VALID_LANGUAGES,
     SAMPLE_RATE_MODE_WHISPER, SAMPLE_RATE_MODE_DEVICE, DEFAULT_SAMPLE_RATE_MODE,
     DEFAULT_COMPUTE_TYPE, DEFAULT_DEVICE, DEFAULT_BEAM_SIZE, DEFAULT_VAD_FILTER, DEFAULT_WORD_TIMESTAMPS,
-    DEFAULT_SHORTCUT,
+    DEFAULT_SHORTCUT, DEFAULT_CLIPBOARD_DIAGNOSTICS,
     APPLET_MODE_OFF, APPLET_MODE_PERSISTENT, APPLET_MODE_POPUP, DEFAULT_APPLET_MODE,
     POPUP_STYLE_NONE, POPUP_STYLE_TRADITIONAL, POPUP_STYLE_APPLET, DEFAULT_POPUP_STYLE, DEFAULT_APPLET_AUTOHIDE,
 )
@@ -42,6 +42,10 @@ class Settings:
             self.settings.setValue('vad_filter', DEFAULT_VAD_FILTER)
         if self.settings.value('word_timestamps') is None:
             self.settings.setValue('word_timestamps', DEFAULT_WORD_TIMESTAMPS)
+
+        # Diagnostics settings
+        if self.settings.value('clipboard_diagnostics') is None:
+            self.settings.setValue('clipboard_diagnostics', DEFAULT_CLIPBOARD_DIAGNOSTICS)
 
         # UI settings - recording dialog
         if self.settings.value('show_recording_dialog') is None:
@@ -88,6 +92,7 @@ class Settings:
             'show_progress_window',
             'progress_window_always_on_top',
             'applet_autohide',
+            'clipboard_diagnostics',
         ]
 
         if key in boolean_settings:
@@ -159,6 +164,8 @@ class Settings:
             if not value or not isinstance(value, str) or not value.strip():
                 return DEFAULT_SHORTCUT
             return value
+        elif key == 'clipboard_diagnostics':
+            return bool(value)
 
         # Log the settings access for important settings
         if key in ['model', 'language', 'sample_rate_mode', 'compute_type', 'device', 'beam_size', 'vad_filter', 'word_timestamps']:

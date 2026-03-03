@@ -46,6 +46,7 @@ from blaze.clipboard_manager import ClipboardManager  # noqa: E402
 from blaze.application_state import ApplicationState  # noqa: E402
 from blaze.services.notification_service import NotificationService  # noqa: E402
 from blaze.services.clipboard_persistence_service import ClipboardPersistenceService  # noqa: E402
+from blaze.services.portal_clipboard_service import WlClipboardService  # noqa: E402
 
 import asyncio  # noqa: E402
 from dbus_next.service import ServiceInterface, method  # noqa: E402
@@ -178,17 +179,20 @@ class SyllablazeOrchestrator(QSystemTrayIcon):
         self.notification_service = NotificationService(self.settings)
         logger.info("Notification service initialized")
 
-        # Initialize clipboard persistence service (long-running for Wayland)
-        logger.info("Initializing clipboard persistence service...")
-        self.clipboard_persistence_service = ClipboardPersistenceService(self.settings)
-        logger.info("Clipboard persistence service initialized")
-
-        # Initialize clipboard manager (pure service, no UI deps)
-        logger.info("Initializing clipboard manager...")
-        self.clipboard_manager = ClipboardManager(
-            self.settings, self.clipboard_persistence_service
+        # Initialize clipboard services
+        logger.info("Initializing clipboard services...")
+        owner_widget = self.ui_manager.ensure_clipboard_owner_widget(parent=self)
+        self.clipboard_persistence_service = ClipboardPersistenceService(
+            self.settings, owner_widget
         )
-        logger.info("Clipboard manager initialized")
+        self.clipboard_portal_service = WlClipboardService()
+
+        self.clipboard_manager = ClipboardManager(
+            self.settings,
+            persistence_service=self.clipboard_persistence_service,
+            portal_service=self.clipboard_portal_service,
+        )
+        logger.info("Clipboard services initialized")
 
         # Connect clipboard signals to notification service
         self.clipboard_manager.transcription_copied.connect(
@@ -227,6 +231,7 @@ class SyllablazeOrchestrator(QSystemTrayIcon):
                 self.settings, self.app_state
             )
             self.recording_dialog.initialize()
+            self.recording_dialog.set_clipboard_manager(self.clipboard_manager)
 
             # Note: Bridge signal connections happen later in _connect_signals()
             # after set_audio_manager() creates the applet and bridge

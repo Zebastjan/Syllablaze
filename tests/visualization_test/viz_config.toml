@@ -1,0 +1,36 @@
+# Syllablaze Visualization Test Configuration
+# Edit this file and save to see changes immediately!
+
+# Current visualization pattern
+# Options: dots_radial, dots_curtains, dots_radar
+current_pattern = "dots_radial"
+
+# Waveform simulation settings
+[waveform]
+speed = 1.0  # Multiplier for animation speed
+
+# DotsRadialRings settings - Concentric rings with expanding wave
+[dots_radial]
+dot_spacing = 8      # Gap between dot centers (pixels)
+dot_radius = 2.5     # Base dot radius (pixels)
+wave_falloff = 1.5   # How many rings light up on each side of wave
+speed_min = 0.5      # Wave speed at volume = 0
+speed_max = 4.0      # Wave speed at volume = 1
+bounce = true        # Wave bounces vs wraps at outer edge
+
+# DotsSideCurtains settings - Left/right expanding columns
+[dots_curtains]
+dots_per_col = 10      # Dots in each vertical column
+columns_per_side = 2   # Number of columns on each side
+dot_radius = 3.0       # Base dot radius (pixels)
+expansion_curve = 0.7  # How aggressively outer dots activate with volume
+drift_speed = 0.3      # Vertical drift rate (pixels per frame)
+
+# DotsRadarSweep settings - Rotating radar on dot ring
+[dots_radar]
+num_dots = 40         # Dots in the ring
+dot_radius = 2.5      # Base dot radius (pixels)
+trail_length = 1.047  # Angular width of fading trail (radians) = π/3
+speed_min = 0.2       # Rotation speed at volume = 0 (rad/s)
+speed_max = 6.0       # Rotation speed at volume = 1 (rad/s)
+num_rings = 1         # 1 or 2 rings for visual density

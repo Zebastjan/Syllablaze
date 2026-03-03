@@ -33,44 +33,45 @@ class ClipboardPersistenceService(QObject):
     clipboard_set = pyqtSignal(str)
     clipboard_error = pyqtSignal(str)
 
-    def __init__(self, settings=None):
+    def __init__(self, settings=None, owner_widget: QWidget | None = None):
         """Initialize the clipboard persistence service.
-
-        Creates a persistent hidden window that will own the clipboard
-        throughout the application lifecycle.
 
         Parameters:
         -----------
         settings : Settings, optional
             Application settings instance (for future use)
+        owner_widget : QWidget, optional
+            External widget that should own the clipboard. If not provided, the
+            service will create its own minimal hidden window.
         """
         super().__init__()
         self.settings = settings
         self.clipboard = QApplication.clipboard()
         self._current_mime_data = None
 
-        # Create a persistent owner window that STAYS visible
-        # This ensures Wayland maintains clipboard ownership
-        self._owner_window = QWidget()
-        self._owner_window.setWindowTitle("Syllablaze Clipboard Persistence")
-        self._owner_window.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self._owner_window.setWindowFlags(
-            Qt.WindowType.Tool
-            | Qt.WindowType.FramelessWindowHint
-            | Qt.WindowType.WindowStaysOnBottomHint  # Keep it out of the way
-        )
+        self._owns_owner_window = owner_widget is None
+        if self._owns_owner_window:
+            owner_widget = QWidget()
+            owner_widget.setWindowTitle("Syllablaze Clipboard Persistence")
+            owner_widget.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+            owner_widget.setWindowFlags(
+                Qt.WindowType.Tool
+                | Qt.WindowType.FramelessWindowHint
+                | Qt.WindowType.WindowStaysOnBottomHint
+            )
+            owner_widget.resize(1, 1)
+            owner_widget.move(-100, -100)
+            owner_widget.show()
+        else:
+            # Ensure the provided widget stays alive and visible for clipboard ownership
+            owner_widget.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+            if not owner_widget.isVisible():
+                owner_widget.show()
 
-        # 1x1 pixel - effectively invisible but "visible" to Wayland
-        self._owner_window.resize(1, 1)
-
-        # Position off-screen
-        self._owner_window.move(-100, -100)
-
-        # Show and keep it shown - this is critical for Wayland ownership
-        self._owner_window.show()
+        self._owner_window = owner_widget
 
         logger.info(
-            "ClipboardPersistenceService: Initialized with persistent owner window"
+            "ClipboardPersistenceService: Initialized with clipboard owner widget"
         )
 
     def set_text(self, text):
@@ -153,7 +154,7 @@ class ClipboardPersistenceService(QObject):
         Called during application shutdown to clean up resources.
         """
         logger.info("ClipboardPersistenceService: Shutting down")
-        if self._owner_window:
+        if self._owns_owner_window and self._owner_window:
             self._owner_window.hide()
             self._owner_window.deleteLater()
             self._owner_window = None

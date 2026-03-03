@@ -35,6 +35,10 @@ DEFAULT_BEAM_SIZE = 5
 DEFAULT_VAD_FILTER = True
 DEFAULT_WORD_TIMESTAMPS = False
 
+# Clipboard diagnostics
+# Enable detailed logging and verification so we can catch Wayland ownership glitches.
+DEFAULT_CLIPBOARD_DIAGNOSTICS = True
+
 # Valid language codes for Whisper
 VALID_LANGUAGES = {
     "auto": "Auto-detect",

@@ -54,6 +54,7 @@ class RecordingDialogManager(QObject):
         self.settings = settings
         self.app_state = app_state
         self._audio_manager = audio_manager
+        self._clipboard_manager = None
         self.applet = None
         self.bridge = None  # Backward compatibility
 
@@ -61,6 +62,10 @@ class RecordingDialogManager(QObject):
         """Set audio manager after initialization (called after audio_manager is created)."""
         self._audio_manager = audio_manager
         self._create_applet()
+
+    def set_clipboard_manager(self, clipboard_manager):
+        """Inject clipboard manager used for diagnostics and fallback display."""
+        self._clipboard_manager = clipboard_manager
 
     @property
     def audio_manager(self):
@@ -205,21 +210,18 @@ class RecordingDialogManager(QObject):
 
         # Try multiple D-Bus methods for different KDE/Klipper versions
         methods = [
-            # qdbus (Qt5 tool)
             [
                 "qdbus",
                 "org.kde.klipper",
                 "/klipper",
                 "org.kde.klipper.klipper.showKlipperManuallyInvokeActionMenu",
             ],
-            # qdbus6 (Qt6 tool) - same method
             [
                 "qdbus6",
                 "org.kde.klipper",
                 "/klipper",
                 "org.kde.klipper.klipper.showKlipperManuallyInvokeActionMenu",
             ],
-            # Alternative method name for newer KDE versions
             [
                 "qdbus",
                 "org.kde.klipper",
@@ -239,10 +241,15 @@ class RecordingDialogManager(QObject):
                 logger.debug(f"Trying: {' '.join(cmd)}")
                 result = subprocess.run(cmd, capture_output=True, timeout=2, text=True)
                 if result.returncode == 0:
-                    logger.info(f"Successfully opened Klipper via: {cmd[0]} {cmd[3].split('.')[-1]}")
+                    logger.info(
+                        f"Successfully opened Klipper via: {cmd[0]} {cmd[3].split('.')[-1]}"
+                    )
                     return
-                else:
-                    logger.debug(f"Command failed (exit {result.returncode}): {result.stderr.strip()}")
+                logger.debug(
+                    "Command failed (exit %s): %s",
+                    result.returncode,
+                    result.stderr.strip(),
+                )
             except FileNotFoundError:
                 logger.debug(f"Command not found: {cmd[0]}")
             except subprocess.TimeoutExpired:
@@ -250,21 +257,42 @@ class RecordingDialogManager(QObject):
             except Exception as e:
                 logger.error(f"Error calling {cmd[0]}: {e}")
 
-        # If all D-Bus methods fail, show fallback dialog
-        logger.warning("All Klipper D-Bus methods failed, showing basic clipboard fallback")
-        try:
-            clipboard = QApplication.clipboard()
-            text = clipboard.text()
-            if text:
-                msg = QMessageBox()
-                msg.setWindowTitle("Clipboard Content")
-                msg.setText(text[:200] + ("..." if len(text) > 200 else ""))
-                msg.setInformativeText("Klipper clipboard manager could not be opened via D-Bus.")
-                msg.exec()
-            else:
-                logger.info("Clipboard is empty")
-        except Exception as e:
-            logger.error(f"Failed to access clipboard for fallback: {e}")
+        # If all D-Bus methods fail, show fallback dialog that surfaces clipboard contents
+        logger.warning(
+            "All Klipper D-Bus methods failed, showing basic clipboard fallback"
+        )
+
+        text = ""
+        if self._clipboard_manager:
+            try:
+                text = self._clipboard_manager.get_text() or ""
+            except Exception as e:
+                logger.error(
+                    "RecordingDialogManager: clipboard manager fallback failed: %s",
+                    e,
+                )
+
+        if not text:
+            try:
+                clipboard = QApplication.clipboard()
+                text = clipboard.text()
+            except Exception as e:
+                logger.error(
+                    "RecordingDialogManager: QApplication clipboard fallback failed: %s",
+                    e,
+                )
+                text = ""
+
+        if text:
+            msg = QMessageBox()
+            msg.setWindowTitle("Clipboard Content")
+            msg.setText(text[:200] + ("..." if len(text) > 200 else ""))
+            msg.setInformativeText(
+                "Klipper clipboard manager could not be opened via D-Bus."
+            )
+            msg.exec()
+        else:
+            logger.info("Clipboard is empty")
 
     def _on_open_settings(self):
         """Open settings window."""

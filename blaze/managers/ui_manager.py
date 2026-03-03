@@ -7,6 +7,7 @@ reducing code duplication and improving maintainability.
 
 from PyQt6.QtWidgets import QApplication, QMessageBox
 from PyQt6.QtGui import QIcon
+from PyQt6.QtCore import Qt
 import logging
 import os
 
@@ -21,6 +22,7 @@ class UIManager:
         self.progress_window = None  # Current progress window
         self.normal_icon = None  # Normal tray icon
         self.recording_icon = None  # Recording tray icon
+        self._clipboard_owner_widget = None
     
     def update_loading_status(self, window, message, progress, process_events=True):
         """Update loading window status and progress
@@ -221,6 +223,27 @@ class UIManager:
             logger.info(f"Progress window closed (context: {context})")
         else:
             logger.debug(f"No progress window to close (context: {context})")
+
+    def ensure_clipboard_owner_widget(self, parent=None):
+        """Return a long-lived widget suitable for clipboard ownership."""
+        if self._clipboard_owner_widget is None:
+            from PyQt6.QtWidgets import QWidget
+
+            if parent is not None and not isinstance(parent, QWidget):
+                parent = None
+
+            self._clipboard_owner_widget = QWidget(parent)
+            self._clipboard_owner_widget.setObjectName("syllablaze_clipboard_owner")
+            self._clipboard_owner_widget.resize(1, 1)
+            self._clipboard_owner_widget.move(-100, -100)
+            self._clipboard_owner_widget.setWindowTitle("Syllablaze Clipboard Owner")
+            self._clipboard_owner_widget.setAttribute(
+                Qt.WidgetAttribute.WA_TranslucentBackground,
+                True,
+            )
+            if not self._clipboard_owner_widget.isVisible():
+                self._clipboard_owner_widget.show()
+        return self._clipboard_owner_widget
 
     def update_tray_icon_state(self, is_recording, tray_icon, normal_icon=None, recording_icon=None):
         """Update tray icon based on recording state

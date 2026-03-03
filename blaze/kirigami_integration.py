@@ -24,6 +24,7 @@ from blaze.constants import (
     DEFAULT_VAD_FILTER,
     DEFAULT_WORD_TIMESTAMPS,
     DEFAULT_SHORTCUT,
+    DEFAULT_CLIPBOARD_DIAGNOSTICS,
 )
 import logging
 
@@ -146,6 +147,14 @@ class SettingsBridge(QObject):
     @pyqtSlot(bool)
     def setWordTimestamps(self, enabled):
         self.set('word_timestamps', enabled)
+
+    @pyqtSlot(result=bool)
+    def getClipboardDiagnostics(self):
+        return self.settings.get('clipboard_diagnostics', DEFAULT_CLIPBOARD_DIAGNOSTICS)
+
+    @pyqtSlot(bool)
+    def setClipboardDiagnostics(self, enabled):
+        self.set('clipboard_diagnostics', enabled)
 
     # === Shortcuts ===
 
