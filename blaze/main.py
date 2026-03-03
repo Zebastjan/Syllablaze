@@ -1,12 +1,13 @@
 import os
 import sys
+import argparse
 import multiprocessing
 
 # CRITICAL: Set multiprocessing start method to 'fork' before any other imports
 # Python 3.14+ uses 'forkserver' by default, which is incompatible with
 # CTranslate2's internal worker pool (causes semaphore leaks and SIGABRT)
 try:
-    multiprocessing.set_start_method('fork', force=True)
+    multiprocessing.set_start_method("fork", force=True)
 except RuntimeError:
     # Already set (e.g., in tests), ignore
     pass
@@ -53,8 +54,8 @@ from dbus_next.service import ServiceInterface, method  # noqa: E402
 from dbus_next.aio import MessageBus  # noqa: E402
 import qasync  # noqa: E402
 
-# Setup logging
-logging.basicConfig(level=logging.INFO)
+# Default logging
+DEFAULT_LOG_LEVEL = logging.INFO
 logger = logging.getLogger(__name__)
 
 # Audio error handling is now done in recorder.py
@@ -181,11 +182,21 @@ class SyllablazeOrchestrator(QSystemTrayIcon):
 
         # Initialize clipboard services
         logger.info("Initializing clipboard services...")
-        owner_widget = self.ui_manager.ensure_clipboard_owner_widget(parent=self)
-        self.clipboard_persistence_service = ClipboardPersistenceService(
-            self.settings, owner_widget
-        )
         self.clipboard_portal_service = WlClipboardService()
+        self.clipboard_persistence_service = None
+
+        if self.clipboard_portal_service.is_available():
+            logger.info(
+                "Clipboard services: using wl-copy portal backend (Qt persistence disabled)"
+            )
+        else:
+            logger.warning(
+                "Clipboard services: wl-copy unavailable; falling back to Qt clipboard"
+            )
+            owner_widget = self.ui_manager.ensure_clipboard_owner_widget(parent=self)
+            self.clipboard_persistence_service = ClipboardPersistenceService(
+                self.settings, owner_widget
+            )
 
         self.clipboard_manager = ClipboardManager(
             self.settings,
@@ -538,19 +549,22 @@ class SyllablazeOrchestrator(QSystemTrayIcon):
                 logger.info("Tray icon left-clicked")
 
                 # Check if transcription worker is still running (race condition under high load)
-                if (hasattr(self, 'transcription_manager') and
-                        self.transcription_manager and
-                        hasattr(self.transcription_manager, 'is_worker_running') and
-                        self.transcription_manager.is_worker_running()):
-
-                    logger.info("Transcription worker still running; cancelling before allowing new operation")
+                if (
+                    hasattr(self, "transcription_manager")
+                    and self.transcription_manager
+                    and hasattr(self.transcription_manager, "is_worker_running")
+                    and self.transcription_manager.is_worker_running()
+                ):
+                    logger.info(
+                        "Transcription worker still running; cancelling before allowing new operation"
+                    )
 
                     # Show brief notification
                     self.ui_manager.show_notification(
                         self,
                         "Cancelling Transcription",
                         "Waiting for current transcription to complete...",
-                        self.ui_manager.normal_icon
+                        self.ui_manager.normal_icon,
                     )
 
                     # Cancel the running transcription
@@ -558,7 +572,7 @@ class SyllablazeOrchestrator(QSystemTrayIcon):
                         logger.info("Transcription cancelled successfully")
 
                         # Update application state
-                        if hasattr(self, 'app_state') and self.app_state:
+                        if hasattr(self, "app_state") and self.app_state:
                             self.app_state.stop_transcription()
 
                         # Close progress window if visible
@@ -566,7 +580,9 @@ class SyllablazeOrchestrator(QSystemTrayIcon):
                         if progress_window and progress_window.isVisible():
                             progress_window.hide()
                     else:
-                        logger.warning("Transcription cancellation failed; proceeding anyway")
+                        logger.warning(
+                            "Transcription cancellation failed; proceeding anyway"
+                        )
 
                     # Release activation lock and return - user can click again to start new operation
                     self._activation_lock = False
@@ -857,7 +873,40 @@ def cleanup_lock_file():
 os.environ["GTK_MODULES"] = ""
 
 
-def main():
+def main(argv: list[str] | None = None):
+    parser = argparse.ArgumentParser(
+        prog="syllablaze",
+        description="Syllablaze continuous transcription utility",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help=(
+            "Enable verbose debug logging to console and log file. WARNING: this writes transcription "
+            "content and internal state to disk; do not use when privacy features must remain intact."
+        ),
+    )
+    args, remaining_argv = parser.parse_known_args(argv)
+
+    log_level = logging.DEBUG if args.debug else DEFAULT_LOG_LEVEL
+    logging.basicConfig(level=log_level)
+
+    if args.debug:
+        debug_log_path = os.path.expanduser("~/.cache/syllablaze/debug.log")
+        os.makedirs(os.path.dirname(debug_log_path), exist_ok=True)
+        debug_handler = logging.FileHandler(debug_log_path, mode="w", encoding="utf-8")
+        debug_handler.setLevel(logging.DEBUG)
+        debug_handler.setFormatter(
+            logging.Formatter("%(asctime)s %(levelname)s [%(name)s] %(message)s")
+        )
+        logging.getLogger().addHandler(debug_handler)
+        logger.warning(
+            "Debug logging enabled. Privacy protections are reduced because transcription details may be persisted."
+        )
+
+    sys.argv = [sys.argv[0], *remaining_argv]
+
     async def async_main():
         try:
             # Setup GPU/CUDA if available
@@ -963,8 +1012,6 @@ def main():
     asyncio.set_event_loop(loop)
 
     # Suppress qasync's noisy error logging during shutdown
-    import logging
-
     qasync_logger = logging.getLogger("qasync")
     qasync_logger.setLevel(logging.CRITICAL)  # Only show critical errors, not warnings
 

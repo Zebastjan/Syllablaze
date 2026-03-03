@@ -13,6 +13,7 @@ The service stays alive throughout the application lifecycle and handles:
 from PyQt6.QtCore import QObject, pyqtSignal, QMimeData, Qt
 from PyQt6.QtWidgets import QApplication, QWidget
 import logging
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +34,12 @@ class ClipboardPersistenceService(QObject):
     clipboard_set = pyqtSignal(str)
     clipboard_error = pyqtSignal(str)
 
-    def __init__(self, settings=None, owner_widget: QWidget | None = None):
+    def __init__(
+        self,
+        settings=None,
+        owner_widget: Optional[QWidget] = None,
+        diagnostics_only: bool = False,
+    ) -> None:
         """Initialize the clipboard persistence service.
 
         Parameters:
@@ -49,30 +55,45 @@ class ClipboardPersistenceService(QObject):
         self.clipboard = QApplication.clipboard()
         self._current_mime_data = None
 
-        self._owns_owner_window = owner_widget is None
-        if self._owns_owner_window:
-            owner_widget = QWidget()
-            owner_widget.setWindowTitle("Syllablaze Clipboard Persistence")
-            owner_widget.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-            owner_widget.setWindowFlags(
-                Qt.WindowType.Tool
-                | Qt.WindowType.FramelessWindowHint
-                | Qt.WindowType.WindowStaysOnBottomHint
-            )
-            owner_widget.resize(1, 1)
-            owner_widget.move(-100, -100)
-            owner_widget.show()
-        else:
-            # Ensure the provided widget stays alive and visible for clipboard ownership
-            owner_widget.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
-            if not owner_widget.isVisible():
-                owner_widget.show()
+        self._diagnostics_enabled = False
+        self._diagnostics_only = diagnostics_only
 
-        self._owner_window = owner_widget
+        self._owns_owner_window = owner_widget is None
+
+        if self._diagnostics_only:
+            logger.info("ClipboardPersistenceService: Diagnostics-only mode enabled")
+            self._owner_window = None
+        else:
+            if self._owns_owner_window:
+                owner_widget = QWidget()
+                owner_widget.setWindowTitle("Syllablaze Clipboard Persistence")
+                owner_widget.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+                owner_widget.setWindowFlags(
+                    Qt.WindowType.Tool
+                    | Qt.WindowType.FramelessWindowHint
+                    | Qt.WindowType.WindowStaysOnBottomHint
+                )
+                owner_widget.resize(1, 1)
+                owner_widget.move(-100, -100)
+                owner_widget.show()
+            else:
+                # Ensure the provided widget stays alive and visible for clipboard ownership
+                owner_widget.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+                if not owner_widget.isVisible():
+                    owner_widget.show()
+
+            self._owner_window = owner_widget
 
         logger.info(
-            "ClipboardPersistenceService: Initialized with clipboard owner widget"
+            "ClipboardPersistenceService: Initialized%s",
+            " (diagnostics-only)" if self._diagnostics_only else " with clipboard owner widget",
         )
+
+    def set_diagnostics_enabled(self, enabled: bool) -> None:
+        """Enable or disable diagnostics mode logging."""
+        self._diagnostics_enabled = bool(enabled)
+        if self._diagnostics_enabled:
+            logger.debug("ClipboardPersistenceService: diagnostics enabled")
 
     def set_text(self, text):
         """Set text to clipboard with persistent ownership.
@@ -95,6 +116,13 @@ class ClipboardPersistenceService(QObject):
             return False
 
         try:
+            if self._diagnostics_only:
+                logger.debug(
+                    "ClipboardPersistenceService: diagnostics-only mode skipping Qt clipboard set"
+                )
+                self.clipboard_set.emit(text)
+                return True
+
             # Create MIME data with the text
             mime_data = QMimeData()
             mime_data.setText(text)
@@ -128,7 +156,7 @@ class ClipboardPersistenceService(QObject):
         str
             Current clipboard text or empty string
         """
-        return self.clipboard.text()
+        return self.clipboard.text() if not self._diagnostics_only else ""
 
     def clear(self):
         """Clear the clipboard.
@@ -139,6 +167,11 @@ class ClipboardPersistenceService(QObject):
             True if successful, False otherwise
         """
         try:
+            if self._diagnostics_only:
+                logger.debug("ClipboardPersistenceService: diagnostics-only clear -> noop")
+                self._current_mime_data = None
+                return True
+
             mime_data = QMimeData()
             self.clipboard.setMimeData(mime_data, mode=self.clipboard.Mode.Clipboard)
             self._current_mime_data = None

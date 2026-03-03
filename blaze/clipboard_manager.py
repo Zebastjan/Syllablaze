@@ -54,18 +54,22 @@ class ClipboardManager(QObject):
         super().__init__()
         self.settings = settings
 
-        self._persistence_service = (
-            persistence_service or ClipboardPersistenceService(settings)
-        )
+        self._persistence_service = persistence_service
         self._portal_service = portal_service or WlClipboardService()
 
-        # Wire persistence service signals through to our handlers
-        self._persistence_service.clipboard_set.connect(
-            self._on_persistence_clipboard_set
-        )
-        self._persistence_service.clipboard_error.connect(
-            self._on_persistence_clipboard_error
-        )
+        if self._persistence_service:
+            # Wire persistence service signals through to our handlers
+            self._persistence_service.clipboard_set.connect(
+                self._on_persistence_clipboard_set
+            )
+            self._persistence_service.clipboard_error.connect(
+                self._on_persistence_clipboard_error
+            )
+        else:
+            logger.debug(
+                "ClipboardManager: No Qt persistence service configured (portal_only=%s)",
+                self._portal_service.is_available() if self._portal_service else False,
+            )
 
         self._diagnostics_enabled = False
         self._diagnostics_retry_limit = 2
@@ -110,14 +114,24 @@ class ClipboardManager(QObject):
                 return True
 
         diagnostics_enabled = self._update_diagnostics_state()
-        success = self._persistence_service.set_text(text)
+        success = False
+
+        if self._persistence_service:
+            success = self._persistence_service.set_text(text)
+        elif not portal_used:
+            logger.error(
+                "ClipboardManager: No clipboard backend available (text not copied)"
+            )
 
         if success:
             logger.info(f"ClipboardManager: Copied transcription: {text[:50]}...")
-            if diagnostics_enabled:
+            if diagnostics_enabled and self._persistence_service:
                 self._schedule_clipboard_verification(text)
         else:
-            logger.error("ClipboardManager: Failed to copy to clipboard (portal_used=%s)", portal_used)
+            logger.error(
+                "ClipboardManager: Failed to copy to clipboard (portal_used=%s)",
+                portal_used,
+            )
 
         return success
 
@@ -157,6 +171,11 @@ class ClipboardManager(QObject):
                     "ClipboardManager: Failed to read diagnostics setting: %s",
                     exc,
                 )
+        if enabled and not self._persistence_service:
+            logger.debug(
+                "ClipboardManager: Disabling clipboard diagnostics (no persistence backend)"
+            )
+            enabled = False
         reason = "initial" if initial else "runtime"
         return self._apply_diagnostics_enabled(enabled, reason=reason)
 
@@ -168,14 +187,18 @@ class ClipboardManager(QObject):
         self._apply_diagnostics_enabled(enabled, reason="settings-change")
 
     def _schedule_clipboard_verification(self, expected_text, attempt=0):
-        if not self._diagnostics_enabled or not expected_text:
+        if (
+            not self._diagnostics_enabled
+            or not expected_text
+            or not self._persistence_service
+        ):
             return
 
         delay_ms = 75 if attempt == 0 else 200
         QTimer.singleShot(
             delay_ms,
-            lambda text=expected_text, attempt_idx=attempt: self._verify_clipboard_contents(
-                text, attempt_idx
+            lambda text=expected_text, attempt_idx=attempt: (
+                self._verify_clipboard_contents(text, attempt_idx)
             ),
         )
 
@@ -258,10 +281,16 @@ class ClipboardManager(QObject):
                 return
 
         diagnostics_enabled = self._update_diagnostics_state()
-        success = self._persistence_service.set_text(text)
+        success = False
+        if self._persistence_service:
+            success = self._persistence_service.set_text(text)
+        elif not portal_used:
+            logger.error(
+                "ClipboardManager: No clipboard backend available for paste text"
+            )
 
         if success:
-            if diagnostics_enabled:
+            if diagnostics_enabled and self._persistence_service:
                 self._schedule_clipboard_verification(text)
             if self._should_paste_to_active_window():
                 self._paste_to_active_window()
@@ -293,7 +322,7 @@ class ClipboardManager(QObject):
             Current clipboard text or empty string
         """
         # Portal service doesn't currently provide read access; fall back
-        return self._persistence_service.get_text()
+        return self._persistence_service.get_text() if self._persistence_service else ""
 
     def clear(self):
         """Clear the clipboard.
@@ -306,7 +335,9 @@ class ClipboardManager(QObject):
         if self._portal_service and self._portal_service.is_available():
             if self._portal_service.clear():
                 return True
-        return self._persistence_service.clear()
+        if self._persistence_service:
+            return self._persistence_service.clear()
+        return False
 
     def shutdown(self):
         """Shutdown the clipboard manager gracefully."""
@@ -318,3 +349,6 @@ class ClipboardManager(QObject):
 
         if self._persistence_service:
             self._persistence_service.shutdown()
+
+        if self._portal_service:
+            self._portal_service.shutdown()
