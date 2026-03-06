@@ -7,6 +7,7 @@ Replaces the QML-based RecordingDialog for better Wayland/KWin compatibility.
 
 import os
 import logging
+import time
 from collections import deque
 
 from PyQt6.QtCore import (
@@ -14,10 +15,15 @@ from PyQt6.QtCore import (
     QTimer,
     QPoint,
     QRectF,
+    QPointF,
     pyqtSignal,
 )
 from PyQt6.QtWidgets import QWidget, QMenu
-from PyQt6.QtGui import QPainter, QColor, QPen, QPainterPath, QFont, QCursor
+from PyQt6.QtGui import QPainter, QColor, QPen, QPainterPath, QFont, QCursor, QActionGroup
+
+# Import visualization patterns
+from .visualizations import get_pattern, PATTERNS, PATTERN_ORDER
+from .visualizations.base import AudioState, BandGeometry
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +38,10 @@ class RecordingApplet(QWidget):
     dismissRequested = pyqtSignal()
     windowPositionChanged = pyqtSignal(int, int)
     windowSizeChanged = pyqtSignal(int)
+    
+    # Signals for volume/audio updates (for bridge to QML)
+    volumeChanged = pyqtSignal(float)
+    audioSamplesChanged = pyqtSignal(list)
 
     def __init__(self, settings, app_state, audio_manager=None, parent=None):
         super().__init__(parent)
@@ -44,6 +54,14 @@ class RecordingApplet(QWidget):
         self._is_transcribing = False
         self._current_volume = 0.0
         self._audio_samples = deque(maxlen=128)
+        self._volume_history = deque(maxlen=64)  # For patterns that need history
+
+        # Visualization
+        self._current_pattern_name = self.settings.get("applet_visualization", "dots_radial")  # Load from settings
+        self._current_pattern = None
+        self._audio_state = None
+        self._last_update_time = time.time()
+        self._pattern_actions = []  # Store pattern menu actions for radio button behavior
 
         # Mouse state
         self._drag_position = None
@@ -62,12 +80,18 @@ class RecordingApplet(QWidget):
         self._show_ignore_timer.timeout.connect(self._enable_clicks)
         self._ignore_clicks = True
 
+        # Animation timer for smooth visualization (60fps)
+        self._animation_timer = QTimer()
+        self._animation_timer.setInterval(16)  # ~60fps
+        self._animation_timer.timeout.connect(self.update)
+
         # SVG renderer
         self._svg_renderer = None
         self._svg_viewbox = QRectF(0, 0, 512, 512)
         self._background_bounds = QRectF()
         self._waveform_bounds = QRectF()
         self._active_area_bounds = QRectF()
+        self._mic_group_bounds = QRectF()  # For inner radius calculation
 
         # Load SVG
         self._load_svg()
@@ -81,8 +105,144 @@ class RecordingApplet(QWidget):
         # Connect to app state
         self._connect_signals()
 
-        # Initial size - start at 200x200 like QML version
-        self.resize(200, 200)
+        # Initial size - start at active_area size (tight around icon)
+        self._resize_to_state(False)
+
+    def _load_visualization_pattern(self):
+        """Load the current visualization pattern."""
+        try:
+            self._current_pattern = get_pattern(self._current_pattern_name)
+            logger.info(f"Loaded visualization pattern: {self._current_pattern.display_name}")
+        except ValueError as e:
+            logger.warning(f"Failed to load pattern '{self._current_pattern_name}': {e}")
+            # Fallback to dots_radial
+            self._current_pattern_name = "dots_radial"
+            self._current_pattern = get_pattern(self._current_pattern_name)
+
+    def _resize_to_state(self, is_recording: bool):
+        """Resize window based on recording state."""
+        if is_recording:
+            target_bounds = self._waveform_bounds
+        else:
+            target_bounds = self._active_area_bounds
+
+        # Map SVG bounds to widget coordinates - use the larger dimension to maintain square
+        target_widget = self._map_svg_rect_to_widget(target_bounds)
+        
+        # Ensure square aspect ratio (use larger dimension to avoid distortion)
+        size = max(target_widget.width(), target_widget.height())
+        
+        # Keep window centered on current position
+        current_center = self.geometry().center()
+        
+        # Create square rect centered at current position
+        from PyQt6.QtCore import QRect
+        target_rect = QRect(0, 0, int(size), int(size))
+        target_rect.moveCenter(current_center)
+        
+        # Apply new geometry
+        self.setGeometry(target_rect)
+        
+        logger.info(f"Resized to {'recording' if is_recording else 'idle'} state: {size}x{size}")
+
+    def _get_band_geometry(self, window_width: int, window_height: int) -> BandGeometry:
+        """Calculate the donut band geometry for visualization outside the icon."""
+        # Use window center
+        center = QPointF(window_width / 2, window_height / 2)
+        
+        # Inner radius is the outer edge of the icon (use waveform bounds)
+        waveform_widget = self._map_svg_rect_to_widget(self._waveform_bounds)
+        r_inner = min(waveform_widget.width(), waveform_widget.height()) / 2.0
+        
+        # Outer radius extends to the edge of the window
+        r_outer = min(window_width, window_height) / 2.0 - 2  # Small margin
+        
+        # Create donut clip path (area outside icon but within window)
+        clip_path = QPainterPath()
+        clip_path.addEllipse(center, r_outer, r_outer)
+        inner_path = QPainterPath()
+        inner_path.addEllipse(center, r_inner, r_inner)
+        clip_path = clip_path.subtracted(inner_path)
+        
+        return BandGeometry(
+            center=center,
+            r_inner=r_inner,
+            r_outer=r_outer,
+            clip_path=clip_path
+        )
+
+    def _create_audio_state(self) -> AudioState:
+        """Create current audio state for visualization."""
+        current_time = time.time()
+        
+        # Update volume history
+        self._volume_history.append(self._current_volume)
+        
+        # Calculate recent peak
+        recent_peak = max(self._volume_history) if self._volume_history else self._current_volume
+        
+        # Use audio samples for waveform visualization (like QML does)
+        # If no samples yet, fall back to volume history
+        if self._audio_samples:
+            sample_history = self._audio_samples.copy()
+        else:
+            sample_history = self._volume_history.copy()
+        
+        logger.debug(f"Audio state: volume={self._current_volume:.3f}, samples={len(sample_history)}")
+        
+        return AudioState(
+            volume=self._current_volume,
+            history=sample_history,
+            peak=recent_peak,
+            time_s=current_time
+        )
+
+    def _get_pattern_params(self) -> dict:
+        """Get parameters for the current pattern from settings."""
+        # For now, return defaults. Later this can be enhanced with user settings.
+        defaults = {
+            'dots_radial': {
+                'dot_spacing': 8,
+                'dot_radius': 2.5,
+                'wave_falloff': 1.5,
+                'speed_min': 0.5,
+                'speed_max': 4.0,
+                'bounce': True,
+            },
+            'dots_curtains': {
+                'dots_per_col': 20,
+                'max_columns': 3,
+                'dot_radius': 2.0,
+                'drift_speed': 0.15,
+            },
+            'dots_radar': {
+                'num_dots': 40,
+                'dot_radius': 2.5,
+                'trail_length': 3.14159 / 3,
+                'speed_min': 0.2,
+                'speed_max': 6.0,
+                'num_rings': 1,
+            },
+        }
+        
+        return defaults.get(self._current_pattern_name, {})
+
+    def set_visualization_pattern(self, pattern_name: str):
+        """Set the visualization pattern."""
+        if pattern_name in PATTERNS:
+            self._current_pattern_name = pattern_name
+            self.settings.set('applet_visualization', pattern_name)  # Save to settings
+            self._load_visualization_pattern()
+            self.update()
+            logger.info(f"Changed visualization pattern to: {pattern_name}")
+        else:
+            logger.warning(f"Unknown pattern: {pattern_name}")
+
+    def get_next_pattern(self) -> str:
+        """Get the next pattern for cycling."""
+        current_index = PATTERN_ORDER.index(self._current_pattern_name)
+        next_index = (current_index + 1) % len(PATTERN_ORDER)
+        return PATTERN_ORDER[next_index]
 
     def _load_svg(self):
         """Load the syllablaze.svg and extract element bounds."""
@@ -129,6 +289,15 @@ class RecordingApplet(QWidget):
             # Fallback: full window
             self._active_area_bounds = QRectF(0, 0, 512, 512)
 
+        # Get mic group bounds for inner radius calculation
+        self._mic_group_bounds = self._svg_renderer.boundsOnElement("g3")
+        if self._mic_group_bounds.isNull():
+            # Fallback: estimate based on typical mic size
+            self._mic_group_bounds = QRectF(150, 150, 212, 212)
+
+        # Load initial visualization pattern
+        self._load_visualization_pattern()
+
     def _setup_window(self):
         """Configure window flags and properties.
 
@@ -160,6 +329,22 @@ class RecordingApplet(QWidget):
         )
 
         self._context_menu.addSeparator()
+        
+        # Add pattern cycling submenu with radio button behavior
+        pattern_menu = self._context_menu.addMenu("Visualization")
+        self._pattern_action_group = QActionGroup(self)  # For radio button exclusivity
+        self._pattern_action_group.setExclusive(True)
+        
+        for pattern_name in PATTERN_ORDER:
+            pattern_instance = get_pattern(pattern_name)
+            action = pattern_menu.addAction(pattern_instance.display_name)
+            action.setCheckable(True)
+            action.setActionGroup(self._pattern_action_group)  # Add to group for exclusivity
+            action.setChecked(pattern_name == self._current_pattern_name)
+            action.triggered.connect(lambda checked, pn=pattern_name: self.set_visualization_pattern(pn))
+            self._pattern_actions.append(action)
+
+        self._context_menu.addSeparator()
 
         self._context_menu.addAction("Dismiss").triggered.connect(
             self._on_dismiss_clicked
@@ -177,8 +362,12 @@ class RecordingApplet(QWidget):
 
         # Connect to audio manager for volume
         if self.audio_manager:
+            logger.info(f"RecordingApplet: Connecting to audio_manager signals")
             self.audio_manager.volume_changing.connect(self._on_volume_changed)
             self.audio_manager.audio_samples_changing.connect(self._on_samples_changed)
+            logger.info(f"RecordingApplet: Connected to audio_manager volume_changing and audio_samples_changing")
+        else:
+            logger.warning("RecordingApplet: No audio_manager provided, cannot connect volume signals")
 
     def _on_recording_state_changed(self, is_recording):
         """Handle recording state change."""
@@ -188,6 +377,15 @@ class RecordingApplet(QWidget):
         self._toggle_action.setText(
             "Stop Recording" if is_recording else "Start Recording"
         )
+
+        # Resize window based on state
+        self._resize_to_state(is_recording)
+
+        # Start/stop animation timer for smooth visualization
+        if is_recording:
+            self._animation_timer.start()
+        else:
+            self._animation_timer.stop()
 
         # Trigger repaint to show/hide recording visuals
         self.update()
@@ -200,12 +398,23 @@ class RecordingApplet(QWidget):
     def _on_volume_changed(self, volume):
         """Handle volume update from AudioManager."""
         self._current_volume = max(0.0, min(1.0, volume))
+        # Emit signal for bridge to QML
+        self.volumeChanged.emit(self._current_volume)
+        # Use INFO level when recording to see volume updates in normal logs
+        if self._is_recording:
+            logger.info(f"RecordingApplet: Volume={self._current_volume:.4f} during recording")
+            logger.info(f"RecordingApplet: Volume update signal emitted")
         self.update()
 
     def _on_samples_changed(self, samples):
         """Handle audio samples update."""
         if samples:
             self._audio_samples = deque(samples[-128:], maxlen=128)
+            # Emit signal for bridge to QML (convert deque to list)
+            self.audioSamplesChanged.emit(list(self._audio_samples))
+            logger.debug(f"RecordingApplet: Received {len(samples)} samples, stored {len(self._audio_samples)}")
+        else:
+            logger.debug("RecordingApplet: Received empty samples")
 
 
     def paintEvent(self, event):
@@ -216,24 +425,37 @@ class RecordingApplet(QWidget):
         width = self.width()
         height = self.height()
 
-        # Draw circular clipping path
+        # Clip to circular window shape
         painter.save()
-        path = QPainterPath()
-        path.addEllipse(0, 0, width, height)
-        painter.setClipPath(path)
+        circular_clip = QPainterPath()
+        circular_clip.addEllipse(0, 0, width, height)
+        painter.setClipPath(circular_clip)
 
-        # Render the entire SVG scaled to widget size
+        # STEP 1: Render full SVG (preserves complete icon appearance)
         if self._svg_renderer and self._svg_renderer.isValid():
-            # The SVG renderer will handle rendering all visible elements
-            # The waveform and active_area are transparent regions used for logic
             target_rect = QRectF(0, 0, width, height)
             self._svg_renderer.render(painter, target_rect)
 
-        # Volume visualization overlay (only when recording)
-        if self._is_recording:
-            self._paint_volume_visualization(painter)
+        # STEP 2: Draw visualization outside the icon (from perimeter outward)
+        if self._is_recording and self._current_pattern:
+            band = self._get_band_geometry(width, height)
+            audio_state = self._create_audio_state()
+            
+            logger.debug(f"Painting pattern: {self._current_pattern_name}, widget={width}x{height}, band: center=({band.center.x():.1f}, {band.center.y():.1f}), r_inner={band.r_inner:.1f}, r_outer={band.r_outer:.1f}")
+            
+            # Clip to area outside icon but within window
+            painter.save()
+            painter.setClipPath(band.clip_path, Qt.ClipOperation.IntersectClip)
+            
+            # Paint the selected pattern
+            params = self._get_pattern_params()
+            self._current_pattern.paint(painter, band, audio_state, params)
+            
+            painter.restore()
 
-        # Transcription overlay
+        painter.restore()  # Remove circular clipping
+
+        # Transcription overlay (drawn outside clipping)
         if self._is_transcribing:
             overlay_color = QColor(0, 0, 0, 150)
             painter.fillRect(0, 0, width, height, overlay_color)
@@ -246,105 +468,44 @@ class RecordingApplet(QWidget):
                 self.rect(), Qt.AlignmentFlag.AlignCenter, "Transcribing..."
             )
 
-        painter.restore()
 
-    def _paint_volume_visualization(self, painter):
-        """Paint the radial volume visualization over the waveform region."""
-        # Map waveform bounds from SVG coordinates to widget coordinates
-        waveform_widget = self._map_svg_rect_to_widget(self._waveform_bounds)
-
-        # Calculate center and ring dimensions from mapped waveform bounds
-        center_x = waveform_widget.x() + waveform_widget.width() / 2
-        center_y = waveform_widget.y() + waveform_widget.height() / 2
-        inner_radius = min(waveform_widget.width(), waveform_widget.height()) * 0.35
-        outer_radius = min(waveform_widget.width(), waveform_widget.height()) * 0.48
-
-        # Draw radial waveform bars if we have samples
-        if self._audio_samples and len(self._audio_samples) > 0:
-            self._paint_radial_waveform(
-                painter, center_x, center_y, inner_radius, outer_radius
-            )
-        else:
-            # Fallback: draw a simple pulsing ring
-            viz_radius = inner_radius + (self._current_volume * (outer_radius - inner_radius))
-
-            # Color based on volume level
-            if self._current_volume < 0.6:
-                color = QColor(0, 200, 0, int(150 + self._current_volume * 100))
-            elif self._current_volume < 0.85:
-                color = QColor(255, 180, 0, int(180 + self._current_volume * 75))
-            else:
-                color = QColor(255, 50, 0, int(200 + self._current_volume * 50))
-
-            pen = QPen(color, 2 + self._current_volume * 3)
-            painter.setPen(pen)
-            painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.drawEllipse(
-                QPoint(int(center_x), int(center_y)),
-                int(viz_radius),
-                int(viz_radius)
-            )
-
-    def _paint_radial_waveform(self, painter, cx, cy, inner_radius, outer_radius):
-        """Paint radial waveform bars based on audio samples."""
+    def _paint_simple_waveform(self, painter, band, audio):
+        """Paint simple radial bars in the waveform ring - reliable and visible."""
         import math
-
-        num_bars = 36  # Match QML version
-        ring_thickness = outer_radius - inner_radius - 4
-
-        painter.save()
-
+        
+        num_bars = 36
+        band_width = band.r_outer - band.r_inner
+        
+        # Get volume (ensure it's in valid range)
+        volume = max(0.0, min(1.0, audio.volume))
+        
+        # Draw bars around the ring
         for i in range(num_bars):
-            # Calculate angle for this bar (start at top: -π/2)
             angle = (i / num_bars) * 2 * math.pi - (math.pi / 2)
-
-            # Get corresponding audio sample
-            sample_index = int((i / num_bars) * len(self._audio_samples))
-            raw_sample = abs(self._audio_samples[sample_index]) if sample_index < len(self._audio_samples) else 0
-
-            # Amplify sample for visualization (input is often very quiet)
-            sample = min(1.0, raw_sample * 10)
-
-            # Calculate bar length with minimum visible length
-            min_length = 5
-            max_length = ring_thickness * 0.8
-            bar_length = min_length + (sample * max_length)
-
-            # Calculate color based on sample value
-            if sample < 0.5:
-                # Green to yellow-green
-                t = sample * 2
-                r = int((0.2 + t * 0.8) * 255)
-                g = int(0.8 * 255)
-                b = int(0.2 * 255)
+            
+            # Start at inner radius
+            start_x = band.center.x() + math.cos(angle) * band.r_inner
+            start_y = band.center.y() + math.sin(angle) * band.r_inner
+            
+            # End based on volume
+            bar_length = band_width * volume
+            end_radius = band.r_inner + bar_length
+            end_x = band.center.x() + math.cos(angle) * end_radius
+            end_y = band.center.y() + math.sin(angle) * end_radius
+            
+            # Color based on volume - bright and visible
+            if volume < 0.5:
+                color = QColor(0, 255, 100, 230)  # Green
+            elif volume < 0.8:
+                color = QColor(255, 255, 0, 230)  # Yellow
             else:
-                # Yellow-green to red
-                t = (sample - 0.5) * 2
-                r = int(1.0 * 255)
-                g = int((0.8 - t * 0.8) * 255)
-                b = int(0.2 * 255)
-
-            color = QColor(r, g, b, 230)  # 0.9 alpha = 230
-
-            # Draw the bar
+                color = QColor(255, 50, 50, 230)  # Red
+            
             pen = QPen(color, 3)
             painter.setPen(pen)
-
-            # Start point at inner radius
-            start_x = cx + math.cos(angle) * inner_radius
-            start_y = cy + math.sin(angle) * inner_radius
-
-            # End point at inner_radius + bar_length
-            end_x = cx + math.cos(angle) * (inner_radius + bar_length)
-            end_y = cy + math.sin(angle) * (inner_radius + bar_length)
-
-            painter.drawLine(
-                int(start_x), int(start_y),
-                int(end_x), int(end_y)
-            )
-
-        painter.restore()
-
+            painter.drawLine(int(start_x), int(start_y), int(end_x), int(end_y))
+        
+        logger.debug(f"Drew {num_bars} bars with volume={volume:.3f}")
 
     def _map_svg_rect_to_widget(self, svg_rect):
         """Map SVG coordinates to widget coordinates."""
@@ -356,9 +517,19 @@ class RecordingApplet(QWidget):
             svg_rect.height() * scale,
         )
 
+    def _is_point_in_active_area(self, point: QPointF) -> bool:
+        """Check if a point is within the active area bounds."""
+        active_area_widget = self._map_svg_rect_to_widget(self._active_area_bounds)
+        return active_area_widget.contains(point)
+
     def mousePressEvent(self, event):
         """Handle mouse press."""
         if self._ignore_clicks:
+            return
+
+        # Check if click is within active area (visible region)
+        if not self._is_point_in_active_area(event.position()):
+            # Click is in transparent region, ignore it
             return
 
         self._drag_position = event.globalPosition().toPoint()
@@ -408,11 +579,13 @@ class RecordingApplet(QWidget):
                 self._click_timer.timeout.connect(self._on_single_click)
                 self._click_timer.start(250)
         elif event.button() == Qt.MouseButton.MiddleButton:
-            # Middle-click: open clipboard
-            self.openClipboardRequested.emit()
+            # Middle-click: cycle visualization pattern
+            next_pattern = self.get_next_pattern()
+            self.set_visualization_pattern(next_pattern)
         elif event.button() == Qt.MouseButton.RightButton:
-            # Right-click: show context menu
-            self._context_menu.exec(QCursor.pos())
+            # Right-click: show context menu (only if in active area)
+            if self._is_point_in_active_area(event.position()):
+                self._context_menu.exec(QCursor.pos())
 
         self._drag_position = None
 

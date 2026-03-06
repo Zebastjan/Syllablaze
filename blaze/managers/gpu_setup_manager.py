@@ -93,19 +93,76 @@ class GPUSetupManager:
 
     def _configure_cuda_library_paths(self):
         """Preload NVIDIA CUDA libraries so CTranslate2 can find them"""
-        venv_path = os.path.expanduser("~/.local/share/pipx/venvs/syllablaze")
-        python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
-        site_packages = os.path.join(venv_path, f"lib/python{python_version}/site-packages")
-
-        # Search for NVIDIA CUDA library packages
-        nvidia_dirs = ["nvidia/cublas/lib", "nvidia/cudnn/lib", "nvidia/cuda_runtime/lib"]
         cuda_paths = []
 
-        for nvidia_dir in nvidia_dirs:
-            lib_path = os.path.join(site_packages, nvidia_dir)
-            if os.path.exists(lib_path):
-                cuda_paths.append(lib_path)
-                logger.info(f"✓ Found CUDA library: {nvidia_dir}")
+        # Detect venv path - check multiple sources
+        venv_path = None
+
+        # 1. Check VIRTUAL_ENV environment variable (works with venu, venv, etc.)
+        if os.environ.get("VIRTUAL_ENV"):
+            venv_path = os.environ.get("VIRTUAL_ENV")
+            logger.info(f"Found venv from VIRTUAL_ENV: {venv_path}")
+
+        # 2. If not found, try pipx default location
+        if not venv_path:
+            pipx_path = os.path.expanduser("~/.local/share/pipx/venvs/syllablaze")
+            if os.path.exists(pipx_path):
+                venv_path = pipx_path
+                logger.info(f"Found venv from pipx default: {venv_path}")
+
+        # 3. Search for nvidia libraries in venv
+        if venv_path:
+            python_version = f"{sys.version_info.major}.{sys.version_info.minor}"
+            site_packages = os.path.join(
+                venv_path, f"lib/python{python_version}/site-packages"
+            )
+
+            nvidia_dirs = [
+                "nvidia/cublas/lib",
+                "nvidia/cudnn/lib",
+                "nvidia/cuda_runtime/lib",
+                "nvidia/cuda_cupti/lib",
+                "nvidia/cuda_nvrtc/lib",
+                "nvidia/cufft/lib",
+                "nvidia/curand/lib",
+                "nvidia/cusolver/lib",
+                "nvidia/cusparse/lib",
+            ]
+
+            for nvidia_dir in nvidia_dirs:
+                lib_path = os.path.join(site_packages, nvidia_dir)
+                if os.path.exists(lib_path):
+                    cuda_paths.append(lib_path)
+                    logger.info(f"✓ Found CUDA library: {nvidia_dir}")
+
+        # 4. Check system paths from LD_LIBRARY_PATH
+        ld_library_path = os.environ.get("LD_LIBRARY_PATH", "")
+        if ld_library_path:
+            for path in ld_library_path.split(":"):
+                if os.path.exists(path):
+                    # Check if this looks like a CUDA lib directory
+                    has_cuda_libs = any(
+                        glob.glob(os.path.join(path, "libcublas*.so*"))
+                    ) or any(glob.glob(os.path.join(path, "libcudart*.so*")))
+                    if has_cuda_libs and path not in cuda_paths:
+                        cuda_paths.append(path)
+                        logger.info(f"✓ Found CUDA library from LD_LIBRARY_PATH: {path}")
+
+        # 5. Check common system CUDA locations
+        common_paths = [
+            "/opt/cuda/targets/x86_64-linux/lib",
+            "/usr/local/cuda/lib64",
+            "/usr/local/cuda-12/lib64",
+            "/usr/lib/x86_64-linux-gnu",
+        ]
+        for path in common_paths:
+            if os.path.exists(path) and path not in cuda_paths:
+                has_cuda_libs = any(
+                    glob.glob(os.path.join(path, "libcublas*.so*"))
+                ) or any(glob.glob(os.path.join(path, "libcudart*.so*")))
+                if has_cuda_libs:
+                    cuda_paths.append(path)
+                    logger.info(f"✓ Found CUDA library from system path: {path}")
 
         if cuda_paths:
             # Preload critical CUDA libraries using ctypes
@@ -120,13 +177,19 @@ class GPUSetupManager:
                         preloaded += 1
                         logger.debug(f"  Preloaded: {os.path.basename(so_file)}")
                     except Exception as e:
-                        logger.debug(f"  Could not preload {os.path.basename(so_file)}: {e}")
+                        logger.debug(
+                            f"  Could not preload {os.path.basename(so_file)}: {e}"
+                        )
 
-            logger.info(f"✓ Preloaded {preloaded} CUDA libraries from {len(cuda_paths)} paths")
+            logger.info(
+                f"✓ Preloaded {preloaded} CUDA libraries from {len(cuda_paths)} paths"
+            )
             self.cuda_lib_paths = cuda_paths
         else:
-            logger.warning("⚠ No NVIDIA CUDA library packages found in venv")
-            logger.warning("  Install with: pipx inject syllablaze nvidia-cublas-cu12 nvidia-cudnn-cu12")
+            logger.warning("⚠ No NVIDIA CUDA library packages found")
+            logger.warning(
+                "  Install with: pip install nvidia-cublas-cu12 nvidia-cudnn-cu12"
+            )
 
     def _print_gpu_status(self, available):
         """Print user-friendly GPU status message"""

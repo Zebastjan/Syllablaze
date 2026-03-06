@@ -10,7 +10,7 @@ PY_FILES=(
   ./blaze/*.py
 )
 
-SUB_DIRS=("ui" "utils" "managers" "qml" "services")
+SUB_DIRS=("ui" "utils" "managers" "qml" "services" "visualizations")
 RUN_SCRIPT="./run-syllablaze.sh"
 
 # Detect current branch and set target package
@@ -23,8 +23,14 @@ else
     echo "📦 Stable branch detected: deploying to $PACKAGE_NAME"
 fi
 
-# Find the installed package directory
+# Find the installed package directory - handle both editable and regular installs
 INSTALL_DIR=$(find ~/.local/share/pipx/venvs/$PACKAGE_NAME/lib/python* -type d -name "blaze" 2>/dev/null | head -1)
+
+# If not found in site-packages, check if it's an editable install pointing to local repo
+if [ -z "$INSTALL_DIR" ]; then
+    echo "Editable install detected - using local repository"
+    INSTALL_DIR="/home/zebastjan/dev/syllablaze/blaze"
+fi
 
 if [ -z "$INSTALL_DIR" ]; then
     echo "Error: Could not find installed $PACKAGE_NAME package directory"
@@ -91,8 +97,14 @@ for dir in "${SUB_DIRS[@]}"; do
         if [ -d "./blaze/qml" ]; then
             cp -rv "./blaze/qml"/* "$INSTALL_DIR/qml/" 2>/dev/null || true
         fi
+    elif [ "$dir" = "visualizations" ]; then
+        # Copy visualizations directory recursively (includes all Python files)
+        if [ -d "./blaze/visualizations" ]; then
+            mkdir -p "$INSTALL_DIR/visualizations"
+            cp -rv "./blaze/visualizations"/* "$INSTALL_DIR/visualizations/" 2>/dev/null || true
+        fi
     else
-        # Copy Python files only for non-QML directories
+        # Copy Python files only for other directories
         cp -v "./blaze/$dir"/*.py "$INSTALL_DIR/$dir/" 2>/dev/null || true
     fi
 done
@@ -109,4 +121,4 @@ echo "You can now run '$PACKAGE_NAME' to use the updated version"
 
 # Run the application by default
 echo "Starting $PACKAGE_NAME..."
-$PACKAGE_NAME
+$PACKAGE_NAME --debug

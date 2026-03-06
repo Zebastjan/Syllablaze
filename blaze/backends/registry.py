@@ -1,0 +1,441 @@
+"""
+Unified Model Registry
+
+Central registry for all STT models across all backends.
+Provides model metadata, capabilities, and hardware requirements.
+"""
+
+from typing import Dict, List, Optional
+from .base import ModelCapability, ModelTier
+
+
+# Unified registry of all available models
+# Maps model_id -> ModelCapability
+UNIFIED_MODEL_REGISTRY: Dict[str, ModelCapability] = {
+    # =========================================================================
+    # WHISPER MODELS
+    # =========================================================================
+    # Ultra-light tier (< 2GB RAM)
+    "whisper-tiny": ModelCapability(
+        model_id="whisper-tiny",
+        backend="whisper",
+        name="Whisper Tiny",
+        description="Fastest model, basic accuracy (39MB). Good for CPU-only systems.",
+        size_mb=39,
+        min_ram_gb=0.5,
+        recommended_ram_gb=1.0,
+        min_vram_gb=None,
+        languages=["all"],
+        tier=ModelTier.ULTRA_LIGHT,
+        license="MIT",
+        supports_word_timestamps=True,
+        repo_id="Systran/faster-whisper-tiny",
+    ),
+    "whisper-tiny.en": ModelCapability(
+        model_id="whisper-tiny.en",
+        backend="whisper",
+        name="Whisper Tiny (English)",
+        description="English-only, fastest for English speech (39MB)",
+        size_mb=39,
+        min_ram_gb=0.5,
+        recommended_ram_gb=1.0,
+        min_vram_gb=None,
+        languages=["en"],
+        tier=ModelTier.ULTRA_LIGHT,
+        license="MIT",
+        supports_word_timestamps=True,
+        repo_id="Systran/faster-whisper-tiny.en",
+    ),
+    "whisper-base": ModelCapability(
+        model_id="whisper-base",
+        backend="whisper",
+        name="Whisper Base",
+        description="Good balance of speed and accuracy (74MB)",
+        size_mb=74,
+        min_ram_gb=1.0,
+        recommended_ram_gb=2.0,
+        min_vram_gb=None,
+        languages=["all"],
+        tier=ModelTier.ULTRA_LIGHT,
+        license="MIT",
+        supports_word_timestamps=True,
+        repo_id="Systran/faster-whisper-base",
+    ),
+    "whisper-base.en": ModelCapability(
+        model_id="whisper-base.en",
+        backend="whisper",
+        name="Whisper Base (English)",
+        description="English-only, better accuracy for English (74MB)",
+        size_mb=74,
+        min_ram_gb=1.0,
+        recommended_ram_gb=2.0,
+        min_vram_gb=None,
+        languages=["en"],
+        tier=ModelTier.ULTRA_LIGHT,
+        license="MIT",
+        supports_word_timestamps=True,
+        repo_id="Systran/faster-whisper-base.en",
+    ),
+    # Light tier (2-4GB RAM)
+    "whisper-small": ModelCapability(
+        model_id="whisper-small",
+        backend="whisper",
+        name="Whisper Small",
+        description="Better accuracy, still fast (244MB)",
+        size_mb=244,
+        min_ram_gb=2.0,
+        recommended_ram_gb=4.0,
+        min_vram_gb=None,
+        languages=["all"],
+        tier=ModelTier.LIGHT,
+        license="MIT",
+        supports_word_timestamps=True,
+        repo_id="Systran/faster-whisper-small",
+    ),
+    "whisper-small.en": ModelCapability(
+        model_id="whisper-small.en",
+        backend="whisper",
+        name="Whisper Small (English)",
+        description="English-only, good accuracy (244MB)",
+        size_mb=244,
+        min_ram_gb=2.0,
+        recommended_ram_gb=4.0,
+        min_vram_gb=None,
+        languages=["en"],
+        tier=ModelTier.LIGHT,
+        license="MIT",
+        supports_word_timestamps=True,
+        repo_id="Systran/faster-whisper-small.en",
+    ),
+    "whisper-distil-small.en": ModelCapability(
+        model_id="whisper-distil-small.en",
+        backend="whisper",
+        name="Distil-Whisper Small (English)",
+        description="Distilled for speed, English-only (400MB)",
+        size_mb=400,
+        min_ram_gb=2.0,
+        recommended_ram_gb=4.0,
+        min_vram_gb=None,
+        languages=["en"],
+        tier=ModelTier.LIGHT,
+        license="MIT",
+        supports_word_timestamps=True,
+        repo_id="Systran/faster-distil-whisper-small.en",
+    ),
+    # Medium tier (4-8GB RAM)
+    "whisper-medium": ModelCapability(
+        model_id="whisper-medium",
+        backend="whisper",
+        name="Whisper Medium",
+        description="High accuracy, multilingual (769MB)",
+        size_mb=769,
+        min_ram_gb=4.0,
+        recommended_ram_gb=8.0,
+        min_vram_gb=None,
+        languages=["all"],
+        tier=ModelTier.MEDIUM,
+        license="MIT",
+        supports_word_timestamps=True,
+        repo_id="Systran/faster-whisper-medium",
+    ),
+    "whisper-medium.en": ModelCapability(
+        model_id="whisper-medium.en",
+        backend="whisper",
+        name="Whisper Medium (English)",
+        description="High accuracy, English-only (769MB)",
+        size_mb=769,
+        min_ram_gb=4.0,
+        recommended_ram_gb=8.0,
+        min_vram_gb=None,
+        languages=["en"],
+        tier=ModelTier.MEDIUM,
+        license="MIT",
+        supports_word_timestamps=True,
+        repo_id="Systran/faster-whisper-medium.en",
+    ),
+    "whisper-distil-medium.en": ModelCapability(
+        model_id="whisper-distil-medium.en",
+        backend="whisper",
+        name="Distil-Whisper Medium (English)",
+        description="Distilled for speed, high accuracy (1.2GB)",
+        size_mb=1200,
+        min_ram_gb=4.0,
+        recommended_ram_gb=8.0,
+        min_vram_gb=None,
+        languages=["en"],
+        tier=ModelTier.MEDIUM,
+        license="MIT",
+        supports_word_timestamps=True,
+        repo_id="Systran/faster-distil-whisper-medium.en",
+    ),
+    # Heavy tier (8GB+ RAM)
+    "whisper-large-v2": ModelCapability(
+        model_id="whisper-large-v2",
+        backend="whisper",
+        name="Whisper Large v2",
+        description="Excellent accuracy, large model (2.4GB)",
+        size_mb=2400,
+        min_ram_gb=6.0,
+        recommended_ram_gb=10.0,
+        min_vram_gb=4.0,
+        languages=["all"],
+        tier=ModelTier.HEAVY,
+        license="MIT",
+        supports_word_timestamps=True,
+        repo_id="Systran/faster-whisper-large-v2",
+    ),
+    "whisper-large-v3": ModelCapability(
+        model_id="whisper-large-v3",
+        backend="whisper",
+        name="Whisper Large v3",
+        description="Best Whisper accuracy (3.1GB)",
+        size_mb=3100,
+        min_ram_gb=6.0,
+        recommended_ram_gb=12.0,
+        min_vram_gb=4.0,
+        languages=["all"],
+        tier=ModelTier.HEAVY,
+        license="MIT",
+        supports_word_timestamps=True,
+        repo_id="Systran/faster-whisper-large-v3",
+    ),
+    "whisper-large-v3-turbo": ModelCapability(
+        model_id="whisper-large-v3-turbo",
+        backend="whisper",
+        name="Whisper Large v3 Turbo",
+        description="Large v3 accuracy with faster inference (3.1GB)",
+        size_mb=3100,
+        min_ram_gb=6.0,
+        recommended_ram_gb=12.0,
+        min_vram_gb=4.0,
+        languages=["all"],
+        tier=ModelTier.HEAVY,
+        license="MIT",
+        supports_word_timestamps=True,
+        repo_id="Systran/faster-whisper-large-v3-turbo",
+    ),
+    "whisper-distil-large-v2": ModelCapability(
+        model_id="whisper-distil-large-v2",
+        backend="whisper",
+        name="Distil-Whisper Large v2",
+        description="Distilled large model, good speed/accuracy (2.4GB)",
+        size_mb=2400,
+        min_ram_gb=6.0,
+        recommended_ram_gb=10.0,
+        min_vram_gb=4.0,
+        languages=["all"],
+        tier=ModelTier.HEAVY,
+        license="MIT",
+        supports_word_timestamps=True,
+        repo_id="Systran/faster-distil-whisper-large-v2",
+    ),
+    # =========================================================================
+    # IBM GRANITE SPEECH MODELS
+    # =========================================================================
+    "granite-speech-3.3-2b": ModelCapability(
+        model_id="granite-speech-3.3-2b",
+        backend="granite",
+        name="Granite Speech 3.3-2B",
+        description="IBM's enterprise ASR. Excellent for EN, FR, DE, ES, PT. Supports translation to JA, ZH (4GB)",
+        size_mb=4000,
+        min_ram_gb=4.0,
+        recommended_ram_gb=6.0,
+        min_vram_gb=None,  # CPU-friendly
+        languages=["en", "fr", "de", "es", "pt"],
+        tier=ModelTier.LIGHT,
+        license="Apache-2.0",
+        supports_word_timestamps=False,
+        repo_id="ibm-granite/granite-speech-3.3-2b",
+    ),
+    # =========================================================================
+    # LIQUID AI MODELS
+    # =========================================================================
+    "lfm2.5-audio-1.5b": ModelCapability(
+        model_id="lfm2.5-audio-1.5b",
+        backend="liquid",
+        name="LFM2.5-Audio 1.5B",
+        description="Liquid AI end-to-end audio model. Optimized for on-device, conversational ASR (3GB)",
+        size_mb=3000,
+        min_ram_gb=3.0,
+        recommended_ram_gb=4.0,
+        min_vram_gb=None,
+        languages=["en"],
+        tier=ModelTier.LIGHT,
+        license="LFM-Open-1.0",
+        is_streaming=True,
+        supports_word_timestamps=False,
+        repo_id="LiquidAI/LFM2.5-Audio-1.5B",
+    ),
+    # =========================================================================
+    # QWEN MODELS (Future - placeholders for now)
+    # =========================================================================
+    # "qwen3-asr-7b": ModelCapability(
+    #     model_id="qwen3-asr-7b",
+    #     backend="qwen",
+    #     name="Qwen3-ASR 7B",
+    #     description="Alibaba's multilingual ASR with strong Chinese support (7GB)",
+    #     size_mb=7000,
+    #     min_ram_gb=8.0,
+    #     recommended_ram_gb=12.0,
+    #     min_vram_gb=None,
+    #     languages=["zh", "en", "ja", "ko", "ar", "all"],
+    #     tier=ModelTier.HEAVY,
+    #     license="Apache-2.0",
+    #     supports_word_timestamps=True,
+    #     repo_id="Qwen/Qwen3-ASR-7B"
+    # ),
+}
+
+
+class ModelRegistry:
+    """
+    Central registry for all STT models.
+
+    Provides query methods to find models by backend, language,
+    hardware compatibility, etc.
+    """
+
+    @classmethod
+    def get_all_models(cls) -> List[ModelCapability]:
+        """Get all registered models"""
+        return list(UNIFIED_MODEL_REGISTRY.values())
+
+    @classmethod
+    def get_model(cls, model_id: str) -> Optional[ModelCapability]:
+        """Get a specific model by ID"""
+        return UNIFIED_MODEL_REGISTRY.get(model_id)
+
+    @classmethod
+    def get_models_for_backend(cls, backend: str) -> List[ModelCapability]:
+        """Get all models for a specific backend"""
+        return [m for m in UNIFIED_MODEL_REGISTRY.values() if m.backend == backend]
+
+    @classmethod
+    def get_models_for_language(cls, language: str) -> List[ModelCapability]:
+        """
+        Get all models that support a specific language.
+
+        Args:
+            language: Language code (e.g., 'en', 'fr') or 'all' for multilingual
+        """
+        results = []
+        for model in UNIFIED_MODEL_REGISTRY.values():
+            if "all" in model.languages or language in model.languages:
+                results.append(model)
+        return results
+
+    @classmethod
+    def get_models_by_tier(cls, tier: ModelTier) -> List[ModelCapability]:
+        """Get all models in a specific hardware tier"""
+        return [m for m in UNIFIED_MODEL_REGISTRY.values() if m.tier == tier]
+
+    @classmethod
+    def get_available_backends(cls) -> List[str]:
+        """Get list of all backend names"""
+        backends = set(m.backend for m in UNIFIED_MODEL_REGISTRY.values())
+        return sorted(list(backends))
+
+    @classmethod
+    def get_compatibility_info(
+        cls,
+        model_id: str,
+        total_ram_gb: float,
+        available_ram_gb: float,
+        gpu_available: bool = False,
+        gpu_memory_gb: Optional[List[float]] = None,
+    ) -> Dict:
+        """
+        Check if a model is compatible with the current system.
+
+        Returns a dict with:
+            - compatible: bool
+            - reason: str (explanation if not compatible)
+            - recommended: bool (whether it's recommended for this system)
+        """
+        model = cls.get_model(model_id)
+        if not model:
+            return {
+                "compatible": False,
+                "reason": f"Unknown model: {model_id}",
+                "recommended": False,
+            }
+
+        # Check RAM
+        if available_ram_gb < model.min_ram_gb:
+            return {
+                "compatible": False,
+                "reason": f"Needs {model.min_ram_gb}GB RAM available, have {available_ram_gb:.1f}GB",
+                "recommended": False,
+            }
+
+        # Check VRAM if specified
+        if model.min_vram_gb is not None:
+            if not gpu_available:
+                return {
+                    "compatible": False,
+                    "reason": f"Needs GPU with {model.min_vram_gb}GB VRAM, no GPU detected",
+                    "recommended": False,
+                }
+
+            total_vram = sum(gpu_memory_gb) if gpu_memory_gb else 0
+            if total_vram < model.min_vram_gb:
+                return {
+                    "compatible": False,
+                    "reason": f"Needs {model.min_vram_gb}GB VRAM, have {total_vram:.1f}GB",
+                    "recommended": False,
+                }
+
+        # Check if recommended (has recommended RAM amount)
+        recommended = available_ram_gb >= model.recommended_ram_gb
+
+        return {
+            "compatible": True,
+            "reason": "Compatible with your system",
+            "recommended": recommended,
+        }
+
+    @classmethod
+    def get_compatible_models(
+        cls,
+        available_ram_gb: float,
+        gpu_available: bool = False,
+        gpu_memory_gb: Optional[List[float]] = None,
+        language: Optional[str] = None,
+    ) -> List[ModelCapability]:
+        """
+        Get all models compatible with the given hardware and optionally language.
+        """
+        compatible = []
+        for model in UNIFIED_MODEL_REGISTRY.values():
+            info = cls.get_compatibility_info(
+                model.model_id,
+                available_ram_gb
+                + model.min_ram_gb,  # Assume total is at least min more than available
+                available_ram_gb,
+                gpu_available,
+                gpu_memory_gb,
+            )
+            if info["compatible"]:
+                if (
+                    language is None
+                    or "all" in model.languages
+                    or language in model.languages
+                ):
+                    compatible.append(model)
+        return compatible
+
+    @classmethod
+    def get_recommended_models(
+        cls,
+        available_ram_gb: float,
+        gpu_available: bool = False,
+        gpu_memory_gb: Optional[List[float]] = None,
+        language: Optional[str] = None,
+    ) -> List[ModelCapability]:
+        """
+        Get models that are not just compatible, but recommended for the system.
+        """
+        all_compatible = cls.get_compatible_models(
+            available_ram_gb, gpu_available, gpu_memory_gb, language
+        )
+        return [m for m in all_compatible if available_ram_gb >= m.recommended_ram_gb]

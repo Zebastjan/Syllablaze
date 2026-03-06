@@ -52,8 +52,13 @@ class FasterWhisperTranscriptionWorker(QThread):
 
             model_name = self.settings.get("model", DEFAULT_WHISPER_MODEL)
 
+            # CRITICAL: Update settings BEFORE loading model so manager uses CPU
+            self.settings.set("device", "cpu")
+            self.settings.set("compute_type", "int8")
+            self._cpu_fallback_attempted = True
+
             logger.info(f"Loading model {model_name} on CPU for fallback...")
-            self.progress.emit("GPU memory exhausted, switching to CPU...")
+            self.progress.emit("GPU failed, switching to CPU...")
 
             model_manager = WhisperModelManager(self.settings)
             self.model = model_manager.load_model(model_name)
@@ -68,10 +73,6 @@ class FasterWhisperTranscriptionWorker(QThread):
                 word_timestamps=word_timestamps,
             )
             self._segments_list = list(self._segments_list)
-
-            self._cpu_fallback_attempted = True
-            self.settings.set("device", "cpu")
-            self.settings.set("compute_type", "int8")
 
             logger.info("Successfully fell back to CPU transcription")
 
@@ -121,6 +122,12 @@ class FasterWhisperTranscriptionWorker(QThread):
                         "oom",
                         "显存不足",
                         "insufficient memory",
+                        "libcublas",
+                        "libcudnn",
+                        "libcudart",
+                        "not found",
+                        "cannot be loaded",
+                        "library",
                     ]
                 )
 

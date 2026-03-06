@@ -236,6 +236,7 @@ class AudioRecorder(QObject):
                     audio_data = np.frombuffer(in_data, dtype=np.int16)
                     volume = AudioProcessor.calculate_volume(audio_data)
                     self.volume_changing.emit(volume)
+                    logger.debug(f"AudioRecorder: emitted volume={volume:.4f} from {len(audio_data)} samples")
 
                     # Emit audio samples for waveform visualization
                     # Downsample and normalize to -1.0 to 1.0 range

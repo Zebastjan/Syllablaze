@@ -75,6 +75,10 @@ class Settings:
         if self.settings.value('applet_autohide') is None:
             self.settings.setValue('applet_autohide', DEFAULT_APPLET_AUTOHIDE)
         
+        # Visualization settings
+        if self.settings.value('applet_visualization') is None:
+            self.settings.setValue('applet_visualization', 'dots_radial')
+        
     def get(self, key, default=None):
         """Get a setting value with proper type conversion"""
         value = self.settings.value(key, default)
