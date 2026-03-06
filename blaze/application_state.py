@@ -84,7 +84,9 @@ class ApplicationState(QObject):
         logger.info("ApplicationState: Starting recording")
         self._is_recording = True
         self.recording_state_changed.emit(True)
+        logger.info("ApplicationState: About to emit recording_started signal")
         self.recording_started.emit()
+        logger.info("ApplicationState: recording_started signal emitted")
         return True
 
     def stop_recording(self):
@@ -244,8 +246,8 @@ class ApplicationState(QObject):
             Dictionary containing current state values
         """
         return {
-            'recording': self._is_recording,
-            'transcribing': self._is_transcribing,
-            'recording_dialog_visible': self._recording_dialog_visible,
-            'progress_window_visible': self._progress_window_visible,
+            "recording": self._is_recording,
+            "transcribing": self._is_transcribing,
+            "recording_dialog_visible": self._recording_dialog_visible,
+            "progress_window_visible": self._progress_window_visible,
         }

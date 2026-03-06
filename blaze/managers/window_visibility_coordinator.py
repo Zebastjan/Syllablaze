@@ -51,6 +51,9 @@ class WindowVisibilityCoordinator(QObject):
         self._popup_hide_timer.setInterval(POPUP_HIDE_DELAY_MS)
         self._popup_hide_timer.timeout.connect(self._popup_hide_now)
 
+        # Track first transcription for aggressive show logic
+        self._has_shown_first_time = False
+
     # ------------------------------------------------------------------
     # Popup mode helpers
     # ------------------------------------------------------------------
@@ -70,6 +73,9 @@ class WindowVisibilityCoordinator(QObject):
         """
         state = app_state or self.app_state
         if state:
+            logger.info(
+                f"WindowVisibilityCoordinator: Connecting signals to app_state {id(state)}"
+            )
             state.recording_started.connect(self._on_recording_started)
             state.transcription_stopped.connect(self._on_transcription_complete)
             logger.info(
@@ -78,12 +84,32 @@ class WindowVisibilityCoordinator(QObject):
 
     def _on_recording_started(self):
         """Auto-show dialog when recording starts (popup mode only)."""
-        if self._applet_mode() == APPLET_MODE_POPUP:
+        current_mode = self._applet_mode()
+        logger.info(
+            f"_on_recording_started called, mode={current_mode}, first_time={not self._has_shown_first_time}"
+        )
+
+        if current_mode == APPLET_MODE_POPUP:
             logger.info("Popup mode: showing dialog on recording start")
             # Cancel any pending hide
             self._popup_hide_timer.stop()
+
+            # Aggressive first-time show logic
+            if not self._has_shown_first_time:
+                logger.info("FIRST TRANSCRIPTION DETECTED - FORCE SHOWING DIALOG")
+                self._has_shown_first_time = True
+                # Force immediate show regardless of any other state
+                if self.app_state:
+                    self.app_state.set_recording_dialog_visible(
+                        True, source="force_first"
+                    )
+                    return  # Skip normal logic
+
+            # Normal popup logic for subsequent recordings
             if self.app_state:
                 self.app_state.set_recording_dialog_visible(True, source="popup_start")
+        else:
+            logger.info(f"Mode is {current_mode}, not popup - skipping dialog show")
 
     def _on_transcription_complete(self):
         """Auto-hide dialog after transcription completes (popup mode only)."""
@@ -122,7 +148,9 @@ class WindowVisibilityCoordinator(QObject):
         # Check if we're using applet style at all
         popup_style = self.settings.get("popup_style", "applet")
         if popup_style != "applet":
-            logger.info(f"Applet toggle ignored: popup_style is '{popup_style}', not 'applet'")
+            logger.info(
+                f"Applet toggle ignored: popup_style is '{popup_style}', not 'applet'"
+            )
             return
 
         # Toggle between popup (autohide=True) and persistent (autohide=False)
@@ -140,10 +168,16 @@ class WindowVisibilityCoordinator(QObject):
         # CRITICAL FIX: Programmatic settings.set() doesn't emit the settingChanged signal
         # that SettingsCoordinator listens to. We need to manually trigger the coordinator.
         if self.settings_coordinator:
-            logger.info("Manually triggering settings coordinator for applet_autohide change")
-            self.settings_coordinator.on_setting_changed("applet_autohide", new_autohide)
+            logger.info(
+                "Manually triggering settings coordinator for applet_autohide change"
+            )
+            self.settings_coordinator.on_setting_changed(
+                "applet_autohide", new_autohide
+            )
         else:
-            logger.warning("settings_coordinator not available - mode change may not apply")
+            logger.warning(
+                "settings_coordinator not available - mode change may not apply"
+            )
 
     def on_dialog_visibility_changed(self, visible, source):
         """Handle recording dialog visibility changes from ApplicationState
@@ -157,6 +191,10 @@ class WindowVisibilityCoordinator(QObject):
             visible (bool): True to show dialog, False to hide
             source (str): Source of the change (startup, settings_ui, tray_menu, dismissal)
         """
+        logger.info(
+            f"on_dialog_visibility_changed called: visible={visible}, source={source}"
+        )
+
         if not self.recording_dialog:
             logger.warning(
                 f"Cannot update dialog visibility: dialog not initialized (source: {source})"
@@ -174,11 +212,37 @@ class WindowVisibilityCoordinator(QObject):
 
         # Update the actual Qt window
         if visible:
-            self.recording_dialog.show()
-            logger.info(f"Recording dialog shown (source: {source})")
+            # Ensure the dialog is properly created before showing
+            try:
+                logger.info(
+                    f"About to call recording_dialog.show(), applet exists={self.recording_dialog.applet is not None}"
+                )
+                self.recording_dialog.show()
+                # Process pending events to ensure window is fully mapped
+                # before any subsequent operations (critical for first show)
+                from PyQt6.QtWidgets import QApplication
+
+                QApplication.processEvents()
+                is_visible = (
+                    self.recording_dialog.applet.isVisible()
+                    if self.recording_dialog.applet
+                    else False
+                )
+                logger.info(
+                    f"Recording dialog shown (source: {source}), isVisible={is_visible}"
+                )
+
+                # If this is the first show, mark it
+                if source == "force_first":
+                    logger.info("FIRST TRANSCRIPTION DIALOG SHOW COMPLETED")
+            except Exception as e:
+                logger.error(f"Failed to show recording dialog: {e}")
         else:
-            self.recording_dialog.hide()
-            logger.info(f"Recording dialog hidden (source: {source})")
+            try:
+                self.recording_dialog.hide()
+                logger.info(f"Recording dialog hidden (source: {source})")
+            except Exception as e:
+                logger.error(f"Failed to hide recording dialog: {e}")
 
         # Update settings UI (emit signal to QML)
         if self.settings_bridge:
@@ -202,14 +266,20 @@ class WindowVisibilityCoordinator(QObject):
                     self.settings.set("applet_autohide", True)
                     # Manually trigger settings coordinator (programmatic set() doesn't emit signal)
                     if self.settings_coordinator:
-                        self.settings_coordinator.on_setting_changed("applet_autohide", True)
+                        self.settings_coordinator.on_setting_changed(
+                            "applet_autohide", True
+                        )
                 else:
                     logger.info("Dismiss: already in popup mode, just hiding")
                     if self.app_state:
-                        self.app_state.set_recording_dialog_visible(False, source="dismissal")
+                        self.app_state.set_recording_dialog_visible(
+                            False, source="dismissal"
+                        )
             else:
                 logger.info(f"Dismiss: popup_style is '{popup_style}', just hiding")
                 if self.app_state:
-                    self.app_state.set_recording_dialog_visible(False, source="dismissal")
+                    self.app_state.set_recording_dialog_visible(
+                        False, source="dismissal"
+                    )
         elif self.app_state:
             self.app_state.set_recording_dialog_visible(False, source="dismissal")

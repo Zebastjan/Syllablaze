@@ -285,7 +285,16 @@ class SyllablazeOrchestrator(QSystemTrayIcon):
 
             # Set initial dialog visibility (through ApplicationState)
             # This will trigger _on_dialog_visibility_changed which shows/hides the window
-            initial_visibility = self.settings.get("show_recording_dialog", True)
+            # In popup mode, don't show at startup - only show when recording starts
+            applet_mode = self.settings.get("applet_mode", "popup")
+            if applet_mode == "popup":
+                # Popup mode: keep hidden at startup, show only on recording
+                initial_visibility = False
+                logger.info("Popup mode: dialog will be hidden at startup")
+            else:
+                # Persistent/off mode: use saved visibility setting
+                initial_visibility = self.settings.get("show_recording_dialog", True)
+
             if self.app_state:
                 self.app_state.set_recording_dialog_visible(
                     initial_visibility, source="startup"
@@ -1140,6 +1149,7 @@ def _connect_signals(tray, loading_window, app, ui_manager):
         # Show applet in persistent mode (KWin properties applied in showEvent)
         if tray.settings:
             applet_mode = tray.settings.get("applet_mode", "popup")
+
             if applet_mode == "persistent":
                 logger.info(
                     "Showing recording dialog after applet creation (persistent mode)"

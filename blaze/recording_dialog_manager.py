@@ -6,7 +6,7 @@ Now uses plain QWidget (RecordingApplet) instead of QML for better Wayland/KWin 
 """
 
 import logging
-from PyQt6.QtCore import QObject, pyqtSignal
+from PyQt6.QtCore import QObject, pyqtSignal, pyqtProperty
 from blaze.constants import APPLET_MODE_PERSISTENT
 
 logger = logging.getLogger(__name__)
@@ -16,6 +16,7 @@ class _AppletBridge(QObject):
     """Backward-compatible bridge wrapper for RecordingApplet signals.
 
     Exposes signals in the same format as the old QML RecordingDialogBridge.
+    Also exposes volume and audio samples as properties for QML binding.
     """
 
     toggleRecordingRequested = pyqtSignal()
@@ -25,10 +26,16 @@ class _AppletBridge(QObject):
     recordingStateChanged = pyqtSignal(bool)
     transcribingStateChanged = pyqtSignal(bool)
 
+    # Property change notifications
+    currentVolumeChanged = pyqtSignal(float)
+    audioSamplesChanged = pyqtSignal(list)
+
     def __init__(self, applet, app_state, parent=None):
         super().__init__(parent)
         self._applet = applet
         self._app_state = app_state
+        self._current_volume = 0.0
+        self._audio_samples = []
 
         # Connect applet signals to bridge signals
         applet.toggleRecordingRequested.connect(self.toggleRecordingRequested)
@@ -36,10 +43,44 @@ class _AppletBridge(QObject):
         applet.openSettingsRequested.connect(self.openSettingsRequested)
         applet.dismissRequested.connect(self.dismissRequested)
 
+        # Connect to applet's volume/samples updates
+        applet.volumeChanged.connect(self._on_volume_changed)
+        applet.audioSamplesChanged.connect(self._on_samples_changed)
+
         # Connect app state signals
         if app_state:
             app_state.recording_state_changed.connect(self.recordingStateChanged)
             app_state.transcription_state_changed.connect(self.transcribingStateChanged)
+
+    @pyqtProperty(float, notify=currentVolumeChanged)
+    def currentVolume(self):
+        """Current volume level for QML binding."""
+        return self._current_volume
+
+    @pyqtProperty("QVariantList", notify=audioSamplesChanged)
+    def audioSamples(self):
+        """Current audio samples for QML binding."""
+        return self._audio_samples
+
+    @pyqtProperty(bool, notify=recordingStateChanged)
+    def isRecording(self):
+        """Recording state for QML binding."""
+        return self._applet.is_recording if self._applet else False
+
+    @pyqtProperty(bool, notify=transcribingStateChanged)
+    def isTranscribing(self):
+        """Transcribing state for QML binding."""
+        return self._applet.is_transcribing if self._applet else False
+
+    def _on_volume_changed(self, volume):
+        """Handle volume update from applet."""
+        self._current_volume = volume
+        self.currentVolumeChanged.emit(volume)
+
+    def _on_samples_changed(self, samples):
+        """Handle audio samples update from applet."""
+        self._audio_samples = samples
+        self.audioSamplesChanged.emit(samples)
 
 
 class RecordingDialogManager(QObject):
@@ -105,15 +146,24 @@ class RecordingDialogManager(QObject):
         Note: The applet is created later when set_audio_manager() is called,
         after the audio manager is ready.
         """
-        logger.info("RecordingDialogManager: Initialized (applet will be created when audio_manager is set)")
+        logger.info(
+            "RecordingDialogManager: Initialized (applet will be created when audio_manager is set)"
+        )
 
-    def connect_bridge_signals(self, toggle_recording_callback=None, open_settings_callback=None, dismiss_callback=None):
+    def connect_bridge_signals(
+        self,
+        toggle_recording_callback=None,
+        open_settings_callback=None,
+        dismiss_callback=None,
+    ):
         """Connect bridge signals to external callbacks.
 
         Should be called after set_audio_manager() creates the bridge.
         """
         if not self.bridge:
-            logger.warning("RecordingDialogManager: Cannot connect bridge signals - bridge not created yet")
+            logger.warning(
+                "RecordingDialogManager: Cannot connect bridge signals - bridge not created yet"
+            )
             return
 
         if toggle_recording_callback:
@@ -131,12 +181,19 @@ class RecordingDialogManager(QObject):
         Window properties (always-on-top, on-all-desktops) are applied via KWin
         automatically in the applet's showEvent handler.
         """
+        logger.info(
+            f"RecordingDialogManager.show() called, applet exists={self.applet is not None}"
+        )
         if self.applet:
+            logger.info(
+                f"RecordingDialogManager: Calling applet.show(), isVisible={self.applet.isVisible()}"
+            )
             self.applet.show()
             self.applet.raise_()
             self.applet.requestActivate()
-
-            logger.info("RecordingDialogManager: Applet shown (KWin properties will be applied)")
+            logger.info(
+                f"RecordingDialogManager: Applet shown, isVisible now={self.applet.isVisible()}"
+            )
 
     def hide(self):
         """Hide the applet window."""
