@@ -10,7 +10,7 @@ PY_FILES=(
   ./blaze/*.py
 )
 
-SUB_DIRS=("ui" "utils" "managers" "qml" "services" "visualizations")
+SUB_DIRS=("ui" "utils" "managers" "qml" "services" "visualizations" "backends" "system")
 RUN_SCRIPT="./run-syllablaze.sh"
 
 # Detect current branch and set target package
@@ -102,6 +102,18 @@ for dir in "${SUB_DIRS[@]}"; do
         if [ -d "./blaze/visualizations" ]; then
             mkdir -p "$INSTALL_DIR/visualizations"
             cp -rv "./blaze/visualizations"/* "$INSTALL_DIR/visualizations/" 2>/dev/null || true
+        fi
+    elif [ "$dir" = "backends" ]; then
+        # Copy backends directory recursively (includes whisper/, granite/, liquid/, qwen/ subdirs)
+        if [ -d "./blaze/backends" ]; then
+            mkdir -p "$INSTALL_DIR/backends"
+            cp -rv "./blaze/backends"/* "$INSTALL_DIR/backends/" 2>/dev/null || true
+        fi
+    elif [ "$dir" = "system" ]; then
+        # Copy system directory (resource_detector.py and __init__.py)
+        if [ -d "./blaze/system" ]; then
+            mkdir -p "$INSTALL_DIR/system"
+            cp -rv "./blaze/system"/* "$INSTALL_DIR/system/" 2>/dev/null || true
         fi
     else
         # Copy Python files only for other directories
