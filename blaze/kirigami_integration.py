@@ -28,6 +28,7 @@ from blaze.constants import (
 )
 from blaze.backends.registry import ModelRegistry
 from blaze.backends.coordinator import get_coordinator
+from blaze.backends.dependency_manager import DependencyManager
 from blaze.system.resource_detector import detect_resources
 import logging
 
@@ -42,6 +43,11 @@ class SettingsBridge(QObject):
     modelDownloadProgress = pyqtSignal(str, int)  # model_name, progress_percent
     modelDownloadComplete = pyqtSignal(str)  # model_name
     modelDownloadError = pyqtSignal(str, str)  # model_name, error_message
+    dependencyInstallProgress = pyqtSignal(
+        str, str, int
+    )  # backend, message, progress_percent
+    dependencyInstallComplete = pyqtSignal(str, bool)  # backend, success
+    backendAvailabilityChanged = pyqtSignal(str, bool)  # backend, available
 
     def __init__(self, settings):
         super().__init__()
@@ -746,9 +752,32 @@ class SettingsBridge(QObject):
 
     @pyqtSlot(str)
     def setActiveModel(self, model_name):
-        """Set the active model (supports both old and new formats)."""
+        """Set the active model"""
         logger.info(f"Setting active model: {model_name}")
+
+        # Store the model name
         self.set("model", model_name)
+
+        # Also store the backend type for proper routing
+        try:
+            from blaze.backends.registry import ModelRegistry
+
+            model_info = ModelRegistry.get_model(model_name)
+            if model_info:
+                self.set("model_backend", model_info.backend)
+                logger.info(
+                    f"Stored backend '{model_info.backend}' for model {model_name}"
+                )
+            else:
+                # Default to whisper if model not found in registry
+                self.set("model_backend", "whisper")
+                logger.warning(
+                    f"Model {model_name} not found in registry, defaulting to whisper backend"
+                )
+        except Exception as e:
+            logger.error(f"Failed to get model backend info: {e}")
+            # Default to whisper on error
+            self.set("model_backend", "whisper")
 
     @pyqtSlot(str, result="QVariantMap")
     def getModelDetails(self, model_id):
@@ -837,6 +866,143 @@ class SettingsBridge(QObject):
         except Exception as e:
             logger.error(f"Failed to get model details for {model_id}: {e}")
             return {"error": str(e)}
+
+    # === Dependency Management Methods ===
+
+    @pyqtSlot(str, result="QVariantMap")
+    def getBackendDependencyInfo(self, backend):
+        """Get dependency information for a backend."""
+        try:
+            info = DependencyManager.get_backend_info(backend)
+            if not info:
+                return {
+                    "available": False,
+                    "error": f"Unknown backend: {backend}",
+                }
+
+            return {
+                "available": DependencyManager.is_backend_available(backend),
+                "packages": info["packages"],
+                "install_command": info["install_command"],
+                "description": info["description"],
+                "size_estimate": info["size_estimate"],
+            }
+        except Exception as e:
+            logger.error(f"Failed to get backend info for {backend}: {e}")
+            return {"available": False, "error": str(e)}
+
+    @pyqtSlot(str, result=bool)
+    def checkBackendDependencies(self, backend):
+        """Check if a backend's dependencies are installed."""
+        try:
+            return DependencyManager.is_backend_available(backend)
+        except Exception as e:
+            logger.error(f"Failed to check backend dependencies: {e}")
+            return False
+
+    @pyqtSlot(str)
+    def installBackendDependencies(self, backend):
+        """Install dependencies for a backend."""
+        import threading
+
+        def progress_callback(message, progress):
+            self.dependencyInstallProgress.emit(backend, message, progress)
+
+        def install_thread():
+            try:
+                logger.info(f"Starting dependency installation for {backend}")
+                self.dependencyInstallProgress.emit(
+                    backend, "Starting installation...", 0
+                )
+
+                success = DependencyManager.install_backend(backend, progress_callback)
+
+                if success:
+                    logger.info(f"Successfully installed {backend} dependencies")
+                    self.dependencyInstallComplete.emit(backend, True)
+                    self.backendAvailabilityChanged.emit(backend, True)
+                else:
+                    logger.error(f"Failed to install {backend} dependencies")
+                    self.dependencyInstallComplete.emit(backend, False)
+
+            except Exception as e:
+                logger.error(f"Installation error for {backend}: {e}")
+                self.dependencyInstallProgress.emit(backend, f"Error: {str(e)}", 0)
+                self.dependencyInstallComplete.emit(backend, False)
+
+        thread = threading.Thread(target=install_thread, daemon=True)
+        thread.start()
+
+    @pyqtSlot(result="QVariantList")
+    def getAllBackendsWithStatus(self):
+        """Get all backends with their availability status."""
+        try:
+            result = []
+            all_backends = ["whisper", "granite", "liquid", "qwen"]
+
+            for backend in all_backends:
+                info = DependencyManager.get_backend_info(backend)
+                if info:
+                    result.append(
+                        {
+                            "name": backend,
+                            "available": DependencyManager.is_backend_available(
+                                backend
+                            ),
+                            "description": info["description"],
+                            "packages": info["packages"],
+                            "size_estimate": info["size_estimate"],
+                            "install_command": info["install_command"],
+                            "models_available": len(
+                                ModelRegistry.get_models_for_backend(backend)
+                            ),
+                        }
+                    )
+                elif backend == "whisper":
+                    # Whisper is always available (core dependency)
+                    result.append(
+                        {
+                            "name": "whisper",
+                            "available": True,
+                            "description": "OpenAI Whisper via faster-whisper",
+                            "packages": ["faster-whisper"],
+                            "size_estimate": "~80MB",
+                            "install_command": "pip install faster-whisper",
+                            "models_available": len(
+                                ModelRegistry.get_models_for_backend("whisper")
+                            ),
+                        }
+                    )
+
+            return result
+        except Exception as e:
+            logger.error(f"Failed to get all backends: {e}")
+            return []
+
+    @pyqtSlot(str, result="QVariant")
+    def getBackendForModel(self, model_id):
+        """Get the backend name for a specific model."""
+        try:
+            model = ModelRegistry.get_model(model_id)
+            if model:
+                return model.backend
+            return None
+        except Exception as e:
+            logger.error(f"Failed to get backend for model {model_id}: {e}")
+            return None
+
+    @pyqtSlot(str, result=bool)
+    def canDownloadModel(self, model_id):
+        """Check if a model can be downloaded (backend available)."""
+        try:
+            coordinator = get_coordinator()
+            model = ModelRegistry.get_model(model_id)
+            if not model:
+                return False
+            return coordinator.is_backend_available(model.backend)
+        except Exception as e:
+            logger.error(f"Failed to check if model can be downloaded: {e}")
+            return False
 
     @pyqtSlot(result="QVariantList")
     def getAudioDevices(self):

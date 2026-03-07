@@ -71,6 +71,10 @@ class WhisperModelManager:
     def get_model_path(self, model_name):
         """Get the file path for a specific model"""
 
+        # Convert new model_id format to old format if needed
+        if model_name.startswith("whisper-"):
+            model_name = model_name[8:]
+
         # For Faster Whisper, models are stored in a directory structure like:
         # models--Systran--faster-whisper-{model_name}
         faster_whisper_model_dir = os.path.join(
@@ -272,6 +276,10 @@ class WhisperModelManager:
         """Check if a model is downloaded"""
         import os
 
+        # Convert new model_id format to old format if needed
+        if model_name.startswith("whisper-"):
+            model_name = model_name[8:]
+
         # Check for Faster Whisper model directory (Hugging Face format)
         # Format is typically: models--Systran--faster-whisper-{model_name}
         faster_whisper_model_dir = os.path.join(
@@ -315,6 +323,11 @@ class WhisperModelManager:
 
     def load_model(self, model_name):
         """Load a Whisper model using Faster Whisper"""
+        # Convert new model_id format to old format if needed
+        # whisper-tiny -> tiny, whisper-distil-large-v2 -> distil-large-v2
+        if model_name.startswith("whisper-"):
+            model_name = model_name[8:]
+
         # Check if hf_transfer is available using importlib
         try:
             import importlib.util
@@ -412,13 +425,9 @@ class WhisperModelManager:
                     logger.info(
                         f"Loading Distil-Whisper model from local path: {local_path}"
                     )
-                    model = WhisperModel(
-                        local_path, device=device, compute_type=ct
-                    )
+                    model = WhisperModel(local_path, device=device, compute_type=ct)
                 else:
-                    logger.info(
-                        f"Loading Distil-Whisper model from repo: {repo_id}"
-                    )
+                    logger.info(f"Loading Distil-Whisper model from repo: {repo_id}")
                     model = WhisperModel(
                         repo_id,
                         device=device,
@@ -617,8 +626,15 @@ class WhisperModelManager:
     def delete_model(self, model_name):
         """Delete a model file"""
 
+        # Convert new model_id format to old format if needed
+        if model_name.startswith("whisper-"):
+            model_name = model_name[8:]
+
         # Check if model is active
         active_model = self.settings_service.get("model", DEFAULT_WHISPER_MODEL)
+        # Also convert active_model if it has the prefix
+        if active_model.startswith("whisper-"):
+            active_model = active_model[8:]
         if model_name == active_model:
             raise ValueError("Cannot delete the currently active model")
 

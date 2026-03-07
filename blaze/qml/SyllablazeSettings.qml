@@ -140,6 +140,11 @@ Kirigami.ApplicationWindow {
                                 page: "pages/ModelsPage.qml"
                             }
                             ListElement {
+                                name: "Dependencies"
+                                icon: "preferences-other"
+                                page: "pages/DependenciesPage.qml"
+                            }
+                            ListElement {
                                 name: "Audio"
                                 icon: "audio-input-microphone"
                                 page: "pages/AudioPage.qml"

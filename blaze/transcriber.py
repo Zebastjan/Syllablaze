@@ -212,22 +212,30 @@ class WhisperTranscriber(QObject):
         try:
             model_name = self.settings.get("model", DEFAULT_WHISPER_MODEL)
 
+            # Check if this is a Whisper model - skip loading if it's for another backend
+            if not self._is_whisper_model(model_name):
+                logger.info(f"Model {model_name} is not a Whisper model, skipping load")
+                return
+
             # Store the current model name for reference
+            previous_model = self.model
+            previous_model_name = getattr(self, "current_model_name", None)
+
+            # Load the NEW model first (before deleting old one)
+            logger.info(f"Loading Whisper model: {model_name}")
+            new_model = self.model_manager.load_model(model_name)
+
+            # Only after successful load, update state and delete old model
+            self.model = new_model
             self.current_model_name = model_name
 
-            # Explicitly release old model resources (CTranslate2 semaphores, etc.)
-            if self.model is not None:
-                logger.info(
-                    "Releasing previous model resources before loading new model"
-                )
-                del self.model
-                self.model = None
+            # Now safe to delete old model
+            if previous_model is not None:
+                logger.info("Releasing previous model resources")
+                del previous_model
                 import gc
 
                 gc.collect()
-
-            # Load the model using the model manager
-            self.model = self.model_manager.load_model(model_name)
 
             # Update and log the current language setting
             self.current_language = self.settings.get("language", "auto")
@@ -241,11 +249,57 @@ class WhisperTranscriber(QObject):
             # Log to console if running in terminal
             print(f"Model loaded: {model_name}, Language: {lang_str}")
 
+            # Emit success signal
+            self.model_changed.emit(model_name)
+
         except Exception as e:
             logger.error(f"Failed to load Faster Whisper model: {e}")
             print(f"Error loading model: {e}")
-            self.transcription_error.emit(f"Failed to load Faster Whisper model: {e}")
-            raise
+            error_msg = f"Failed to load Faster Whisper model: {e}"
+            self.transcription_error.emit(error_msg)
+            # Don't raise - keep previous model loaded if it exists
+
+    def _is_whisper_model(self, model_name: str) -> bool:
+        """Check if a model is a Whisper model (not Granite, Liquid, or Qwen)"""
+        # Whisper models don't have backend-specific prefixes in their IDs
+        # Or they're in the known Whisper model list
+        from blaze.backends.registry import ModelRegistry
+
+        try:
+            model_info = ModelRegistry.get_model(model_name)
+            if model_info:
+                return model_info.backend == "whisper"
+        except Exception:
+            pass
+
+        # Fallback: check if it's in the known Whisper model names
+        whisper_models = {
+            "tiny",
+            "tiny.en",
+            "base",
+            "base.en",
+            "small",
+            "small.en",
+            "medium",
+            "medium.en",
+            "large-v1",
+            "large-v2",
+            "large-v3",
+            "large",
+            "distil-large-v2",
+            "distil-medium.en",
+            "distil-small.en",
+            "distil-large-v3",
+            "distil-large-v3.5",
+            "large-v3-turbo",
+            "turbo",
+        }
+
+        # Strip whisper- prefix if present
+        if model_name.startswith("whisper-"):
+            model_name = model_name[8:]
+
+        return model_name in whisper_models
 
     def reload_model_if_needed(self):
         """Check if model needs to be reloaded due to settings changes"""

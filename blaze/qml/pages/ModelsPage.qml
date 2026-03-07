@@ -217,8 +217,33 @@ ColumnLayout {
         settingsBridge.modelDownloadComplete.connect(onDownloadComplete)
         settingsBridge.modelDownloadError.connect(onDownloadError)
         settingsBridge.settingChanged.connect(onSettingChanged)
+        settingsBridge.dependencyInstallProgress.connect(onDependencyInstallProgress)
+        settingsBridge.dependencyInstallComplete.connect(onDependencyInstallComplete)
         
         console.log("[ModelsPage] Initialization complete")
+    }
+    
+    function onDependencyInstallProgress(backend, message, progress) {
+        console.log("[ModelsPage] Dependency install progress:", backend, message, progress)
+        if (dependencyInstallDialog) {
+            dependencyInstallDialog.statusMessage = message
+            dependencyInstallDialog.progress = progress
+        }
+    }
+    
+    function onDependencyInstallComplete(backend, success) {
+        console.log("[ModelsPage] Dependency install complete:", backend, success)
+        if (dependencyInstallDialog) {
+            dependencyInstallDialog.installing = false
+            if (success) {
+                dependencyInstallDialog.close()
+                showMessage(backend + " backend installed successfully! You can now download models.", Kirigami.MessageType.Positive)
+                // Refresh the model list to show new availability
+                refreshModels()
+            } else {
+                dependencyInstallDialog.statusMessage = "Installation failed. Please check your internet connection and try again."
+            }
+        }
     }
 
     function refreshModels() {
@@ -294,6 +319,18 @@ ColumnLayout {
         console.log("[ModelsPage] Download error:", modelName, error)
         delete downloadingModels[modelName]
         downloadingModelsChanged()
+        
+        // Check if this is a backend availability error
+        if (error.indexOf("Backend") !== -1 && error.indexOf("not available") !== -1) {
+            var backend = settingsBridge.getBackendForModel(modelName)
+            if (backend) {
+                dependencyInstallDialog.modelId = modelName
+                dependencyInstallDialog.backend = backend
+                dependencyInstallDialog.open()
+                return
+            }
+        }
+        
         showError("Download failed: " + error)
     }
 
@@ -750,6 +787,120 @@ ColumnLayout {
             QQC2.Button {
                 text: "Close"
                 onClicked: modelDetailsDialog.close()
+            }
+        }
+    }
+
+    // Dependency Install Dialog
+    Kirigami.Dialog {
+        id: dependencyInstallDialog
+        property string modelId: ""
+        property string backend: ""
+        property string statusMessage: ""
+        property int progress: 0
+        property bool installing: false
+        
+        title: "Install " + backend + " Backend"
+        
+        onOpened: {
+            installing = false
+            progress = 0
+            statusMessage = ""
+        }
+        
+        ColumnLayout {
+            spacing: Kirigami.Units.largeSpacing
+            
+            QQC2.Label {
+                Layout.fillWidth: true
+                text: "The " + dependencyInstallDialog.backend + " backend requires additional dependencies to be installed."
+                wrapMode: Text.WordWrap
+            }
+            
+            Kirigami.Separator {
+                Layout.fillWidth: true
+            }
+            
+            QQC2.Label {
+                Layout.fillWidth: true
+                text: "Required packages:"
+                font.bold: true
+            }
+            
+            QQC2.Label {
+                Layout.fillWidth: true
+                text: {
+                    var info = settingsBridge.getBackendDependencyInfo(dependencyInstallDialog.backend)
+                    return info.packages ? info.packages.join(", ") : "Unknown"
+                }
+                wrapMode: Text.WordWrap
+                font.family: "monospace"
+            }
+            
+            QQC2.Label {
+                Layout.fillWidth: true
+                text: {
+                    var info = settingsBridge.getBackendDependencyInfo(dependencyInstallDialog.backend)
+                    return "Estimated download size: " + (info.size_estimate || "Unknown")
+                }
+                color: Kirigami.Theme.disabledTextColor
+            }
+            
+            // Progress section (visible during install)
+            ColumnLayout {
+                Layout.fillWidth: true
+                visible: dependencyInstallDialog.installing
+                spacing: Kirigami.Units.smallSpacing
+                
+                QQC2.ProgressBar {
+                    Layout.fillWidth: true
+                    from: 0
+                    to: 100
+                    value: dependencyInstallDialog.progress
+                }
+                
+                QQC2.Label {
+                    Layout.fillWidth: true
+                    text: dependencyInstallDialog.statusMessage
+                    wrapMode: Text.WordWrap
+                }
+            }
+            
+            Kirigami.InlineMessage {
+                Layout.fillWidth: true
+                visible: !dependencyInstallDialog.installing && dependencyInstallDialog.statusMessage !== ""
+                text: dependencyInstallDialog.statusMessage
+                type: Kirigami.MessageType.Error
+            }
+        }
+        
+        footer: RowLayout {
+            spacing: Kirigami.Units.largeSpacing
+            
+            Item { Layout.fillWidth: true }
+            
+            QQC2.Button {
+                text: "Cancel"
+                visible: !dependencyInstallDialog.installing
+                onClicked: dependencyInstallDialog.close()
+            }
+            
+            QQC2.Button {
+                text: "Install"
+                visible: !dependencyInstallDialog.installing
+                icon.name: "download"
+                onClicked: {
+                    dependencyInstallDialog.installing = true
+                    dependencyInstallDialog.statusMessage = "Starting installation..."
+                    settingsBridge.installBackendDependencies(dependencyInstallDialog.backend)
+                }
+            }
+            
+            QQC2.Button {
+                text: "Installing..."
+                visible: dependencyInstallDialog.installing
+                enabled: false
+                icon.name: "content-loading"
             }
         }
     }
