@@ -137,7 +137,7 @@ class SettingsBridge(QObject):
 
     @pyqtSlot(result=bool)
     def getVadFilter(self):
-        return self.settings.get("vad_filter", DEFAULT_VAD_FILTER)
+        return bool(self.settings.get("vad_filter", DEFAULT_VAD_FILTER))
 
     @pyqtSlot(bool)
     def setVadFilter(self, enabled):
@@ -145,7 +145,7 @@ class SettingsBridge(QObject):
 
     @pyqtSlot(result=bool)
     def getWordTimestamps(self):
-        return self.settings.get("word_timestamps", DEFAULT_WORD_TIMESTAMPS)
+        return bool(self.settings.get("word_timestamps", DEFAULT_WORD_TIMESTAMPS))
 
     @pyqtSlot(bool)
     def setWordTimestamps(self, enabled):
@@ -153,7 +153,9 @@ class SettingsBridge(QObject):
 
     @pyqtSlot(result=bool)
     def getClipboardDiagnostics(self):
-        return self.settings.get("clipboard_diagnostics", DEFAULT_CLIPBOARD_DIAGNOSTICS)
+        return bool(
+            self.settings.get("clipboard_diagnostics", DEFAULT_CLIPBOARD_DIAGNOSTICS)
+        )
 
     @pyqtSlot(bool)
     def setClipboardDiagnostics(self, enabled):
@@ -242,61 +244,217 @@ class SettingsBridge(QObject):
 
     # === Model Management (Multi-Backend) ===
 
-    @pyqtSlot(result="QVariantList")
-    def getAvailableModels(self):
-        """Get list of all available models with compatibility info."""
+    @pyqtSlot(str, str, result="QVariant")
+    def getAvailableModels(self, language_filter="all", backend_filter="all"):
+        """Get list of available models filtered by language and backend preference."""
         try:
-            coordinator = get_coordinator()
-            resources = detect_resources()
+            # Get system resources first
+            try:
+                resources = detect_resources()
+                logger.info(
+                    f"Detected resources: RAM={resources.total_ram_gb}GB total, "
+                    f"{resources.available_ram_gb}GB available, "
+                    f"GPU={'Yes' if resources.gpu_available else 'No'}"
+                )
+            except Exception as e:
+                logger.error(f"Failed to detect resources: {e}")
+                # Use default resources
+                from blaze.system.resource_detector import SystemResources
+
+                resources = SystemResources(
+                    total_ram_gb=8.0,
+                    available_ram_gb=4.0,
+                    cpu_count=4,
+                    gpu_available=False,
+                    recommended_tier="light",
+                )
+
+            # Get current active model from settings
             current_model = self.settings.get("model", "whisper-tiny")
+            logger.info(f"Current active model: {current_model}")
+
+            # Determine which language to filter by
+            # language_filter="all" means multilingual mode - show models that support all languages
+            # language_filter="en", "fr", etc. means specific language - show models that support it
+            target_language = (
+                language_filter
+                if language_filter and language_filter != "all"
+                else None
+            )
+            logger.info(
+                f"Language filter: {language_filter}, target_language: {target_language}"
+            )
+
+            # Get models filtered by language from the unified registry
+            try:
+                if target_language:
+                    # Specific language selected - get models that support this language
+                    models_to_check = ModelRegistry.get_models_for_language(
+                        target_language
+                    )
+                else:
+                    # Multilingual mode - show models that support "all" languages OR have 3+ languages
+                    all_models = ModelRegistry.get_all_models()
+                    models_to_check = []
+                    for model in all_models:
+                        # Include models with "all" in languages or with 3+ languages (multilingual)
+                        if "all" in model.languages or len(model.languages) >= 3:
+                            models_to_check.append(model)
+
+                logger.info(
+                    f"Found {len(models_to_check)} models from registry "
+                    f"for language={target_language}, backend={backend_filter}"
+                )
+            except Exception as e:
+                logger.error(f"Failed to get models from registry: {e}")
+                # Fallback to all models from registry
+                models_to_check = ModelRegistry.get_all_models()
+                logger.info(
+                    f"Falling back to all {len(models_to_check)} models from registry"
+                )
+
+            # Filter by backend if specified
+            if backend_filter and backend_filter != "all":
+                models_to_check = [
+                    m for m in models_to_check if m.backend == backend_filter
+                ]
+                logger.info(
+                    f"After backend filter '{backend_filter}': {len(models_to_check)} models"
+                )
+
+            # Get coordinator for download status check (may fail if backends not available)
+            coordinator = None
+            try:
+                coordinator = get_coordinator()
+                logger.info("Successfully got coordinator")
+            except Exception as e:
+                logger.warning(f"Could not get coordinator for download status: {e}")
 
             models = []
-            for model in ModelRegistry.get_all_models():
-                # Get compatibility info
-                compat = ModelRegistry.get_compatibility_info(
-                    model.model_id,
-                    resources.total_ram_gb,
-                    resources.available_ram_gb,
-                    resources.gpu_available,
-                    resources.gpu_memory_gb,
-                )
+            for model in models_to_check:
+                try:
+                    # Get compatibility info
+                    compat = ModelRegistry.get_compatibility_info(
+                        model.model_id,
+                        resources.total_ram_gb,
+                        resources.available_ram_gb,
+                        resources.gpu_available,
+                        resources.gpu_memory_gb,
+                    )
 
-                # Format size
-                if model.size_mb >= 1000:
-                    size_str = f"{model.size_mb / 1024:.1f} GB"
-                else:
-                    size_str = f"{model.size_mb} MB"
+                    # Check if model is downloaded (safely)
+                    is_downloaded = False
+                    if coordinator:
+                        try:
+                            is_downloaded = coordinator.is_model_downloaded(
+                                model.model_id
+                            )
+                        except Exception as e:
+                            logger.debug(
+                                f"Could not check download status for {model.model_id}: {e}"
+                            )
 
-                models.append(
-                    {
-                        "id": model.model_id,
-                        "name": model.name,
-                        "backend": model.backend,
-                        "description": model.description,
-                        "size": size_str,
-                        "sizeMB": model.size_mb,
-                        "downloaded": coordinator.is_model_downloaded(model.model_id),
-                        "active": model.model_id == current_model,
-                        "compatible": compat["compatible"],
-                        "compatibility_reason": compat["reason"],
-                        "recommended": compat["recommended"],
-                        "languages": model.languages,
-                        "tier": model.tier.value,
+                    # Format size
+                    if model.size_mb >= 1000:
+                        size_str = f"{model.size_mb / 1024:.1f} GB"
+                    else:
+                        size_str = f"{model.size_mb} MB"
+
+                    # Ensure all values are basic Python types for QML compatibility
+                    model_dict = {
+                        "id": str(model.model_id),
+                        "name": str(model.name),
+                        "backend": str(model.backend),
+                        "description": str(model.description)
+                        if model.description
+                        else "",
+                        "size": str(size_str),
+                        "sizeMB": int(model.size_mb),
+                        "downloaded": bool(is_downloaded),
+                        "active": bool(model.model_id == current_model),
+                        "compatible": bool(compat["compatible"]),
+                        "compatibility_reason": str(compat["reason"])
+                        if compat["reason"]
+                        else "",
+                        "recommended": bool(compat["recommended"]),
+                        "languages": [str(lang) for lang in model.languages],
+                        "tier": str(
+                            model.tier.value
+                            if hasattr(model.tier, "value")
+                            else model.tier
+                        ),
                     }
-                )
+                    models.append(model_dict)
+                except Exception as e:
+                    logger.error(f"Error processing model {model.model_id}: {e}")
+                    # Skip this model but continue with others
+                    continue
 
-            logger.info(f"Found {len(models)} available models")
+            # Sort models: recommended first, then by performance (high to low), then by size (small to large)
+            def get_model_performance(model_dict):
+                """Get performance score for sorting."""
+                try:
+                    # Get the actual model to access language_performance
+                    model = ModelRegistry.get_model(model_dict["id"])
+                    if model and model.language_performance:
+                        # Use "all" score if available, otherwise use first available language score
+                        if "all" in model.language_performance:
+                            return model.language_performance["all"]
+                        elif model.language_performance:
+                            return max(model.language_performance.values())
+                except Exception:
+                    pass
+                # Fallback tier-based performance
+                tier_scores = {
+                    "ultra_light": 0.70,
+                    "light": 0.80,
+                    "medium": 0.88,
+                    "heavy": 0.95,
+                }
+                return tier_scores.get(model_dict["tier"], 0.75)
+
+            try:
+                models.sort(
+                    key=lambda m: (
+                        not m[
+                            "recommended"
+                        ],  # Recommended first (False < True, so negate)
+                        -get_model_performance(
+                            m
+                        ),  # Higher performance first (negate for descending)
+                        m["sizeMB"],  # Smaller size first
+                    )
+                )
+            except Exception as e:
+                logger.error(f"Error sorting models: {e}")
+                # Keep unsorted list
+
+            logger.info(
+                f"Returning {len(models)} models for language filter: {language_filter}"
+            )
+
+            if not models:
+                logger.warning("No models found! This should not happen.")
+                # Return legacy models as absolute fallback
+                return self._getLegacyModels()
+
             return models
 
         except Exception as e:
-            logger.error(f"Failed to get available models: {e}")
+            logger.error(f"Failed to get available models: {e}", exc_info=True)
+            # Fallback to legacy implementation
+            return self._getLegacyModels()
+
+            return models
+
+        except Exception as e:
+            logger.error(f"Failed to get available models: {e}", exc_info=True)
             # Fallback to legacy implementation
             return self._getLegacyModels()
 
     def _getLegacyModels(self):
-        """Legacy model list for backward compatibility"""
-        from blaze.models import WhisperModelManager
-        import os
+        """Legacy model list for backward compatibility - used when unified registry fails"""
+        logger.info("Using legacy model list fallback")
 
         MODEL_SIZES = {
             "tiny": 75,
@@ -319,31 +477,98 @@ class SettingsBridge(QObject):
             "distil-large-v3.5": 1600,
         }
 
-        manager = WhisperModelManager(self.settings)
-        models = []
-        current_model = self.settings.get("model", "large-v3")
+        MODEL_DESCRIPTIONS = {
+            "tiny": "Fastest model, basic accuracy (75MB). Good for CPU-only systems.",
+            "tiny.en": "English-only version of tiny model (75MB).",
+            "base": "Good balance of speed and accuracy (145MB).",
+            "base.en": "English-only version of base model (145MB).",
+            "small": "Better accuracy, still fast (485MB).",
+            "small.en": "English-only version of small model (485MB).",
+            "medium": "High accuracy, multilingual (1.5GB).",
+            "medium.en": "High accuracy, English-only (1.5GB).",
+            "large-v1": "Excellent accuracy, large model (3.1GB).",
+            "large-v2": "Excellent accuracy, large model (3.1GB).",
+            "large-v3": "Best Whisper accuracy (3.1GB).",
+            "large-v3-turbo": "Large v3 accuracy with faster inference (1.6GB).",
+            "large": "Excellent accuracy, large model (3.1GB).",
+            "distil-small.en": "Distilled for speed, English-only (340MB).",
+            "distil-medium.en": "Distilled for speed, English-only (790MB).",
+            "distil-large-v2": "Distilled large model (1.6GB).",
+            "distil-large-v3": "Distilled large model (1.6GB).",
+            "distil-large-v3.5": "Distilled large model (1.6GB).",
+        }
 
-        for model_name in manager.AVAILABLE_MODELS:
-            is_downloaded = manager.is_model_downloaded(model_name)
-            size_mb = MODEL_SIZES.get(model_name, 0)
+        try:
+            from blaze.models import WhisperModelManager
 
-            if size_mb >= 1000:
-                size_str = f"{size_mb / 1024:.1f} GB"
-            else:
-                size_str = f"{size_mb} MB"
-
-            models.append(
-                {
-                    "name": model_name,
-                    "downloaded": is_downloaded,
-                    "active": model_name == current_model,
-                    "size": size_str,
-                    "sizeMB": size_mb,
-                    "compatible": True,
-                    "backend": "whisper",
-                }
+            manager = WhisperModelManager(self.settings)
+            available_models = manager.AVAILABLE_MODELS
+            logger.info(
+                f"Legacy: Got {len(available_models)} models from WhisperModelManager"
+            )
+        except Exception as e:
+            logger.error(f"Legacy: Could not get models from WhisperModelManager: {e}")
+            # Hardcoded fallback
+            available_models = list(MODEL_SIZES.keys())
+            logger.info(
+                f"Legacy: Using hardcoded list of {len(available_models)} models"
             )
 
+        models = []
+        current_model = self.settings.get("model", "whisper-tiny")
+
+        # Map legacy model names to unified format for comparison
+        def legacy_to_unified(name):
+            return f"whisper-{name}" if not name.startswith("whisper-") else name
+
+        for model_name in available_models:
+            try:
+                size_mb = MODEL_SIZES.get(model_name, 100)
+
+                if size_mb >= 1000:
+                    size_str = f"{size_mb / 1024:.1f} GB"
+                else:
+                    size_str = f"{size_mb} MB"
+
+                # Check if downloaded (safely)
+                is_downloaded = False
+                try:
+                    from blaze.models import WhisperModelManager
+
+                    manager = WhisperModelManager(self.settings)
+                    is_downloaded = manager.is_model_downloaded(model_name)
+                except Exception as e:
+                    logger.debug(
+                        f"Could not check download status for {model_name}: {e}"
+                    )
+
+                unified_name = legacy_to_unified(model_name)
+
+                models.append(
+                    {
+                        "id": unified_name,
+                        "name": model_name.capitalize(),
+                        "backend": "whisper",
+                        "description": MODEL_DESCRIPTIONS.get(
+                            model_name, f"{model_name} model"
+                        ),
+                        "size": size_str,
+                        "sizeMB": size_mb,
+                        "downloaded": is_downloaded,
+                        "active": unified_name == current_model
+                        or model_name == current_model,
+                        "compatible": True,
+                        "compatibility_reason": "",
+                        "recommended": False,
+                        "languages": ["all"] if ".en" not in model_name else ["en"],
+                        "tier": "light" if size_mb < 1000 else "heavy",
+                    }
+                )
+            except Exception as e:
+                logger.error(f"Error processing legacy model {model_name}: {e}")
+                continue
+
+        logger.info(f"Legacy: Returning {len(models)} models")
         return models
 
     @pyqtSlot(result="QVariantMap")
@@ -387,6 +612,72 @@ class SettingsBridge(QObject):
         except Exception as e:
             logger.error(f"Failed to get recommended model: {e}")
             return {}
+
+    @pyqtSlot(result=str)
+    def getSystemLanguage(self):
+        """Get the KDE system locale language code (e.g., 'en', 'fr', 'de')."""
+        try:
+            import locale
+            import os
+
+            # Try environment variables first (KDE sets these)
+            lang_env = os.environ.get("LANG", "")
+            if lang_env:
+                # Extract language code from "en_GB.UTF-8" -> "en"
+                lang_code = lang_env.split("_")[0].split(".")[0].lower()
+                if lang_code in Settings.VALID_LANGUAGES and lang_code != "auto":
+                    logger.info(f"Detected system language from LANG: {lang_code}")
+                    return lang_code
+
+            # Fallback to locale module
+            try:
+                loc = locale.getlocale()
+                if loc and loc[0]:
+                    lang_code = loc[0].split("_")[0].lower()
+                    if lang_code in Settings.VALID_LANGUAGES and lang_code != "auto":
+                        logger.info(
+                            f"Detected system language from locale: {lang_code}"
+                        )
+                        return lang_code
+            except:
+                pass
+
+            # Default to English
+            logger.info("Could not detect system language, defaulting to 'en'")
+            return "en"
+        except Exception as e:
+            logger.error(f"Failed to get system language: {e}")
+            return "en"
+
+    @pyqtSlot(result=bool)
+    def getLanguageMultilingual(self):
+        """Get whether multilingual mode is enabled."""
+        return bool(self.settings.get("language_multilingual", True))
+
+    @pyqtSlot(bool)
+    def setLanguageMultilingual(self, enabled):
+        """Set multilingual mode."""
+        self.set("language_multilingual", enabled)
+        # Emit signal to refresh models
+        self.settingChanged.emit("language_mode_changed", enabled)
+
+    @pyqtSlot(result=str)
+    def getLanguageSpecific(self):
+        """Get the specific language when not in multilingual mode."""
+        # Default to system language if not set
+        specific = self.settings.get("language_specific", None)
+        if specific is None:
+            specific = self.getSystemLanguage()
+            self.settings.set("language_specific", specific)
+        return specific
+
+    @pyqtSlot(str)
+    def setLanguageSpecific(self, lang_code):
+        """Set the specific language code."""
+        if lang_code in Settings.VALID_LANGUAGES and lang_code != "auto":
+            self.set("language_specific", lang_code)
+            # Emit signal to refresh models
+            self.settingChanged.emit("language_mode_changed", lang_code)
 
     @pyqtSlot(str)
     def downloadModel(self, model_name):
@@ -458,6 +749,94 @@ class SettingsBridge(QObject):
         """Set the active model (supports both old and new formats)."""
         logger.info(f"Setting active model: {model_name}")
         self.set("model", model_name)
+
+    @pyqtSlot(str, result="QVariantMap")
+    def getModelDetails(self, model_id):
+        """Get detailed information about a specific model for the popup."""
+        try:
+            coordinator = get_coordinator()
+            current_model = self.settings.get("model", "whisper-tiny")
+
+            model = ModelRegistry.get_model(model_id)
+            if not model:
+                return {"error": f"Model not found: {model_id}"}
+
+            # Get compatibility info
+            resources = detect_resources()
+            compat = ModelRegistry.get_compatibility_info(
+                model.model_id,
+                resources.total_ram_gb,
+                resources.available_ram_gb,
+                resources.gpu_available,
+                resources.gpu_memory_gb,
+            )
+
+            # Format GPU preference for display
+            gpu_pref_map = {
+                "gpu_agnostic": "Works on CPU or GPU",
+                "gpu_preferred": "Works best with GPU",
+                "nvidia_preferred": "Optimized for NVIDIA GPUs",
+            }
+            gpu_preference_display = gpu_pref_map.get(
+                model.gpu_preference, model.gpu_preference
+            )
+
+            # Build language performance display
+            lang_perf = {}
+            if model.language_performance:
+                for lang, score in model.language_performance.items():
+                    if lang == "all":
+                        lang_perf["Multilingual"] = f"{int(score * 100)}%"
+                    elif lang in Settings.VALID_LANGUAGES:
+                        lang_perf[Settings.VALID_LANGUAGES[lang]] = (
+                            f"{int(score * 100)}%"
+                        )
+                    else:
+                        lang_perf[lang.upper()] = f"{int(score * 100)}%"
+
+            # Format languages list
+            languages_display = []
+            for lang in model.languages:
+                if lang == "all":
+                    languages_display.append("All languages")
+                elif lang in Settings.VALID_LANGUAGES:
+                    languages_display.append(Settings.VALID_LANGUAGES[lang])
+                else:
+                    languages_display.append(lang.upper())
+
+            # Format size
+            if model.size_mb >= 1000:
+                size_str = f"{model.size_mb / 1024:.1f} GB"
+            else:
+                size_str = f"{model.size_mb} MB"
+
+            return {
+                "id": model.model_id,
+                "name": model.name,
+                "backend": model.backend,
+                "description": model.description,
+                "size": size_str,
+                "size_mb": model.size_mb,
+                "min_ram_gb": model.min_ram_gb,
+                "recommended_ram_gb": model.recommended_ram_gb,
+                "min_vram_gb": model.min_vram_gb,
+                "languages": languages_display,
+                "language_performance": lang_perf,
+                "gpu_preference": gpu_preference_display,
+                "gpu_preference_raw": model.gpu_preference,
+                "tier": model.tier.value,
+                "license": model.license,
+                "supports_word_timestamps": model.supports_word_timestamps,
+                "is_streaming": model.is_streaming,
+                "compatible": compat["compatible"],
+                "compatibility_reason": compat["reason"],
+                "recommended": compat["recommended"],
+                "downloaded": coordinator.is_model_downloaded(model.model_id),
+                "active": model.model_id == current_model,
+            }
+        except Exception as e:
+            logger.error(f"Failed to get model details for {model_id}: {e}")
+            return {"error": str(e)}
 
     @pyqtSlot(result="QVariantList")
     def getAudioDevices(self):
