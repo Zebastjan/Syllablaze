@@ -7,11 +7,13 @@ features while maintaining backward compatibility with existing code.
 """
 
 import logging
+import threading
 from typing import Optional, List, Dict, Any
 from PyQt6.QtCore import pyqtSlot, pyqtProperty, pyqtSignal, QObject
 
 from blaze.backends.registry import ModelRegistry, ModelCapability
 from blaze.backends.coordinator import get_coordinator
+from blaze.backends.dependency_manager import DependencyManager
 from blaze.system.resource_detector import detect_resources
 
 logger = logging.getLogger(__name__)
@@ -26,11 +28,18 @@ class ModelSettingsBridge(QObject):
     - Model compatibility checking
     - Unified model registry access
     - Backend management
+    - Dependency management for optional backends
     """
 
     # Signals
     hardwareInfoChanged = pyqtSignal()
     compatibleModelsChanged = pyqtSignal()
+    modelDownloadProgress = pyqtSignal(str, int)
+    modelDownloadComplete = pyqtSignal(str)
+    modelDownloadError = pyqtSignal(str, str)
+    dependencyInstallProgress = pyqtSignal(str, str, int)
+    dependencyInstallComplete = pyqtSignal(str, bool)
+    backendAvailabilityChanged = pyqtSignal(str, bool)
 
     def __init__(self, settings, parent=None):
         super().__init__(parent)
@@ -285,54 +294,151 @@ class ModelSettingsBridge(QObject):
         """Get list of available backend names"""
         return self._coordinator.get_available_backends()
 
-    @pyqtSlot(str, result=bool)
+    @pyqtSlot(str, result="QVariant")
     def isBackendAvailable(self, backend: str) -> bool:
         """Check if a backend is available"""
         return self._coordinator.is_backend_available(backend)
 
-    # === Model Operations ===
+    # === Dependency Management ===
+
+    @pyqtSlot(str, result="QVariantMap")
+    def getBackendDependencyInfo(self, backend: str) -> Dict[str, Any]:
+        """
+        Get dependency information for a backend.
+
+        Returns dict with:
+        - available: Whether backend is currently available
+        - packages: List of required packages
+        - install_command: Command to install dependencies
+        - description: Human-readable description
+        - size_estimate: Estimated download size
+        """
+        info = DependencyManager.get_backend_info(backend)
+        if not info:
+            return {
+                "available": False,
+                "error": f"Unknown backend: {backend}",
+            }
+
+        return {
+            "available": DependencyManager.is_backend_available(backend),
+            "packages": info["packages"],
+            "install_command": info["install_command"],
+            "description": info["description"],
+            "size_estimate": info["size_estimate"],
+        }
+
+    @pyqtSlot(str, result="QVariant")
+    def checkBackendDependencies(self, backend: str) -> bool:
+        """Check if a backend's dependencies are installed"""
+        return DependencyManager.is_backend_available(backend)
 
     @pyqtSlot(str)
-    def downloadModel(self, model_id: str):
-        """Download a model with progress tracking"""
-        import threading
+    def installBackendDependencies(self, backend: str):
+        """
+        Install dependencies for a backend.
+        Emits dependencyInstallProgress and dependencyInstallComplete signals.
+        """
 
-        def progress_callback(progress: int):
-            # This would need to be connected to parent's signal
-            logger.info(f"Download progress for {model_id}: {progress}%")
+        def progress_callback(message: str, progress: int):
+            self.dependencyInstallProgress.emit(backend, message, progress)
 
-        def download_thread():
+        def install_thread():
             try:
-                success = self._coordinator.download_model(model_id, progress_callback)
-                if success:
-                    logger.info(f"Download complete: {model_id}")
-                else:
-                    logger.error(f"Download failed: {model_id}")
-            except Exception as e:
-                logger.error(f"Download error for {model_id}: {e}")
+                logger.info(f"Starting dependency installation for {backend}")
+                self.dependencyInstallProgress.emit(
+                    backend, "Starting installation...", 0
+                )
 
-        thread = threading.Thread(target=download_thread, daemon=True)
+                success = DependencyManager.install_backend(backend, progress_callback)
+
+                if success:
+                    logger.info(f"Successfully installed {backend} dependencies")
+                    self.dependencyInstallComplete.emit(backend, True)
+                    self.backendAvailabilityChanged.emit(backend, True)
+                else:
+                    logger.error(f"Failed to install {backend} dependencies")
+                    self.dependencyInstallComplete.emit(backend, False)
+
+            except Exception as e:
+                logger.error(f"Installation error for {backend}: {e}")
+                self.dependencyInstallProgress.emit(backend, f"Error: {str(e)}", 0)
+                self.dependencyInstallComplete.emit(backend, False)
+
+        thread = threading.Thread(target=install_thread, daemon=True)
         thread.start()
 
-    @pyqtSlot(str)
-    def deleteModel(self, model_id: str):
-        """Delete a downloaded model"""
-        try:
-            self._coordinator.delete_model(model_id)
-            logger.info(f"Deleted model: {model_id}")
-        except Exception as e:
-            logger.error(f"Failed to delete model {model_id}: {e}")
+    @pyqtSlot(str, result="QVariantList")
+    def getAllBackendsWithStatus(self) -> List[Dict[str, Any]]:
+        """
+        Get all backends with their availability status.
 
-    @pyqtSlot(str)
-    def setActiveModel(self, model_id: str):
-        """Set the active model"""
-        logger.info(f"Setting active model: {model_id}")
-        self._settings.set("model", model_id)
+        Returns list of dicts with:
+        - name: Backend name
+        - available: Whether available
+        - description: Human-readable description
+        - size_estimate: Download size estimate
+        - install_command: Installation command
+        """
+        from blaze.backends.registry import ModelRegistry
 
-    @pyqtSlot(str, result=bool)
-    def isModelDownloaded(self, model_id: str) -> bool:
+        result = []
+        all_backends = ["whisper", "granite", "liquid", "qwen"]
+
+        for backend in all_backends:
+            info = DependencyManager.get_backend_info(backend)
+            if info:
+                result.append(
+                    {
+                        "name": backend,
+                        "available": DependencyManager.is_backend_available(backend),
+                        "description": info["description"],
+                        "packages": info["packages"],
+                        "size_estimate": info["size_estimate"],
+                        "install_command": info["install_command"],
+                        "models_available": len(
+                            ModelRegistry.get_models_for_backend(backend)
+                        ),
+                    }
+                )
+            elif backend == "whisper":
+                # Whisper is always available (core dependency)
+                result.append(
+                    {
+                        "name": "whisper",
+                        "available": True,
+                        "description": "OpenAI Whisper via faster-whisper",
+                        "packages": ["faster-whisper"],
+                        "size_estimate": "~80MB",
+                        "install_command": "pip install faster-whisper",
+                        "models_available": len(
+                            ModelRegistry.get_models_for_backend("whisper")
+                        ),
+                    }
+                )
+
+        return result
+
+    @pyqtSlot(str, result="QVariant")
+    def getBackendForModel(self, model_id: str) -> Optional[str]:
+        """Get the backend name for a specific model"""
+        model = ModelRegistry.get_model(model_id)
+        if model:
+            return model.backend
+        return None
+
+    @pyqtSlot(str, result="QVariant")
+    def canDownloadModel(self, model_id: str):
+        """Check if a model can be downloaded (backend available)"""
+        model = ModelRegistry.get_model(model_id)
+        if not model:
+            return False
+        return self._coordinator.is_backend_available(model.backend)
+
+    @pyqtSlot(str, result="QVariant")
+    def isModelDownloaded(self, model_id: str):
         """Check if a model is downloaded"""
-        return self._coordinator.is_model_downloaded(model_id)
+        return bool(self._coordinator.is_model_downloaded(model_id))
 
     # === Utility Methods ===
 

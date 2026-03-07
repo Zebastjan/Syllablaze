@@ -30,6 +30,8 @@ UNIFIED_MODEL_REGISTRY: Dict[str, ModelCapability] = {
         license="MIT",
         supports_word_timestamps=True,
         repo_id="Systran/faster-whisper-tiny",
+        language_performance={"all": 0.75},
+        gpu_preference="gpu_agnostic",
     ),
     "whisper-tiny.en": ModelCapability(
         model_id="whisper-tiny.en",
@@ -45,6 +47,8 @@ UNIFIED_MODEL_REGISTRY: Dict[str, ModelCapability] = {
         license="MIT",
         supports_word_timestamps=True,
         repo_id="Systran/faster-whisper-tiny.en",
+        language_performance={"en": 0.76},
+        gpu_preference="gpu_agnostic",
     ),
     "whisper-base": ModelCapability(
         model_id="whisper-base",
@@ -60,6 +64,8 @@ UNIFIED_MODEL_REGISTRY: Dict[str, ModelCapability] = {
         license="MIT",
         supports_word_timestamps=True,
         repo_id="Systran/faster-whisper-base",
+        language_performance={"all": 0.78},
+        gpu_preference="gpu_agnostic",
     ),
     "whisper-base.en": ModelCapability(
         model_id="whisper-base.en",
@@ -75,6 +81,8 @@ UNIFIED_MODEL_REGISTRY: Dict[str, ModelCapability] = {
         license="MIT",
         supports_word_timestamps=True,
         repo_id="Systran/faster-whisper-base.en",
+        language_performance={"en": 0.79},
+        gpu_preference="gpu_agnostic",
     ),
     # Light tier (2-4GB RAM)
     "whisper-small": ModelCapability(
@@ -91,6 +99,8 @@ UNIFIED_MODEL_REGISTRY: Dict[str, ModelCapability] = {
         license="MIT",
         supports_word_timestamps=True,
         repo_id="Systran/faster-whisper-small",
+        language_performance={"all": 0.82},
+        gpu_preference="gpu_agnostic",
     ),
     "whisper-small.en": ModelCapability(
         model_id="whisper-small.en",
@@ -106,6 +116,8 @@ UNIFIED_MODEL_REGISTRY: Dict[str, ModelCapability] = {
         license="MIT",
         supports_word_timestamps=True,
         repo_id="Systran/faster-whisper-small.en",
+        language_performance={"en": 0.84},
+        gpu_preference="gpu_agnostic",
     ),
     "whisper-distil-small.en": ModelCapability(
         model_id="whisper-distil-small.en",
@@ -121,6 +133,8 @@ UNIFIED_MODEL_REGISTRY: Dict[str, ModelCapability] = {
         license="MIT",
         supports_word_timestamps=True,
         repo_id="Systran/faster-distil-whisper-small.en",
+        language_performance={"en": 0.83},
+        gpu_preference="gpu_agnostic",
     ),
     # Medium tier (4-8GB RAM)
     "whisper-medium": ModelCapability(
@@ -137,6 +151,8 @@ UNIFIED_MODEL_REGISTRY: Dict[str, ModelCapability] = {
         license="MIT",
         supports_word_timestamps=True,
         repo_id="Systran/faster-whisper-medium",
+        language_performance={"all": 0.89},
+        gpu_preference="gpu_agnostic",
     ),
     "whisper-medium.en": ModelCapability(
         model_id="whisper-medium.en",
@@ -152,6 +168,8 @@ UNIFIED_MODEL_REGISTRY: Dict[str, ModelCapability] = {
         license="MIT",
         supports_word_timestamps=True,
         repo_id="Systran/faster-whisper-medium.en",
+        language_performance={"en": 0.90},
+        gpu_preference="gpu_agnostic",
     ),
     "whisper-distil-medium.en": ModelCapability(
         model_id="whisper-distil-medium.en",
@@ -167,6 +185,8 @@ UNIFIED_MODEL_REGISTRY: Dict[str, ModelCapability] = {
         license="MIT",
         supports_word_timestamps=True,
         repo_id="Systran/faster-distil-whisper-medium.en",
+        language_performance={"en": 0.89},
+        gpu_preference="gpu_agnostic",
     ),
     # Heavy tier (8GB+ RAM)
     "whisper-large-v2": ModelCapability(
@@ -183,6 +203,8 @@ UNIFIED_MODEL_REGISTRY: Dict[str, ModelCapability] = {
         license="MIT",
         supports_word_timestamps=True,
         repo_id="Systran/faster-whisper-large-v2",
+        language_performance={"all": 0.93},
+        gpu_preference="gpu_preferred",
     ),
     "whisper-large-v3": ModelCapability(
         model_id="whisper-large-v3",
@@ -198,6 +220,8 @@ UNIFIED_MODEL_REGISTRY: Dict[str, ModelCapability] = {
         license="MIT",
         supports_word_timestamps=True,
         repo_id="Systran/faster-whisper-large-v3",
+        language_performance={"all": 0.95},
+        gpu_preference="gpu_preferred",
     ),
     "whisper-large-v3-turbo": ModelCapability(
         model_id="whisper-large-v3-turbo",
@@ -213,6 +237,8 @@ UNIFIED_MODEL_REGISTRY: Dict[str, ModelCapability] = {
         license="MIT",
         supports_word_timestamps=True,
         repo_id="Systran/faster-whisper-large-v3-turbo",
+        language_performance={"all": 0.94},
+        gpu_preference="gpu_preferred",
     ),
     "whisper-distil-large-v2": ModelCapability(
         model_id="whisper-distil-large-v2",
@@ -228,6 +254,8 @@ UNIFIED_MODEL_REGISTRY: Dict[str, ModelCapability] = {
         license="MIT",
         supports_word_timestamps=True,
         repo_id="Systran/faster-distil-whisper-large-v2",
+        language_performance={"all": 0.94},
+        gpu_preference="gpu_preferred",
     ),
     # =========================================================================
     # IBM GRANITE SPEECH MODELS
@@ -246,6 +274,20 @@ UNIFIED_MODEL_REGISTRY: Dict[str, ModelCapability] = {
         license="Apache-2.0",
         supports_word_timestamps=False,
         repo_id="ibm-granite/granite-speech-3.3-2b",
+        language_performance={
+            "en": 0.95,
+            "fr": 0.95,
+            "de": 0.95,
+            "es": 0.90,
+            "pt": 0.90,
+            "it": 0.75,
+            "nl": 0.75,
+            "pl": 0.70,
+            "ja": 0.65,
+            "zh": 0.65,
+            "ru": 0.70,
+        },
+        gpu_preference="gpu_agnostic",
     ),
     # =========================================================================
     # LIQUID AI MODELS
@@ -265,6 +307,8 @@ UNIFIED_MODEL_REGISTRY: Dict[str, ModelCapability] = {
         is_streaming=True,
         supports_word_timestamps=False,
         repo_id="LiquidAI/LFM2.5-Audio-1.5B",
+        language_performance={"en": 0.95},
+        gpu_preference="gpu_agnostic",
     ),
     # =========================================================================
     # QWEN MODELS (Future - placeholders for now)
@@ -320,7 +364,11 @@ class ModelRegistry:
         """
         results = []
         for model in UNIFIED_MODEL_REGISTRY.values():
-            if "all" in model.languages or language in model.languages:
+            if language == "all":
+                # Multilingual mode: include models that support "all" OR have 3+ languages
+                if "all" in model.languages or len(model.languages) >= 3:
+                    results.append(model)
+            elif "all" in model.languages or language in model.languages:
                 results.append(model)
         return results
 

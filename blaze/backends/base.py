@@ -40,6 +40,13 @@ class ModelCapability:
     is_streaming: bool = False
     supports_word_timestamps: bool = False
     repo_id: Optional[str] = None  # HuggingFace repo ID for downloading
+    # Performance and hardware preferences
+    language_performance: Optional[Dict[str, float]] = (
+        None  # Language -> score (0.0-1.0)
+    )
+    gpu_preference: str = (
+        "gpu_agnostic"  # "gpu_agnostic", "gpu_preferred", "nvidia_preferred"
+    )
 
 
 @dataclass

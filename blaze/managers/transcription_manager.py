@@ -80,13 +80,31 @@ class TranscriptionManager(QObject):
             True if initialization was successful, False otherwise
         """
         try:
-            from blaze.transcriber import WhisperTranscriber
-
             # Configure optimal settings
             self.configure_optimal_settings()
 
-            # Create transcriber instance
-            self.transcriber = WhisperTranscriber()
+            # Determine which transcriber to use based on model backend
+            model_name = self.settings.get("model", DEFAULT_WHISPER_MODEL)
+            backend_type = self.settings.get("model_backend", "whisper")
+
+            logger.info(
+                f"Initializing transcriber for model: {model_name} (backend: {backend_type})"
+            )
+
+            if backend_type == "whisper":
+                # Use WhisperTranscriber for Whisper models
+                from blaze.transcriber import WhisperTranscriber
+
+                self.transcriber = WhisperTranscriber()
+                logger.info("Using WhisperTranscriber for Whisper backend")
+            else:
+                # Use CoordinatorTranscriber for other backends (Granite, Liquid, Qwen)
+                from blaze.managers.coordinator_transcriber import (
+                    CoordinatorTranscriber,
+                )
+
+                self.transcriber = CoordinatorTranscriber(self.settings)
+                logger.info(f"Using CoordinatorTranscriber for {backend_type} backend")
 
             # Connect signals
             self.transcriber.transcription_progress.connect(self.transcription_progress)
@@ -99,7 +117,7 @@ class TranscriptionManager(QObject):
             self.transcriber.language_changed.connect(self.language_changed)
 
             # Store current model and language
-            self.current_model = self.settings.get("model", DEFAULT_WHISPER_MODEL)
+            self.current_model = model_name
             self.current_language = self.settings.get("language", "auto")
 
             logger.info(
@@ -301,7 +319,7 @@ class TranscriptionManager(QObject):
         """
         if not self.transcriber:
             return False
-        if not hasattr(self.transcriber, 'worker') or not self.transcriber.worker:
+        if not hasattr(self.transcriber, "worker") or not self.transcriber.worker:
             return False
         return self.transcriber.worker.isRunning()
 
@@ -325,7 +343,7 @@ class TranscriptionManager(QObject):
         if not self.transcriber:
             return True
 
-        if not hasattr(self.transcriber, 'worker') or not self.transcriber.worker:
+        if not hasattr(self.transcriber, "worker") or not self.transcriber.worker:
             return True
 
         worker = self.transcriber.worker
@@ -366,7 +384,10 @@ class TranscriptionManager(QObject):
         to ensure CTranslate2's internal semaphores are properly released.
         """
         try:
-            if hasattr(self.transcriber, 'model') and self.transcriber.model is not None:
+            if (
+                hasattr(self.transcriber, "model")
+                and self.transcriber.model is not None
+            ):
                 logger.debug("Releasing model reference after worker termination")
                 self.transcriber.model = None
 
@@ -374,6 +395,7 @@ class TranscriptionManager(QObject):
 
             try:
                 import torch
+
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
                     torch.cuda.synchronize()
