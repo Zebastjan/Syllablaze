@@ -126,6 +126,8 @@ class TranscriptionManager(QObject):
             return True
         except Exception as e:
             logger.error(f"Failed to initialize transcription manager: {e}")
+            logger.error(f"Exception type: {type(e).__name__}")
+            logger.error(f"Full traceback:\n{traceback.format_exc()}")
             self._create_dummy_transcriber()
             return False
 
@@ -163,6 +165,14 @@ class TranscriptionManager(QObject):
                 return False
 
             def update_language(self, *args, **kwargs):
+                return False
+
+            def is_model_loaded(self):
+                """Dummy transcriber never has a model loaded"""
+                return False
+
+            def reload_model_if_needed(self):
+                """Dummy transcriber cannot reload"""
                 return False
 
         # Create a dummy transcriber with the same interface
