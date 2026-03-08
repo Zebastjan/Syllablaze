@@ -226,21 +226,37 @@ class WhisperTranscriber(BaseTranscriber):
             previous_model = self.model
             previous_model_name = getattr(self, "current_model_name", None)
 
-            # Load the NEW model first (before deleting old one)
-            logger.info(f"Loading Whisper model: {model_name}")
-            new_model = self.model_manager.load_model(model_name)
-
-            # Only after successful load, update state and delete old model
-            self.model = new_model
-            self.current_model_name = model_name
-
-            # Now safe to delete old model
+            # CRITICAL: Delete old model BEFORE loading new one to prevent OOM
             if previous_model is not None:
-                logger.info("Releasing previous model resources")
+                logger.info(
+                    "Releasing previous model resources before loading new model"
+                )
+                self.model = None  # Mark as unloaded immediately
                 del previous_model
                 import gc
 
                 gc.collect()
+
+                # Clear GPU cache after unloading
+                try:
+                    import torch
+
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                        torch.cuda.synchronize()
+                        logger.info("Cleared CUDA cache after unloading previous model")
+                except ImportError:
+                    pass
+                except Exception as e:
+                    logger.warning(f"Error clearing CUDA cache: {e}")
+
+            # Load the new model (after old one is freed)
+            logger.info(f"Loading Whisper model: {model_name}")
+            new_model = self.model_manager.load_model(model_name)
+
+            # Update state with new model
+            self.model = new_model
+            self.current_model_name = model_name
 
             # Update and log the current language setting
             self.current_language = self.settings.get("language", "auto")
@@ -262,7 +278,7 @@ class WhisperTranscriber(BaseTranscriber):
             print(f"Error loading model: {e}")
             error_msg = f"Failed to load Faster Whisper model: {e}"
             self.transcription_error.emit(error_msg)
-            # Don't raise - keep previous model loaded if it exists
+            # Don't raise - model is now None, user will need to retry
 
     def _is_whisper_model(self, model_name: str) -> bool:
         """Check if a model is a Whisper model (not Granite, Liquid, or Qwen)"""

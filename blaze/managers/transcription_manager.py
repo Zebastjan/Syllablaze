@@ -212,6 +212,10 @@ class TranscriptionManager(QObject):
                 """Dummy transcriber cannot reload"""
                 return False
 
+            def cleanup(self):
+                """Dummy cleanup - nothing to clean up"""
+                pass
+
         # Create a dummy transcriber with the same interface
         self.transcriber = DummyTranscriber()
 
