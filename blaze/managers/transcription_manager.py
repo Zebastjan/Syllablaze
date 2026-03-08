@@ -145,6 +145,9 @@ class TranscriptionManager(QObject):
             def __init__(self):
                 super().__init__()  # Initialize the QObject base class
                 self.model = None
+                self.current_model_name = (
+                    None  # For CoordinatorTranscriber compatibility
+                )
 
             def transcribe_audio(self, *args, **kwargs):
                 self.transcription_error.emit(
@@ -175,6 +178,31 @@ class TranscriptionManager(QObject):
 
         logger.warning("Created dummy transcriber due to initialization failure")
 
+    def _check_backend_change(self):
+        """Check if backend type has changed and reinitialize if needed"""
+        current_backend = self.settings.get("model_backend", "whisper")
+
+        # Determine what type of transcriber we currently have
+        current_transcriber_type = None
+        if hasattr(self.transcriber, "model"):
+            current_transcriber_type = "whisper"
+        elif hasattr(self.transcriber, "current_model_name"):
+            current_transcriber_type = "coordinator"
+
+        # If backend type doesn't match, reinitialize
+        if current_backend == "whisper" and current_transcriber_type != "whisper":
+            logger.info(f"Backend changed to whisper, reinitializing transcriber")
+            self.cleanup()
+            return self.initialize()
+        elif current_backend != "whisper" and current_transcriber_type != "coordinator":
+            logger.info(
+                f"Backend changed to {current_backend}, reinitializing transcriber"
+            )
+            self.cleanup()
+            return self.initialize()
+
+        return True
+
     def transcribe_audio(self, audio_data):
         """Transcribe audio data
 
@@ -191,6 +219,12 @@ class TranscriptionManager(QObject):
         if not self.transcriber:
             logger.error("Cannot transcribe: transcriber not initialized")
             self.transcription_error.emit("Transcriber not initialized")
+            return False
+
+        # Check if backend type has changed and reinitialize if needed
+        if not self._check_backend_change():
+            logger.error("Failed to reinitialize transcriber for backend change")
+            self.transcription_error.emit("Failed to switch transcription backend")
             return False
 
         try:
@@ -280,11 +314,19 @@ class TranscriptionManager(QObject):
         if not self.transcriber:
             return False
 
-        # Check for WhisperTranscriber (has model attribute)
+        # Use the transcriber's is_model_loaded() method if available
+        if hasattr(self.transcriber, "is_model_loaded"):
+            try:
+                return self.transcriber.is_model_loaded()
+            except Exception as e:
+                logger.warning(f"Error checking model loaded status: {e}")
+                return False
+
+        # Fallback: Check for WhisperTranscriber (has model attribute)
         if hasattr(self.transcriber, "model"):
             return self.transcriber.model is not None
 
-        # Check for CoordinatorTranscriber (has current_model_name attribute)
+        # Fallback: Check for CoordinatorTranscriber (has current_model_name attribute)
         if hasattr(self.transcriber, "current_model_name"):
             return self.transcriber.current_model_name is not None
 

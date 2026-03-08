@@ -477,16 +477,6 @@ ColumnLayout {
                                 }
                             }
 
-                            // Description
-                            QQC2.Label {
-                                text: modelData.description || ""
-                                font.pointSize: 9
-                                color: Kirigami.Theme.textColor
-                                visible: modelData.description !== undefined
-                                wrapMode: Text.WordWrap
-                                Layout.fillWidth: true
-                            }
-
                             // Size info with compatibility
                             RowLayout {
                                 QQC2.Label {

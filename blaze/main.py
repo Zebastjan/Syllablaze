@@ -764,11 +764,8 @@ class SyllablazeOrchestrator(QSystemTrayIcon):
                 raise RuntimeError("Transcriber not initialized")
             logger.info(f"Transcriber ready: {self.transcription_manager}")
 
-            if (
-                not hasattr(self.transcription_manager.transcriber, "model")
-                or not self.transcription_manager.transcriber.model
-            ):
-                raise RuntimeError("Whisper model not loaded")
+            if not self.transcription_manager.is_model_loaded():
+                raise RuntimeError("No transcription model loaded")
 
             self.transcription_manager.transcribe_audio(normalized_audio_data)
 

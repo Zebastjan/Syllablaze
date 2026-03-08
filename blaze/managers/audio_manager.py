@@ -12,13 +12,16 @@ from blaze.audio_processor import AudioProcessor
 
 logger = logging.getLogger(__name__)
 
+
 class AudioManager(QObject):
     """Manager class for audio recording operations"""
 
     # Define signals
     volume_changing = pyqtSignal(float)  # Signal for volume level updates
     audio_samples_changing = pyqtSignal(list)  # Signal for audio waveform samples
-    recording_completed = pyqtSignal(object)  # Signal for completed recording (with audio data)
+    recording_completed = pyqtSignal(
+        object
+    )  # Signal for completed recording (with audio data)
     recording_failed = pyqtSignal(str)  # Signal for recording errors
 
     def __init__(self, settings):
@@ -34,10 +37,10 @@ class AudioManager(QObject):
         self.recorder = None
         self.is_recording = False
         self._recording_lock = False  # Phase 6: Lock to prevent rapid toggles
-    
+
     def initialize(self):
         """Initialize the audio recorder
-        
+
         Returns:
         --------
         bool
@@ -45,25 +48,25 @@ class AudioManager(QObject):
         """
         try:
             from blaze.recorder import AudioRecorder
-            
+
             # Create recorder instance
             self.recorder = AudioRecorder()
-            
+
             # Connect signals
             self.recorder.volume_changing.connect(self.volume_changing)
             self.recorder.audio_samples_changing.connect(self.audio_samples_changing)
             self.recorder.recording_completed.connect(self._on_recording_completed)
             self.recorder.recording_failed.connect(self.recording_failed)
-            
+
             logger.info("Audio manager initialized successfully")
             return True
         except Exception as e:
             logger.error(f"Failed to initialize audio manager: {e}")
             return False
-    
+
     def _on_recording_completed(self, audio_data):
         """Handle the completed recording signal from the recorder
-        
+
         Parameters:
         -----------
         audio_data : numpy.ndarray
@@ -71,10 +74,10 @@ class AudioManager(QObject):
         """
         # We can simply pass through the audio data, or add additional processing if needed
         self.recording_completed.emit(audio_data)
-    
+
     def start_recording(self):
         """Start audio recording with improved error handling
-        
+
         Returns:
         --------
         bool
@@ -84,26 +87,26 @@ class AudioManager(QObject):
             logger.error("Cannot start recording: recorder not initialized")
             self.recording_failed.emit("Recorder not initialized")
             return False
-            
+
         if self.is_recording:
             logger.warning("Recording already in progress")
             return True
-            
+
         try:
             # Check if recorder is ready
-            if not hasattr(self.recorder, 'start_recording'):
+            if not hasattr(self.recorder, "start_recording"):
                 logger.error("Recorder object does not have start_recording method")
                 self.recording_failed.emit("Invalid recorder object")
                 return False
-                
+
             # Start recording with timeout protection
             start_time = time.time()
             self.recorder.start_recording()
-            
+
             # Verify recording started within reasonable time
             if time.time() - start_time > 2.0:  # More than 2 seconds is suspicious
                 logger.warning("Recording start took unusually long time")
-                
+
             self.is_recording = True
             logger.info("Recording started")
             return True
@@ -111,10 +114,10 @@ class AudioManager(QObject):
             logger.error(f"Failed to start recording: {e}")
             self.recording_failed.emit(f"Failed to start recording: {str(e)}")
             return False
-    
+
     def stop_recording(self):
         """Stop audio recording with improved error handling
-        
+
         Returns:
         --------
         bool
@@ -123,26 +126,26 @@ class AudioManager(QObject):
         if not self.recorder:
             logger.error("Cannot stop recording: recorder not initialized")
             return False
-            
+
         if not self.is_recording:
             logger.warning("No recording in progress")
             return True
-            
+
         try:
             # Check if recorder is ready
-            if not hasattr(self.recorder, '_stop_recording'):
+            if not hasattr(self.recorder, "_stop_recording"):
                 logger.error("Recorder object does not have _stop_recording method")
                 self.recording_failed.emit("Invalid recorder object")
                 return False
-                
+
             # Stop recording with timeout protection
             start_time = time.time()
             self.recorder._stop_recording()
-            
+
             # Verify recording stopped within reasonable time
             if time.time() - start_time > 2.0:  # More than 2 seconds is suspicious
                 logger.warning("Recording stop took unusually long time")
-                
+
             self.is_recording = False
             logger.info("Recording stopped")
             return True
@@ -150,17 +153,17 @@ class AudioManager(QObject):
             logger.error(f"Failed to stop recording: {e}")
             self.recording_failed.emit(f"Failed to stop recording: {str(e)}")
             return False
-    
+
     def save_audio_to_file(self, audio_data, filename):
         """Save audio data to a file
-        
+
         Parameters:
         -----------
         audio_data : numpy.ndarray
             Audio data to save
         filename : str
             Path to save the audio file
-            
+
         Returns:
         --------
         bool
@@ -169,24 +172,21 @@ class AudioManager(QObject):
         try:
             # Use AudioProcessor to save the file
             from blaze.constants import WHISPER_SAMPLE_RATE
-            
+
             result = AudioProcessor.save_to_wav(
-                audio_data, 
-                filename, 
-                WHISPER_SAMPLE_RATE, 
-                channels=1
+                audio_data, filename, WHISPER_SAMPLE_RATE, channels=1
             )
-            
+
             if result:
                 logger.info(f"Audio saved to {filename}")
             else:
                 logger.error(f"Failed to save audio to {filename}")
-                
+
             return result
         except Exception as e:
             logger.error(f"Error saving audio file: {e}")
             return False
-    
+
     def is_ready_to_record(self, transcription_manager, app_state=None):
         """Check if ready to start recording
 
@@ -207,18 +207,24 @@ class AudioManager(QObject):
             return False, "Cannot start recording while transcription is in progress"
 
         # Check if worker thread is actually running (catches race conditions)
-        if hasattr(transcription_manager, 'is_worker_running') and transcription_manager.is_worker_running():
+        if (
+            hasattr(transcription_manager, "is_worker_running")
+            and transcription_manager.is_worker_running()
+        ):
             return False, "Please wait for current transcription to complete"
 
         # Check if transcriber is properly initialized
         if not transcription_manager:
             return False, "Transcription manager not initialized"
 
-        if not hasattr(transcription_manager, "transcriber") or not transcription_manager.transcriber:
+        if (
+            not hasattr(transcription_manager, "transcriber")
+            or not transcription_manager.transcriber
+        ):
             return False, "Transcriber not initialized"
 
-        if not hasattr(transcription_manager.transcriber, "model") or not transcription_manager.transcriber.model:
-            return False, "No Whisper model loaded. Please download a model in Settings."
+        if not transcription_manager.is_model_loaded():
+            return False, "No model loaded. Please download a model in Settings."
 
         return True, ""
 

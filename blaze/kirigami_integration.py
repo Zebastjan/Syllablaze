@@ -786,6 +786,15 @@ class SettingsBridge(QObject):
             # Default to whisper on error
             self.set("model_backend", "whisper")
 
+    def _check_model_downloaded_safe(self, coordinator, model_id):
+        """Safely check if model is downloaded, returning False on any error."""
+        try:
+            if coordinator:
+                return coordinator.is_model_downloaded(model_id)
+        except Exception as e:
+            logger.debug(f"Could not check download status for {model_id}: {e}")
+        return False
+
     @pyqtSlot(str, result="QVariantMap")
     def getModelDetails(self, model_id):
         """Get detailed information about a specific model for the popup."""
@@ -867,7 +876,9 @@ class SettingsBridge(QObject):
                 "compatible": compat["compatible"],
                 "compatibility_reason": compat["reason"],
                 "recommended": compat["recommended"],
-                "downloaded": coordinator.is_model_downloaded(model.model_id),
+                "downloaded": self._check_model_downloaded_safe(
+                    coordinator, model.model_id
+                ),
                 "active": model.model_id == current_model,
             }
         except Exception as e:

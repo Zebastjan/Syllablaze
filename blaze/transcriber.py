@@ -4,6 +4,7 @@ import logging
 import sys
 import traceback
 import gc
+from typing import Optional
 from blaze.settings import Settings
 from blaze.constants import (
     DEFAULT_WHISPER_MODEL,
@@ -12,6 +13,7 @@ from blaze.constants import (
     DEFAULT_WORD_TIMESTAMPS,
 )
 from blaze.models import WhisperModelManager
+from blaze.transcriber_base import BaseTranscriber
 
 logger = logging.getLogger(__name__)
 
@@ -168,13 +170,8 @@ class FasterWhisperTranscriptionWorker(QThread):
                 self.finished.emit("")
 
 
-class WhisperTranscriber(QObject):
-    transcription_progress = pyqtSignal(str)
-    transcription_progress_percent = pyqtSignal(int)
-    transcription_finished = pyqtSignal(str)
-    transcription_error = pyqtSignal(str)
-    model_changed = pyqtSignal(str)  # Signal to notify when model is changed
-    language_changed = pyqtSignal(str)  # Signal to notify when language is changed
+class WhisperTranscriber(BaseTranscriber):
+    """Whisper-based transcriber using Faster Whisper backend."""
 
     def __init__(self, load_model=True):
         super().__init__()
@@ -184,9 +181,9 @@ class WhisperTranscriber(QObject):
         self._cleanup_timer.timeout.connect(self._cleanup_worker)
         self._cleanup_timer.setSingleShot(True)
         self.settings = Settings()
-        self.current_language = self.settings.get("language", "auto")
+        self._current_language = self.settings.get("language", "auto")
         self.model_manager = WhisperModelManager(self.settings)
-        self.current_model_name = self.settings.get("model", DEFAULT_WHISPER_MODEL)
+        self._current_model_name = self.settings.get("model", DEFAULT_WHISPER_MODEL)
 
         # Only load the model if explicitly requested and it's downloaded
         if load_model:
@@ -206,6 +203,14 @@ class WhisperTranscriber(QObject):
                 logger.info("Model loading deferred due to error")
         else:
             logger.info("Model loading deferred until explicitly requested")
+
+    def is_model_loaded(self) -> bool:
+        """Check if a Whisper model is loaded and ready.
+
+        Returns:
+            True if model is loaded, False otherwise.
+        """
+        return self.model is not None
 
     def load_model(self):
         """Load the Whisper model based on current settings"""
