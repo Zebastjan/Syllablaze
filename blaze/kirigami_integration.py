@@ -327,6 +327,13 @@ class SettingsBridge(QObject):
                 logger.info(
                     f"After backend filter '{backend_filter}': {len(models_to_check)} models"
                 )
+                # If filtering by a specific backend and no models found,
+                # return empty list (don't fall back to other models)
+                if not models_to_check:
+                    logger.info(
+                        f"No models found for backend '{backend_filter}' - returning empty list"
+                    )
+                    return []
 
             # Get coordinator for download status check (may fail if backends not available)
             coordinator = None

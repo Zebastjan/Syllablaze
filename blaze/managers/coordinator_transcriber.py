@@ -124,9 +124,6 @@ class CoordinatorTranscriber(QObject):
         self.current_language: Optional[str] = None
         self._worker: Optional[CoordinatorTranscriptionWorker] = None
 
-        # Initialize with current settings
-        self._load_current_model()
-
     def _load_current_model(self):
         """Load the current model based on settings"""
         model_name = self.settings.get("model")

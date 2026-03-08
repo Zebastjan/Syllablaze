@@ -202,38 +202,53 @@ class LiquidBackend(BaseModelBackend):
 
     def is_model_downloaded(self, model_id: str) -> bool:
         """Check if model is downloaded in HuggingFace cache"""
-        if model_id not in LIQUID_MODELS:
+        # Map from registry model_id to internal key if needed
+        if model_id in LIQUID_MODELS:
+            repo_id = LIQUID_MODELS[model_id]
+        elif model_id == "lfm2.5-audio-1.5b":
+            repo_id = "LiquidAI/LFM2.5-Audio-1.5B"
+        else:
             return False
 
-        repo_id = LIQUID_MODELS[model_id]
-
-        # Check HuggingFace cache
+        # Check HuggingFace cache with multiple methods
         try:
-            from huggingface_hub import try_to_load_from_cache
+            from huggingface_hub import try_to_load_from_cache, scan_cache_dir
 
-            # Try to find model files in cache
-            model_path = try_to_load_from_cache(repo_id, "model.safetensors")
-            if model_path is not None:
-                return True
+            # Method 1: Check individual files
+            for filename in [
+                "model.safetensors",
+                "pytorch_model.bin",
+                "model.fp16.safetensors",
+            ]:
+                model_path = try_to_load_from_cache(repo_id, filename)
+                if model_path is not None:
+                    logger.debug(f"Found {filename} for {model_id}")
+                    return True
 
-            # Try pytorch format
-            model_path = try_to_load_from_cache(repo_id, "pytorch_model.bin")
-            if model_path is not None:
-                return True
-
-            # Check for config.json (indicates partial download)
+            # Method 2: Check for config.json and verify model files in same dir
             config_path = try_to_load_from_cache(repo_id, "config.json")
             if config_path is not None:
-                # If we have config, check if model files exist in cache dir
                 cache_dir = Path(config_path).parent
-                has_model = any(cache_dir.glob("*.safetensors")) or any(
-                    cache_dir.glob("*.bin")
-                )
-                return has_model
+                # Look for any model weight files
+                for pattern in ["*.safetensors", "*.bin", "*.pt"]:
+                    if any(cache_dir.glob(pattern)):
+                        logger.debug(f"Found model files in cache dir for {model_id}")
+                        return True
+
+            # Method 3: Scan entire cache for this repo
+            try:
+                cache_info = scan_cache_dir()
+                for repo in cache_info.repos:
+                    if repo.repo_id == repo_id:
+                        logger.debug(f"Found repo in cache scan for {model_id}")
+                        return True
+            except Exception:
+                pass
 
         except Exception as e:
             logger.debug(f"Error checking model cache: {e}")
 
+        logger.debug(f"Model {model_id} not found in cache")
         return False
 
     def download_model(

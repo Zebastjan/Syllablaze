@@ -610,8 +610,7 @@ class SyllablazeOrchestrator(QSystemTrayIcon):
                 if (
                     hasattr(self, "transcription_manager")
                     and self.transcription_manager
-                    and hasattr(self.transcription_manager.transcriber, "model")
-                    and self.transcription_manager.transcriber.model
+                    and self.transcription_manager.is_model_loaded()
                 ):
                     # Transcriber is properly initialized, proceed with recording
                     self.toggle_recording()
@@ -620,7 +619,7 @@ class SyllablazeOrchestrator(QSystemTrayIcon):
                     self.ui_manager.show_notification(
                         self,
                         "No Models Downloaded",
-                        "No Whisper models are downloaded. Please go to Settings to download a model.",
+                        "No transcription models are available. Please go to Settings to download a model.",
                         self.ui_manager.normal_icon,
                     )
                     # Open settings window to allow user to download a model

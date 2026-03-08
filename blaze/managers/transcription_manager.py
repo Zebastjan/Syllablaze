@@ -270,7 +270,7 @@ class TranscriptionManager(QObject):
             return False
 
     def is_model_loaded(self):
-        """Check if a Whisper model is loaded
+        """Check if a model is loaded and ready for transcription
 
         Returns:
         --------
@@ -280,10 +280,15 @@ class TranscriptionManager(QObject):
         if not self.transcriber:
             return False
 
-        if not hasattr(self.transcriber, "model"):
-            return False
+        # Check for WhisperTranscriber (has model attribute)
+        if hasattr(self.transcriber, "model"):
+            return self.transcriber.model is not None
 
-        return self.transcriber.model is not None
+        # Check for CoordinatorTranscriber (has current_model_name attribute)
+        if hasattr(self.transcriber, "current_model_name"):
+            return self.transcriber.current_model_name is not None
+
+        return False
 
     def get_model_status(self):
         """Get current model status as a human-readable string

@@ -386,126 +386,132 @@ ColumnLayout {
                 width: ListView.view.width
                 opacity: modelData.compatible !== false ? 1.0 : 0.6
 
-                MouseArea {
-                    anchors.fill: parent
-                    onClicked: {
-                        modelDetailsDialog.modelId = modelData.id
-                        modelDetailsDialog.modelName = modelData.name
-                        modelDetailsDialog.open()
-                    }
-                }
-
                 contentItem: RowLayout {
                     spacing: Kirigami.Units.largeSpacing
 
-                    // Model info - left side
-                    ColumnLayout {
+                    // Model info - left side (clickable for details)
+                    Rectangle {
                         Layout.fillWidth: true
                         Layout.alignment: Qt.AlignVCenter
-                        spacing: Kirigami.Units.smallSpacing
+                        color: "transparent"
 
-                        RowLayout {
+                        // MouseArea for showing details - only on the info section
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: {
+                                modelDetailsDialog.modelId = modelData.id
+                                modelDetailsDialog.modelName = modelData.name
+                                modelDetailsDialog.open()
+                            }
+                        }
+
+                        ColumnLayout {
+                            anchors.fill: parent
                             spacing: Kirigami.Units.smallSpacing
-                            Layout.alignment: Qt.AlignVCenter
 
-                            QQC2.Label {
-                                text: modelData.name || modelData.id
-                                font.bold: modelData.active
-                                font.pointSize: 10
-                            }
+                            RowLayout {
+                                spacing: Kirigami.Units.smallSpacing
+                                Layout.alignment: Qt.AlignVCenter
 
-                            // Backend badge
-                            Rectangle {
-                                visible: modelData.backend !== undefined
-                                color: Kirigami.Theme.neutralBackgroundColor
-                                radius: 3
-                                Layout.preferredWidth: backendLabel.implicitWidth + 10
-                                Layout.preferredHeight: 18
                                 QQC2.Label {
-                                    id: backendLabel
-                                    anchors.centerIn: parent
-                                    text: modelData.backend || ""
-                                    font.pointSize: 7
-                                    color: Kirigami.Theme.neutralTextColor
+                                    text: modelData.name || modelData.id
+                                    font.bold: modelData.active
+                                    font.pointSize: 10
                                 }
-                            }
 
-                            // Active badge
-                            Rectangle {
-                                visible: modelData.active
-                                color: Kirigami.Theme.positiveBackgroundColor
-                                radius: 3
-                                Layout.preferredWidth: 50
-                                Layout.preferredHeight: 18
-                                QQC2.Label {
-                                    anchors.centerIn: parent
-                                    text: "ACTIVE"
-                                    font.pointSize: 7
-                                    font.bold: true
+                                // Backend badge
+                                Rectangle {
+                                    visible: modelData.backend !== undefined
+                                    color: Kirigami.Theme.neutralBackgroundColor
+                                    radius: 3
+                                    Layout.preferredWidth: backendLabel.implicitWidth + 10
+                                    Layout.preferredHeight: 18
+                                    QQC2.Label {
+                                        id: backendLabel
+                                        anchors.centerIn: parent
+                                        text: modelData.backend || ""
+                                        font.pointSize: 7
+                                        color: Kirigami.Theme.neutralTextColor
+                                    }
+                                }
+
+                                // Active badge
+                                Rectangle {
+                                    visible: modelData.active
+                                    color: Kirigami.Theme.positiveBackgroundColor
+                                    radius: 3
+                                    Layout.preferredWidth: 50
+                                    Layout.preferredHeight: 18
+                                    QQC2.Label {
+                                        anchors.centerIn: parent
+                                        text: "ACTIVE"
+                                        font.pointSize: 7
+                                        font.bold: true
+                                        color: Kirigami.Theme.positiveTextColor
+                                    }
+                                }
+
+                                // Recommended badge
+                                Rectangle {
+                                    visible: modelData.recommended && !modelData.active
+                                    color: Kirigami.Theme.highlightColor
+                                    radius: 3
+                                    Layout.preferredWidth: 90
+                                    Layout.preferredHeight: 18
+                                    QQC2.Label {
+                                        anchors.centerIn: parent
+                                        text: "RECOMMENDED"
+                                        font.pointSize: 7
+                                        font.bold: true
+                                        color: Kirigami.Theme.highlightedTextColor
+                                    }
+                                }
+
+                                // Downloaded badge
+                                Kirigami.Icon {
+                                    visible: modelData.downloaded && !modelData.active
+                                    source: "emblem-checked"
+                                    Layout.preferredWidth: Kirigami.Units.iconSizes.small
+                                    Layout.preferredHeight: Kirigami.Units.iconSizes.small
                                     color: Kirigami.Theme.positiveTextColor
                                 }
                             }
 
-                            // Recommended badge
-                            Rectangle {
-                                visible: modelData.recommended && !modelData.active
-                                color: Kirigami.Theme.highlightColor
-                                radius: 3
-                                Layout.preferredWidth: 90
-                                Layout.preferredHeight: 18
+                            // Description
+                            QQC2.Label {
+                                text: modelData.description || ""
+                                font.pointSize: 9
+                                color: Kirigami.Theme.textColor
+                                visible: modelData.description !== undefined
+                                wrapMode: Text.WordWrap
+                                Layout.fillWidth: true
+                            }
+
+                            // Size info with compatibility
+                            RowLayout {
                                 QQC2.Label {
-                                    anchors.centerIn: parent
-                                    text: "RECOMMENDED"
-                                    font.pointSize: 7
-                                    font.bold: true
-                                    color: Kirigami.Theme.highlightedTextColor
+                                    text: modelData.size
+                                    font.pointSize: 9
+                                    color: Kirigami.Theme.disabledTextColor
+                                }
+
+                                QQC2.Label {
+                                    visible: modelData.compatible === false
+                                    text: "⚠️ " + (modelData.compatibility_reason || "Not compatible")
+                                    font.pointSize: 9
+                                    color: Kirigami.Theme.negativeTextColor
                                 }
                             }
 
-                            // Downloaded badge
-                            Kirigami.Icon {
-                                visible: modelData.downloaded && !modelData.active
-                                source: "emblem-checked"
-                                Layout.preferredWidth: Kirigami.Units.iconSizes.small
-                                Layout.preferredHeight: Kirigami.Units.iconSizes.small
-                                color: Kirigami.Theme.positiveTextColor
+                            // Download progress
+                            QQC2.ProgressBar {
+                                visible: downloadingModels[modelData.id] !== undefined || downloadingModels[modelData.name] !== undefined
+                                Layout.fillWidth: true
+                                Layout.maximumWidth: 200
+                                from: 0
+                                to: 100
+                                value: downloadingModels[modelData.id] || downloadingModels[modelData.name] || 0
                             }
-                        }
-
-                        // Description
-                        QQC2.Label {
-                            text: modelData.description || ""
-                            font.pointSize: 9
-                            color: Kirigami.Theme.textColor
-                            visible: modelData.description !== undefined
-                            wrapMode: Text.WordWrap
-                            Layout.fillWidth: true
-                        }
-
-                        // Size info with compatibility
-                        RowLayout {
-                            QQC2.Label {
-                                text: modelData.size
-                                font.pointSize: 9
-                                color: Kirigami.Theme.disabledTextColor
-                            }
-
-                            QQC2.Label {
-                                visible: modelData.compatible === false
-                                text: "⚠️ " + (modelData.compatibility_reason || "Not compatible")
-                                font.pointSize: 9
-                                color: Kirigami.Theme.negativeTextColor
-                            }
-                        }
-
-                        // Download progress
-                        QQC2.ProgressBar {
-                            visible: downloadingModels[modelData.id] !== undefined || downloadingModels[modelData.name] !== undefined
-                            Layout.fillWidth: true
-                            Layout.maximumWidth: 200
-                            from: 0
-                            to: 100
-                            value: downloadingModels[modelData.id] || downloadingModels[modelData.name] || 0
                         }
                     }
 
@@ -516,13 +522,13 @@ ColumnLayout {
                     RowLayout {
                         Layout.alignment: Qt.AlignVCenter | Qt.AlignRight
                         spacing: Kirigami.Units.smallSpacing
-                        Layout.preferredWidth: 280
+                        Layout.preferredWidth: 350
 
                         QQC2.Button {
                             visible: !modelData.downloaded && downloadingModels[modelData.id] === undefined && downloadingModels[modelData.name] === undefined
                             text: "Download"
                             icon.name: "download"
-                            Layout.preferredWidth: 90
+                            Layout.preferredWidth: 80
                             enabled: modelData.compatible !== false
                             onClicked: settingsBridge.downloadModel(modelData.id)
                         }
@@ -531,7 +537,7 @@ ColumnLayout {
                             visible: modelData.downloaded && !modelData.active
                             text: "Activate"
                             icon.name: "run-build"
-                            Layout.preferredWidth: 90
+                            Layout.preferredWidth: 80
                             onClicked: {
                                 settingsBridge.setActiveModel(modelData.id)
                                 refreshModels()
@@ -542,11 +548,22 @@ ColumnLayout {
                             visible: modelData.downloaded && !modelData.active
                             text: "Delete"
                             icon.name: "delete"
-                            Layout.preferredWidth: 90
+                            Layout.preferredWidth: 80
                             onClicked: {
                                 deleteDialog.modelId = modelData.id
                                 deleteDialog.modelName = modelData.name
                                 deleteDialog.open()
+                            }
+                        }
+
+                        QQC2.Button {
+                            text: "Details"
+                            icon.name: "documentinfo"
+                            Layout.preferredWidth: 80
+                            onClicked: {
+                                modelDetailsDialog.modelId = modelData.id
+                                modelDetailsDialog.modelName = modelData.name
+                                modelDetailsDialog.open()
                             }
                         }
                     }
