@@ -93,7 +93,8 @@ class LiquidBackend(BaseModelBackend):
             # Move to device
             if device == "cuda" and torch.cuda.is_available():
                 self._model = self._model.cuda()
-                self._processor = self._processor.cuda()
+                # NOTE: processor is NOT moved to CUDA - only the model is
+                # LFM2AudioProcessor is a utility class, not a PyTorch module
 
             self._model.eval()
 
