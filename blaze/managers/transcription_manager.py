@@ -79,13 +79,13 @@ class TranscriptionManager(QObject):
         bool
             True if initialization was successful, False otherwise
         """
+        # Get settings first so they're available in exception handler
+        model_name = self.settings.get("model", DEFAULT_WHISPER_MODEL)
+        backend_type = self.settings.get("model_backend", "whisper")
+
         try:
             # Configure optimal settings
             self.configure_optimal_settings()
-
-            # Determine which transcriber to use based on model backend
-            model_name = self.settings.get("model", DEFAULT_WHISPER_MODEL)
-            backend_type = self.settings.get("model_backend", "whisper")
 
             logger.info(
                 f"Initializing transcriber for model: {model_name} (backend: {backend_type})"
@@ -128,6 +128,43 @@ class TranscriptionManager(QObject):
             logger.error(f"Failed to initialize transcription manager: {e}")
             logger.error(f"Exception type: {type(e).__name__}")
             logger.error(f"Full traceback:\n{traceback.format_exc()}")
+
+            # Try fallback to Whisper if configured backend failed
+            if backend_type != "whisper":
+                logger.info("Attempting fallback to Whisper backend...")
+                try:
+                    from blaze.transcriber import WhisperTranscriber
+
+                    self.transcriber = WhisperTranscriber()
+                    logger.info("Successfully fell back to WhisperTranscriber")
+
+                    # Connect signals
+                    self.transcriber.transcription_progress.connect(
+                        self.transcription_progress
+                    )
+                    self.transcriber.transcription_progress_percent.connect(
+                        self.transcription_progress_percent
+                    )
+                    self.transcriber.transcription_finished.connect(
+                        self.transcription_finished
+                    )
+                    self.transcriber.transcription_error.connect(
+                        self.transcription_error
+                    )
+                    self.transcriber.model_changed.connect(self.model_changed)
+                    self.transcriber.language_changed.connect(self.language_changed)
+
+                    # Store current model and language
+                    self.current_model = model_name
+                    self.current_language = self.settings.get("language", "auto")
+
+                    logger.warning(
+                        f"Using fallback Whisper backend. Original {backend_type} backend failed."
+                    )
+                    return True
+                except Exception as fallback_e:
+                    logger.error(f"Fallback to Whisper also failed: {fallback_e}")
+
             self._create_dummy_transcriber()
             return False
 
