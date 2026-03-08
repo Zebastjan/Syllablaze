@@ -190,12 +190,12 @@ class TranscriptionManager(QObject):
 
             def transcribe_audio(self, *args, **kwargs):
                 self.transcription_error.emit(
-                    "No models downloaded. Please go to Settings to download a model."
+                    "Transcription failed: Model initialization error. Please check Settings and ensure a model is selected and downloaded."
                 )
 
             def transcribe(self, *args, **kwargs):
                 self.transcription_error.emit(
-                    "No models downloaded. Please go to Settings to download a model."
+                    "Transcription failed: Model initialization error. Please check Settings and ensure a model is selected and downloaded."
                 )
 
             def update_model(self, *args, **kwargs):
