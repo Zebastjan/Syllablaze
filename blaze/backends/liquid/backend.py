@@ -180,7 +180,7 @@ class LiquidBackend(BaseModelBackend):
             # Generate text tokens only (sequential generation for ASR)
             text_tokens = []
             for t in self._model.generate_sequential(
-                **chat, max_new_tokens=512, temperature=0.7, top_k=50
+                **chat, max_new_tokens=512, text_temperature=0.7, top_k=50
             ):
                 if t.numel() == 1:
                     text_tokens.append(t)
