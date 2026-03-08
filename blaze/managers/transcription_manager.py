@@ -516,6 +516,15 @@ class TranscriptionManager(QObject):
         try:
             logger.info("Starting transcription manager cleanup...")
 
+            # Call transcriber's cleanup() method (CRITICAL: fixes broken cleanup chain)
+            if hasattr(self.transcriber, "cleanup"):
+                logger.info("Calling transcriber cleanup...")
+                try:
+                    self.transcriber.cleanup()
+                    logger.info("Transcriber cleanup completed")
+                except Exception as e:
+                    logger.warning(f"Error during transcriber cleanup: {e}")
+
             # Use cancel_transcription for worker shutdown (reuses three-phase pattern)
             if hasattr(self.transcriber, "worker") and self.transcriber.worker:
                 if self.transcriber.worker.isRunning():
@@ -533,23 +542,21 @@ class TranscriptionManager(QObject):
                 except Exception as e:
                     logger.warning(f"Error releasing model: {e}")
 
-                gc.collect()
-
-                try:
-                    import torch
-
-                    if torch.cuda.is_available():
-                        torch.cuda.empty_cache()
-                        torch.cuda.synchronize()
-                        logger.info("Cleared CUDA cache")
-                except ImportError:
-                    pass
-                except Exception as e:
-                    logger.warning(f"Error clearing CUDA cache: {e}")
-
             self.transcriber = None
 
             gc.collect()
+
+            try:
+                import torch
+
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                    torch.cuda.synchronize()
+                    logger.info("Cleared CUDA cache")
+            except ImportError:
+                pass
+            except Exception as e:
+                logger.warning(f"Error clearing CUDA cache: {e}")
 
             logger.info("Transcription manager cleaned up successfully")
             return True
