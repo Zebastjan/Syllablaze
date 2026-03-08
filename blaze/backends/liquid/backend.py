@@ -167,7 +167,9 @@ class LiquidBackend(BaseModelBackend):
 
             # System prompt for transcription
             chat.new_turn("system")
-            chat.add_text("Transcribe the speech into text.")
+            chat.add_text(
+                "Transcribe the speech into text verbatim. Do not add commentary or repetition."
+            )
             chat.end_turn()
 
             # User turn with audio
@@ -180,17 +182,39 @@ class LiquidBackend(BaseModelBackend):
             # Generate text tokens only (sequential generation for ASR)
             text_tokens = []
             for t in self._model.generate_sequential(
-                **chat, max_new_tokens=512, text_temperature=0.7, text_top_k=50
+                **chat, max_new_tokens=200, text_temperature=0.7, text_top_k=50
             ):
                 if t.numel() == 1:
                     text_tokens.append(t)
 
-            # Decode text
+            # Decode text - filter out special tokens first
             if text_tokens:
-                text_tensor = torch.stack(text_tokens, 1)
-                transcription = self._processor.text.decode(text_tensor[0])
+                # Get special token IDs to filter out
+                special_ids = set(self._processor.text.all_special_ids)
+                # Also filter out common chat/control tokens
+                try:
+                    im_end_id = self._processor.text.convert_tokens_to_ids("<|im_end|>")
+                    im_start_id = self._processor.text.convert_tokens_to_ids(
+                        "<|im_start|>"
+                    )
+                    special_ids.update([im_end_id, im_start_id])
+                except:
+                    pass
+
+                filtered_tokens = [
+                    t for t in text_tokens if t.item() not in special_ids
+                ]
+
+                if filtered_tokens:
+                    text_tensor = torch.stack(filtered_tokens, 1)
+                    transcription = self._processor.text.decode(text_tensor[0])
+                else:
+                    transcription = ""
             else:
                 transcription = ""
+
+            # Post-processing: remove repetition patterns
+            transcription = self._remove_repetition(transcription)
 
             return TranscriptionResult(
                 text=transcription.strip(),
@@ -200,6 +224,51 @@ class LiquidBackend(BaseModelBackend):
 
         except Exception as e:
             raise TranscriptionError(f"Transcription failed: {e}")
+
+    def _remove_repetition(self, text: str, max_repeats: int = 3) -> str:
+        """
+        Remove repetitive patterns from transcription.
+
+        Args:
+            text: Input text that may contain repetition
+            max_repeats: Maximum allowed consecutive repeats of a phrase
+
+        Returns:
+            Text with repetition removed
+        """
+        import re
+
+        # Split into sentences/phrases
+        sentences = re.split(r"([.!?]+|\n)", text)
+
+        result = []
+        repeat_count = 0
+        last_phrase = ""
+
+        for i, sentence in enumerate(sentences):
+            # Normalize for comparison (lowercase, strip whitespace)
+            normalized = sentence.lower().strip()
+
+            if not normalized:
+                # Keep punctuation as-is
+                if sentence.strip() in ".!?":
+                    if result and not result[-1].endswith(sentence.strip()):
+                        result.append(sentence)
+                continue
+
+            # Check if this is a repetition
+            if normalized == last_phrase:
+                repeat_count += 1
+                if repeat_count >= max_repeats:
+                    # Stop adding repetitions
+                    break
+            else:
+                repeat_count = 0
+                last_phrase = normalized
+
+            result.append(sentence)
+
+        return "".join(result).strip()
 
     def is_model_downloaded(self, model_id: str) -> bool:
         """Check if model is downloaded in HuggingFace cache"""
