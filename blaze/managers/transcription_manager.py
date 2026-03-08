@@ -71,6 +71,54 @@ class TranscriptionManager(QObject):
             logger.error(f"Failed to configure optimal settings: {e}")
             return False
 
+    def check_gpu_memory(self, required_gb=4.0):
+        """Check if sufficient GPU memory is available
+
+        Parameters:
+        -----------
+        required_gb : float
+            Required GPU memory in GB (default 4.0)
+
+        Returns:
+        --------
+        tuple
+            (bool, str) - (has_enough_memory, message)
+        """
+        try:
+            import torch
+
+            if not torch.cuda.is_available():
+                return True, "CPU mode - no GPU memory check needed"
+
+            # Get current GPU memory stats
+            device = torch.cuda.current_device()
+            total_memory = torch.cuda.get_device_properties(device).total_memory / (
+                1024**3
+            )
+            allocated_memory = torch.cuda.memory_allocated(device) / (1024**3)
+            reserved_memory = torch.cuda.memory_reserved(device) / (1024**3)
+            free_memory = total_memory - allocated_memory
+
+            logger.info(
+                f"GPU memory: {free_memory:.1f}GB free / {total_memory:.1f}GB total "
+                f"(allocated: {allocated_memory:.1f}GB, reserved: {reserved_memory:.1f}GB)"
+            )
+
+            if free_memory < required_gb:
+                return False, (
+                    f"GPU memory insufficient: {free_memory:.1f}GB free, "
+                    f"{required_gb:.1f}GB required. "
+                    f"Close other GPU applications or use a smaller model."
+                )
+
+            return True, f"GPU memory OK: {free_memory:.1f}GB free"
+
+        except ImportError:
+            return True, "PyTorch not available - skipping GPU memory check"
+        except Exception as e:
+            logger.warning(f"Error checking GPU memory: {e}")
+            return True, f"Could not check GPU memory: {e}"
+
     def initialize(self):
         """Initialize the transcriber
 
@@ -90,6 +138,15 @@ class TranscriptionManager(QObject):
             logger.info(
                 f"Initializing transcriber for model: {model_name} (backend: {backend_type})"
             )
+
+            # Check GPU memory before loading model (especially important for large models)
+            memory_ok, memory_msg = self.check_gpu_memory(required_gb=4.0)
+            if not memory_ok:
+                logger.error(f"GPU memory check failed: {memory_msg}")
+                self.transcription_error.emit(f"Cannot load model: {memory_msg}")
+                raise RuntimeError(memory_msg)
+            else:
+                logger.info(memory_msg)
 
             if backend_type == "whisper":
                 # Use WhisperTranscriber for Whisper models
