@@ -238,6 +238,8 @@ ColumnLayout {
                     visible: true
                 }
             }
+        }
+
         // ===== QWEN TAB =====
         Kirigami.ScrollablePage {
             Kirigami.FormLayout {
