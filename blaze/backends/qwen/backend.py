@@ -1,20 +1,21 @@
 """
-Qwen2-Audio Backend Implementation (GGUF Quantized)
+Qwen2-Audio Backend Implementation (GGUF via llama.cpp)
 
-Speech-to-text using Alibaba's Qwen2-Audio models via transformers with GGUF quantization.
-Uses NexaAI's quantized GGUF models for dramatically lower memory usage.
+Speech-to-text using Alibaba's Qwen2-Audio models via llama-cpp-python.
+Uses quantized GGUF models for efficient CPU inference with low memory usage.
 
 Dependencies:
-    pip install git+https://github.com/huggingface/transformers
-    pip install torchaudio librosa
+    pip install llama-cpp-python>=0.3.0
+    pip install librosa soundfile
     pip install huggingface-hub
 
 Models:
     - Qwen2-Audio-7B-Q4_K_M: 4-bit quantized (~4.2GB) - Good balance
-    - Qwen2-Audio-7B-Q6_K: 6-bit quantized (~6.5GB) - Very good quality
+    - Qwen2-Audio-7B-Q5_K_S: 5-bit quantized (~5.0GB) - Better quality
+    - Qwen2-Audio-7B-Q6_K: 6-bit quantized (~6.4GB) - Very good quality
     - Qwen2-Audio-7B-Q8_0: 8-bit quantized (~8.3GB) - Best quality
     - All support Chinese, English, Japanese, Korean, Arabic, and more
-    - Input: 16kHz audio (processor handles resampling)
+    - Input: Audio file (librosa handles various formats)
     - License: Apache-2.0
 """
 
@@ -25,7 +26,6 @@ from typing import Optional, Callable
 from pathlib import Path
 
 import numpy as np
-import torch
 
 from blaze.backends.base import (
     BaseModelBackend,
@@ -43,25 +43,21 @@ QWEN_MODELS = {
     "qwen2-audio-7b-q4": {
         "repo_id": "mradermacher/Qwen2-Audio-7B-GGUF",
         "gguf_filename": "Qwen2-Audio-7B.Q4_K_M.gguf",
-        "base_repo": "Qwen/Qwen2-Audio-7B",  # For tokenizer/processor
-        "mmproj_filename": "Qwen2-Audio-7B.mmproj-Q8_0.gguf",  # Multimodal projector
+        "mmproj_filename": "Qwen2-Audio-7B.mmproj-Q8_0.gguf",
     },
     "qwen2-audio-7b-q5": {
         "repo_id": "mradermacher/Qwen2-Audio-7B-GGUF",
         "gguf_filename": "Qwen2-Audio-7B.Q5_K_S.gguf",
-        "base_repo": "Qwen/Qwen2-Audio-7B",
         "mmproj_filename": "Qwen2-Audio-7B.mmproj-Q8_0.gguf",
     },
     "qwen2-audio-7b-q6": {
         "repo_id": "mradermacher/Qwen2-Audio-7B-GGUF",
         "gguf_filename": "Qwen2-Audio-7B.Q6_K.gguf",
-        "base_repo": "Qwen/Qwen2-Audio-7B",
         "mmproj_filename": "Qwen2-Audio-7B.mmproj-Q8_0.gguf",
     },
     "qwen2-audio-7b-q8": {
         "repo_id": "mradermacher/Qwen2-Audio-7B-GGUF",
         "gguf_filename": "Qwen2-Audio-7B.Q8_0.gguf",
-        "base_repo": "Qwen/Qwen2-Audio-7B",
         "mmproj_filename": "Qwen2-Audio-7B.mmproj-Q8_0.gguf",
     },
 }
@@ -69,28 +65,29 @@ QWEN_MODELS = {
 
 class QwenBackend(BaseModelBackend):
     """
-    Qwen2-Audio backend for speech-to-text.
+    Qwen2-Audio backend for speech-to-text using llama.cpp.
 
-    This backend uses the transformers library to run inference
-    on Qwen's audio-language models.
+    This backend uses llama-cpp-python to run quantized GGUF inference
+    on Qwen's audio-language models with minimal memory usage.
     """
 
     def __init__(self):
         super().__init__()
-        self._processor: Optional = None
-        self._model: Optional = None
+        self._llm: Optional = None
         self._device: str = "cpu"
         self._loaded_model_id: Optional[str] = None
+        self._gguf_path: Optional[Path] = None
+        self._mmproj_path: Optional[Path] = None
 
     def load(self, model_id: str, device: str = "auto") -> None:
         """
-        Load a Qwen Audio model (GGUF quantized version).
+        Load a Qwen Audio model (GGUF quantized version via llama.cpp).
 
         Args:
             model_id: Model ID (e.g., 'qwen2-audio-7b-q4', 'qwen2-audio-7b-q6', 'qwen2-audio-7b-q8')
-            device: 'cpu', 'cuda', or 'auto'
+            device: 'cpu', 'cuda', or 'auto' (llama.cpp handles GPU automatically)
         """
-        from transformers import AutoProcessor, Qwen2AudioForConditionalGeneration
+        from llama_cpp import Llama
 
         # Validate model ID
         if model_id not in QWEN_MODELS:
@@ -99,10 +96,11 @@ class QwenBackend(BaseModelBackend):
         model_info = QWEN_MODELS[model_id]
         repo_id = model_info["repo_id"]
         gguf_filename = model_info["gguf_filename"]
-        base_repo = model_info["base_repo"]
+        mmproj_filename = model_info["mmproj_filename"]
 
-        # Determine device
+        # Determine device (llama.cpp handles GPU automatically via n_gpu_layers)
         if device == "auto":
+            import torch
             device = "cuda" if torch.cuda.is_available() else "cpu"
 
         self._device = device
@@ -110,33 +108,43 @@ class QwenBackend(BaseModelBackend):
         try:
             logger.info(f"Loading Qwen model: {model_id}")
             logger.info(f"GGUF file: {gguf_filename}")
+            logger.info(f"MMProj file: {mmproj_filename}")
             logger.info(f"Device: {device}")
 
-            # Load processor from base repo (tokenizer is same for all quantizations)
-            logger.info(f"Loading processor from {base_repo}")
-            self._processor = AutoProcessor.from_pretrained(base_repo)
-
-            # Load model with GGUF file
-            logger.info(f"Loading GGUF model from {repo_id}/{gguf_filename}")
+            # Get cached file paths
+            from huggingface_hub import try_to_load_from_cache
             
-            # For GGUF models, transformers handles device automatically
-            # but we can specify torch_dtype based on device
-            if device == "cuda":
-                torch_dtype = torch.float16
-            else:
-                torch_dtype = torch.float32
+            self._gguf_path = try_to_load_from_cache(repo_id, gguf_filename)
+            self._mmproj_path = try_to_load_from_cache(repo_id, mmproj_filename)
 
-            self._model = Qwen2AudioForConditionalGeneration.from_pretrained(
-                repo_id,
-                gguf_file=gguf_filename,
-                torch_dtype=torch_dtype,
+            if self._gguf_path is None:
+                raise ModelNotFoundError(
+                    f"GGUF file not downloaded: {gguf_filename}. "
+                    f"Please download the model first."
+                )
+            
+            if self._mmproj_path is None:
+                raise ModelNotFoundError(
+                    f"MMProj file not downloaded: {mmproj_filename}. "
+                    f"Please download the model first."
+                )
+
+            # Set GPU layers based on device
+            n_gpu_layers = -1 if device == "cuda" else 0  # -1 = all layers on GPU
+
+            # Load model with llama.cpp
+            logger.info(f"Loading GGUF model with llama.cpp from {self._gguf_path}")
+            
+            self._llm = Llama(
+                model_path=str(self._gguf_path),
+                n_ctx=8192,
+                n_gpu_layers=n_gpu_layers,
+                verbose=False,
             )
-            
-            # Move to device if needed (GGUF loading may handle this)
-            if hasattr(self._model, 'device') and str(self._model.device) != device:
-                self._model = self._model.to(device)
 
-            self._model.eval()
+            # Load multimodal projector
+            logger.info(f"Loading multimodal projector from {self._mmproj_path}")
+            self._llm.load_multimodal_projector(str(self._mmproj_path))
 
             self._loaded_model_id = model_id
             logger.info(f"Successfully loaded {model_id} on {device}")
@@ -149,162 +157,148 @@ class QwenBackend(BaseModelBackend):
 
     def unload(self) -> None:
         """Unload the model to free memory"""
-        if self._model is not None:
+        if self._llm is not None:
             logger.info(f"Unloading Qwen model: {self._loaded_model_id}")
-            del self._model
-            del self._processor
-            self._model = None
-            self._processor = None
+            del self._llm
+            self._llm = None
             self._loaded_model_id = None
+            self._gguf_path = None
+            self._mmproj_path = None
 
             import gc
-
             gc.collect()
-
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
 
     def transcribe(
         self, audio_data: bytes, language: Optional[str] = None
     ) -> TranscriptionResult:
         """
-        Transcribe audio using Qwen2-Audio.
+        Transcribe audio using Qwen2-Audio via llama.cpp.
 
         Args:
-            audio_data: Raw audio bytes (16kHz PCM, mono)
+            audio_data: Raw audio bytes (any format librosa can read)
             language: Optional language hint (e.g., 'en', 'zh')
 
         Returns:
             TranscriptionResult with text
         """
-        if self._model is None or self._processor is None:
+        if self._llm is None:
             raise TranscriptionError("Model not loaded. Call load() first.")
 
         try:
-            # Convert bytes to numpy array (assuming 16kHz PCM input)
-            audio_np = (
-                np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
-            )
+            # Save audio bytes to temporary file for llama.cpp
+            import tempfile
+            import soundfile as sf
+            import librosa
 
-            # Build transcription prompt with audio tokens
-            # Use the language hint in the prompt if provided
-            if language and language != "auto":
-                prompt_text = f"<|audio_bos|><|AUDIO|><|audio_eos|>Transcribe the speech into text in {language}:"
-            else:
-                prompt_text = "<|audio_bos|><|AUDIO|><|audio_eos|>Transcribe the speech into text:"
+            # Write to temp file
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+                tmp_path = tmp.name
 
-            # Process audio and text
-            inputs = self._processor(
-                text=prompt_text,
-                audio=audio_np,
-                sampling_rate=16000,
-                return_tensors="pt",
-                padding=True,
-            )
-
-            # Move inputs to device
-            inputs = {k: v.to(self._model.device) if hasattr(v, "to") else v
-                     for k, v in inputs.items()}
-
-            # Load generation parameters from settings
             try:
-                from blaze.settings import Settings
-                settings = Settings()
-                temperature = float(settings.get("qwen_temperature", 0.7))
-                top_p = float(settings.get("qwen_top_p", 0.9))
-                top_k = int(settings.get("qwen_top_k", 50))
-                max_new_tokens = int(settings.get("qwen_max_tokens", 256))
-                repetition_penalty = float(settings.get("qwen_repetition_penalty", 1.1))
-                do_sample = temperature > 0.1
-            except Exception:
-                # Fallback to defaults if settings fail
-                temperature = 0.7
-                top_p = 0.9
-                top_k = 50
-                max_new_tokens = 256
-                repetition_penalty = 1.1
-                do_sample = True
+                # Load audio with librosa (handles various formats)
+                audio_np, sr = librosa.load(
+                    io.BytesIO(audio_data), 
+                    sr=16000,  # Resample to 16kHz
+                    mono=True
+                )
+                
+                # Save as WAV for llama.cpp
+                sf.write(tmp_path, audio_np, 16000)
 
-            logger.debug(
-                f"Qwen generation params: temp={temperature}, top_p={top_p}, "
-                f"top_k={top_k}, max_tokens={max_new_tokens}, "
-                f"repetition_penalty={repetition_penalty}, do_sample={do_sample}"
-            )
+                # Build prompt
+                if language and language != "auto":
+                    prompt = f"Transcribe the speech into text in {language}:"
+                else:
+                    prompt = "Transcribe the speech into text:"
 
-            # Generate
-            generate_kwargs = {
-                "max_new_tokens": max_new_tokens,
-                "do_sample": do_sample,
-            }
+                # Load generation parameters from settings
+                try:
+                    from blaze.settings import Settings
+                    settings = Settings()
+                    temperature = float(settings.get("qwen_temperature", 0.7))
+                    top_p = float(settings.get("qwen_top_p", 0.9))
+                    top_k = int(settings.get("qwen_top_k", 50))
+                    max_tokens = int(settings.get("qwen_max_tokens", 256))
+                except Exception:
+                    # Fallback to defaults
+                    temperature = 0.7
+                    top_p = 0.9
+                    top_k = 50
+                    max_tokens = 256
 
-            if do_sample:
-                generate_kwargs["temperature"] = temperature
-                generate_kwargs["top_p"] = top_p
-                generate_kwargs["top_k"] = top_k
-                generate_kwargs["repetition_penalty"] = repetition_penalty
+                logger.debug(
+                    f"Qwen generation params: temp={temperature}, top_p={top_p}, "
+                    f"top_k={top_k}, max_tokens={max_tokens}"
+                )
 
-            with torch.no_grad():
-                generate_ids = self._model.generate(**inputs, **generate_kwargs)
+                # Generate with audio input via llama.cpp chat completion
+                response = self._llm.create_chat_completion(
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "audio", "audio_url": tmp_path},
+                                {"type": "text", "text": prompt},
+                            ],
+                        }
+                    ],
+                    temperature=temperature,
+                    top_p=top_p,
+                    top_k=top_k,
+                    max_tokens=max_tokens,
+                )
 
-            # Remove input tokens from output
-            generate_ids = generate_ids[:, inputs["input_ids"].size(1):]
+                # Extract transcription
+                transcription = response["choices"][0]["message"]["content"]
 
-            # Decode
-            transcription = self._processor.batch_decode(
-                generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False
-            )[0]
+                return TranscriptionResult(
+                    text=transcription.strip(),
+                    language=language,
+                    confidence=None,
+                )
 
-            # Detect language from model output if possible, otherwise use hint
-            detected_language = language
-
-            return TranscriptionResult(
-                text=transcription.strip(),
-                language=detected_language,
-                confidence=None,
-            )
+            finally:
+                # Clean up temp file
+                if os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
 
         except Exception as e:
             logger.error(f"Qwen transcription failed: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             raise TranscriptionError(f"Transcription failed: {e}")
 
     def is_model_downloaded(self, model_id: str) -> bool:
-        """Check if GGUF model file is downloaded in HuggingFace cache"""
+        """Check if GGUF model and mmproj files are downloaded"""
         if model_id not in QWEN_MODELS:
             # Support legacy model ID
             if model_id == "qwen2-audio-7b":
-                model_id = "qwen2-audio-7b-q4"  # Default to Q4
+                model_id = "qwen2-audio-7b-q4"
             else:
                 return False
 
         model_info = QWEN_MODELS[model_id]
         repo_id = model_info["repo_id"]
         gguf_filename = model_info["gguf_filename"]
-        base_repo = model_info["base_repo"]
-        mmproj_filename = model_info.get("mmproj_filename")
+        mmproj_filename = model_info["mmproj_filename"]
 
-        # Check if GGUF file exists in cache
         try:
             from huggingface_hub import try_to_load_from_cache
 
-            # Check main model file
-            model_path = try_to_load_from_cache(repo_id, gguf_filename)
-            if model_path is not None:
-                # Also check for mmproj file if specified
-                if mmproj_filename:
-                    mmproj_path = try_to_load_from_cache(repo_id, mmproj_filename)
-                    if mmproj_path is not None:
-                        logger.debug(f"Found {gguf_filename} and {mmproj_filename} for {model_id}")
-                        return True
-                    logger.debug(f"Missing mmproj file {mmproj_filename} for {model_id}")
-                    return False
-                logger.debug(f"Found {gguf_filename} for {model_id}")
+            # Check both files exist
+            gguf_path = try_to_load_from_cache(repo_id, gguf_filename)
+            mmproj_path = try_to_load_from_cache(repo_id, mmproj_filename)
+
+            if gguf_path is not None and mmproj_path is not None:
+                logger.debug(f"Found {gguf_filename} and {mmproj_filename} for {model_id}")
                 return True
+
+            logger.debug(f"Missing files for {model_id}: gguf={gguf_path}, mmproj={mmproj_path}")
+            return False
 
         except Exception as e:
             logger.debug(f"Error checking model cache: {e}")
-
-        logger.debug(f"Model {model_id} not found in cache")
-        return False
+            return False
 
     def download_model(
         self, model_id: str, progress_callback: Optional[Callable[[int], None]] = None
@@ -328,46 +322,32 @@ class QwenBackend(BaseModelBackend):
         model_info = QWEN_MODELS[model_id]
         repo_id = model_info["repo_id"]
         gguf_filename = model_info["gguf_filename"]
-        base_repo = model_info["base_repo"]
-        mmproj_filename = model_info.get("mmproj_filename")
+        mmproj_filename = model_info["mmproj_filename"]
 
         try:
             logger.info(f"Downloading Qwen model: {model_id}")
             logger.info(f"GGUF file: {gguf_filename}")
-            if mmproj_filename:
-                logger.info(f"MMProj file: {mmproj_filename}")
+            logger.info(f"MMProj file: {mmproj_filename}")
             if progress_callback:
                 progress_callback(0)
 
-            # Download the GGUF file specifically
+            # Download main GGUF file
             logger.info(f"Downloading from {repo_id}")
             hf_hub_download(
                 repo_id=repo_id,
                 filename=gguf_filename,
                 local_files_only=False,
             )
+            if progress_callback:
+                progress_callback(50)
 
-            # Download multimodal projector if specified
-            if mmproj_filename:
-                logger.info(f"Downloading multimodal projector {mmproj_filename}")
-                hf_hub_download(
-                    repo_id=repo_id,
-                    filename=mmproj_filename,
-                    local_files_only=False,
-                )
-
-            # Also download tokenizer files from base repo (needed for processor)
-            logger.info(f"Downloading tokenizer from {base_repo}")
-            for tokenizer_file in ["config.json", "tokenizer.json", "tokenizer_config.json", "preprocessor_config.json"]:
-                try:
-                    hf_hub_download(
-                        repo_id=base_repo,
-                        filename=tokenizer_file,
-                        local_files_only=False,
-                    )
-                    logger.info(f"Downloaded {tokenizer_file}")
-                except Exception as e:
-                    logger.warning(f"Could not download {tokenizer_file}: {e}")
+            # Download multimodal projector
+            logger.info(f"Downloading multimodal projector {mmproj_filename}")
+            hf_hub_download(
+                repo_id=repo_id,
+                filename=mmproj_filename,
+                local_files_only=False,
+            )
 
             logger.info(f"Successfully downloaded {model_id}")
             if progress_callback:
@@ -407,8 +387,7 @@ class QwenBackend(BaseModelBackend):
             model_info = QWEN_MODELS[model_id]
             repo_id = model_info["repo_id"]
             gguf_filename = model_info["gguf_filename"]
-            base_repo = model_info["base_repo"]
-            mmproj_filename = model_info.get("mmproj_filename")
+            mmproj_filename = model_info["mmproj_filename"]
 
             # Find and delete GGUF file cache
             try:
@@ -422,32 +401,19 @@ class QwenBackend(BaseModelBackend):
                         logger.info(f"Deleting GGUF cache: {cache_dir}")
                         shutil.rmtree(cache_dir)
 
-                # Delete mmproj file if exists
-                if mmproj_filename:
-                    mmproj_path = try_to_load_from_cache(repo_id, mmproj_filename)
-                    if mmproj_path:
-                        mmproj_dir = Path(mmproj_path).parent
-                        if mmproj_dir.exists() and mmproj_dir != cache_dir:
-                            logger.info(f"Deleting mmproj cache: {mmproj_dir}")
-                            shutil.rmtree(mmproj_dir)
-
-                # Delete base repo files (tokenizer, config)
-                for file in ["config.json", "tokenizer.json", "preprocessor_config.json"]:
-                    file_path = try_to_load_from_cache(base_repo, file)
-                    if file_path:
-                        # Delete parent directory for this repo
-                        base_cache_dir = Path(file_path).parent.parent  # Go up to repo level
-                        if base_cache_dir.exists() and "Qwen" in str(base_cache_dir):
-                            logger.info(f"Deleting base repo cache: {base_cache_dir}")
-                            shutil.rmtree(base_cache_dir)
-                            break  # Only delete once
+                # Delete mmproj file if exists (may be in same or different dir)
+                mmproj_path = try_to_load_from_cache(repo_id, mmproj_filename)
+                if mmproj_path:
+                    mmproj_dir = Path(mmproj_path).parent
+                    if mmproj_dir.exists() and mmproj_dir != cache_dir:
+                        logger.info(f"Deleting mmproj cache: {mmproj_dir}")
+                        shutil.rmtree(mmproj_dir)
 
                 return True
 
             except Exception as e:
                 logger.warning(f"Could not find cache dir for deletion: {e}")
-
-            return False
+                return False
 
         except Exception as e:
             logger.error(f"Failed to delete model {model_id}: {e}")
