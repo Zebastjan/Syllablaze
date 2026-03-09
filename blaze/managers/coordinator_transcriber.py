@@ -175,14 +175,7 @@ class CoordinatorTranscriber(BaseTranscriber):
 
         # Load new model with device from settings
         try:
-            # Check if this is a Qwen model and use Qwen-specific device setting
-            from blaze.backends.registry import ModelRegistry
-            model_info = ModelRegistry.get_model(model_name)
-            if model_info and model_info.backend == "qwen":
-                device = self.settings.get("qwen_device", "cuda")
-                logger.info(f"Using Qwen-specific device setting: {device}")
-            else:
-                device = self.settings.get("device", "auto")
+            device = self.settings.get("device", "auto")
             
             compute_type = self.settings.get("compute_type", "float32")
             logger.info(

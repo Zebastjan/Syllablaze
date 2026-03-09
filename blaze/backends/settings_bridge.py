@@ -557,17 +557,3 @@ class ModelSettingsBridge(QObject):
             logger.info(f"Qwen repetition_penalty set to {value}")
         else:
             logger.warning(f"Invalid qwen repetition_penalty: {value}")
-
-    @pyqtSlot(result=str)
-    def getQwenDevice(self) -> str:
-        """Get Qwen device preference (cpu or cuda)"""
-        return self._settings.get("qwen_device", "cuda")  # Default to CUDA if available
-
-    @pyqtSlot(str)
-    def setQwenDevice(self, value: str):
-        """Set Qwen device preference (cpu or cuda)"""
-        if value in ["cpu", "cuda"]:
-            self._settings.set("qwen_device", value)
-            logger.info(f"Qwen device set to {value}")
-        else:
-            logger.warning(f"Invalid qwen device: {value}")

@@ -43,10 +43,6 @@ ColumnLayout {
         qwenTopKSpin.value = qwenSettings.top_k
         qwenMaxTokensSpin.value = qwenSettings.max_tokens
         qwenRepetitionPenaltySpin.value = qwenSettings.repetition_penalty * 10  // Convert 1.0-2.0 to 10-20
-
-        // Load Qwen device setting
-        var qwenDevice = settingsBridge.getQwenDevice()
-        qwenDeviceCombo.currentIndex = (qwenDevice === "cpu") ? 0 : 1
     }
 
     // Page header
@@ -248,17 +244,6 @@ ColumnLayout {
         Kirigami.ScrollablePage {
             Kirigami.FormLayout {
                 anchors.fill: parent
-
-                QQC2.ComboBox {
-                    id: qwenDeviceCombo
-                    Kirigami.FormData.label: "Device:"
-                    model: ["CPU", "CUDA (GPU)"]
-                    currentIndex: 1
-
-                    onActivated: {
-                        settingsBridge.setQwenDevice(currentIndex === 0 ? "cpu" : "cuda")
-                    }
-                }
 
                 QQC2.Slider {
                     id: qwenTempSlider
