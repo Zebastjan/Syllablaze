@@ -6,7 +6,7 @@ Uses quantized GGUF models for efficient CPU inference with low memory usage.
 
 Dependencies:
     pip install llama-cpp-python>=0.3.0
-    pip install librosa soundfile
+    pip install numpy
     pip install huggingface-hub
 
 Models:
@@ -15,12 +15,11 @@ Models:
     - Qwen2-Audio-7B-Q6_K: 6-bit quantized (~6.4GB) - Very good quality
     - Qwen2-Audio-7B-Q8_0: 8-bit quantized (~8.3GB) - Best quality
     - All support Chinese, English, Japanese, Korean, Arabic, and more
-    - Input: Audio file (librosa handles various formats)
+    - Input: Raw audio bytes (16kHz PCM, mono)
     - License: Apache-2.0
 """
 
 import os
-import io
 import logging
 from typing import Optional, Callable
 from pathlib import Path
@@ -175,7 +174,7 @@ class QwenBackend(BaseModelBackend):
         Transcribe audio using Qwen2-Audio via llama.cpp.
 
         Args:
-            audio_data: Raw audio bytes (any format librosa can read)
+            audio_data: Raw audio bytes (16kHz PCM, mono)
             language: Optional language hint (e.g., 'en', 'zh')
 
         Returns:
@@ -185,26 +184,26 @@ class QwenBackend(BaseModelBackend):
             raise TranscriptionError("Model not loaded. Call load() first.")
 
         try:
-            # Save audio bytes to temporary file for llama.cpp
             import tempfile
-            import soundfile as sf
-            import librosa
+            import wave
+            import struct
 
-            # Write to temp file
+            # Convert raw PCM bytes to proper WAV file
+            # audio_data is 16-bit PCM, 16kHz, mono
             with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
                 tmp_path = tmp.name
+                
+                # Convert bytes to int16 array
+                audio_array = np.frombuffer(audio_data, dtype=np.int16)
+                
+                # Write as proper WAV file
+                with wave.open(tmp_path, 'wb') as wav_file:
+                    wav_file.setnchannels(1)  # Mono
+                    wav_file.setsampwidth(2)  # 16-bit
+                    wav_file.setframerate(16000)  # 16kHz
+                    wav_file.writeframes(audio_array.tobytes())
 
             try:
-                # Load audio with librosa (handles various formats)
-                audio_np, sr = librosa.load(
-                    io.BytesIO(audio_data), 
-                    sr=16000,  # Resample to 16kHz
-                    mono=True
-                )
-                
-                # Save as WAV for llama.cpp
-                sf.write(tmp_path, audio_np, 16000)
-
                 # Build prompt
                 if language and language != "auto":
                     prompt = f"Transcribe the speech into text in {language}:"
@@ -220,7 +219,6 @@ class QwenBackend(BaseModelBackend):
                     top_k = int(settings.get("qwen_top_k", 50))
                     max_tokens = int(settings.get("qwen_max_tokens", 256))
                 except Exception:
-                    # Fallback to defaults
                     temperature = 0.7
                     top_p = 0.9
                     top_k = 50

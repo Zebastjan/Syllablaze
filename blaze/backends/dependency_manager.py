@@ -30,11 +30,11 @@ BACKEND_DEPENDENCIES = {
         "install_command": "pip install transformers>=4.40.0 torchaudio peft soundfile",
     },
     "qwen": {
-        "packages": ["torchaudio", "librosa", "soundfile", "llama-cpp-python>=0.3.0"],
+        "packages": ["llama-cpp-python>=0.3.0"],
         "optional": [],
         "description": "Qwen2-Audio ASR with llama.cpp GGUF inference",
         "size_estimate": "~4-8GB download (quantized)",
-        "install_command": "pip install torchaudio librosa soundfile 'llama-cpp-python>=0.3.0'",
+        "install_command": "pip install 'llama-cpp-python>=0.3.0'",
     },
 }
 
@@ -54,21 +54,15 @@ class DependencyManager:
             if backend == "liquid":
                 import liquid_audio
                 import torchaudio
-
                 return True
             elif backend == "granite":
                 import transformers
                 import torchaudio
                 import peft
                 import soundfile
-
                 return True
             elif backend == "qwen":
                 import llama_cpp
-                import torchaudio
-                import librosa
-                import soundfile
-
                 return True
         except ImportError:
             pass
