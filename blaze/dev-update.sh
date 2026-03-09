@@ -40,6 +40,27 @@ fi
 
 echo "Found installed package at: $INSTALL_DIR"
 
+# Check and install missing dependencies
+echo "Checking for missing dependencies..."
+
+# Function to check if a Python package is installed
+check_package() {
+    python3 -c "import $1" 2>/dev/null
+    return $?
+}
+
+# Check for llama-cpp-python
+if ! check_package "llama_cpp" 2>/dev/null; then
+    echo "📦 Installing llama-cpp-python..."
+    pipx inject "$PACKAGE_NAME" "llama-cpp-python>=0.3.0"
+fi
+
+# Check for soundfile
+if ! check_package "soundfile" 2>/dev/null; then
+    echo "📦 Installing soundfile..."
+    pipx inject "$PACKAGE_NAME" soundfile
+fi
+
 # Function to run checks on a file
 run_checks() {
     local file=$1
