@@ -131,19 +131,20 @@ class QwenBackend(BaseModelBackend):
             # Set GPU layers based on device
             n_gpu_layers = -1 if device == "cuda" else 0  # -1 = all layers on GPU
 
-            # Load model with llama.cpp
+            # Load model with llama.cpp with multimodal projector
             logger.info(f"Loading GGUF model with llama.cpp from {self._gguf_path}")
-            
+            logger.info(f"Loading multimodal projector from {self._mmproj_path}")
+
+            # Initialize Llama with multimodal support
+            # The mmproj (multimodal projector) must be passed during initialization
             self._llm = Llama(
                 model_path=str(self._gguf_path),
                 n_ctx=8192,
                 n_gpu_layers=n_gpu_layers,
+                chat_format="qwen2-audio",  # Enable Qwen2-Audio multimodal format
+                mmproj=str(self._mmproj_path),  # Multimodal projector for audio input
                 verbose=False,
             )
-
-            # Load multimodal projector
-            logger.info(f"Loading multimodal projector from {self._mmproj_path}")
-            self._llm.load_multimodal_projector(str(self._mmproj_path))
 
             self._loaded_model_id = model_id
             logger.info(f"Successfully loaded {model_id} on {device}")

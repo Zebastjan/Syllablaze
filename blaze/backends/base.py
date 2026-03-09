@@ -201,9 +201,60 @@ class ModelNotFoundError(BackendError):
 
 
 class ModelLoadError(BackendError):
-    """Raised when a model fails to load"""
+    """
+    Raised when a model fails to load.
 
-    pass
+    Preserves context about the failure for better error reporting.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        model_id: Optional[str] = None,
+        backend: Optional[str] = None,
+        device: Optional[str] = None,
+        original_exception: Optional[Exception] = None,
+    ):
+        super().__init__(message)
+        self.model_id = model_id
+        self.backend = backend
+        self.device = device
+        self.original_exception = original_exception
+
+    def get_user_message(self) -> str:
+        """
+        Get user-friendly error message with actionable guidance.
+
+        Returns:
+            Human-readable error message with suggestions
+        """
+        if self.original_exception is None:
+            return str(self)
+
+        error_str = str(self.original_exception)
+
+        # Check for common error patterns and provide guidance
+        if isinstance(self.original_exception, ImportError):
+            return (
+                f"Missing dependencies for {self.backend or 'this'} backend.\n"
+                f"Please install the required packages or use a different model."
+            )
+
+        if "CUDA out of memory" in error_str or "OutOfMemoryError" in error_str:
+            return (
+                f"Not enough GPU memory to load {self.model_id}.\n"
+                f"Try a smaller model or switch to CPU in Settings."
+            )
+
+        if "No CUDA" in error_str or "CUDA is not available" in error_str:
+            return (
+                f"CUDA not available. {self.model_id} requires GPU.\n"
+                f"Switch to CPU in Settings or install CUDA drivers."
+            )
+
+        # Generic error with context
+        context = f" ({self.backend} backend)" if self.backend else ""
+        return f"Failed to load {self.model_id}{context}: {error_str}"
 
 
 class TranscriptionError(BackendError):

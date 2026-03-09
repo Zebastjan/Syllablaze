@@ -30,11 +30,11 @@ class BackendCoordinator:
     - Dependency management for optional backends
     """
 
-    _backends: Dict[str, Type[BaseModelBackend]] = {}
-    _current_backend: Optional[BaseModelBackend] = None
-    _current_model_id: Optional[str] = None
-
     def __init__(self):
+        # Instance-level state for proper backend isolation
+        self._backends: Dict[str, Type[BaseModelBackend]] = {}
+        self._current_backend: Optional[BaseModelBackend] = None
+        self._current_model_id: Optional[str] = None
         self._discover_backends()
 
     def _discover_backends(self):
@@ -75,10 +75,9 @@ class BackendCoordinator:
         except ImportError:
             logger.info("Qwen backend not available (optional - install to use)")
 
-    @classmethod
-    def register_backend(cls, name: str, backend_class: Type[BaseModelBackend]):
+    def register_backend(self, name: str, backend_class: Type[BaseModelBackend]):
         """Register a backend class"""
-        cls._backends[name] = backend_class
+        self._backends[name] = backend_class
         logger.debug(f"Registered backend: {name}")
 
     def get_available_backends(self) -> list:
@@ -130,7 +129,7 @@ class BackendCoordinator:
                 if isinstance(self._current_backend, backend_class):
                     current_backend_name = name
                     break
-            
+
             # Unload if wrong backend type
             if current_backend_name != backend_name:
                 logger.info(
@@ -155,13 +154,119 @@ class BackendCoordinator:
         except Exception as e:
             raise ModelLoadError(f"Failed to load model {model_id}: {e}")
 
+    def load_model_atomic(self, model_id: str, device: str = "auto") -> bool:
+        """
+        Load a model with automatic rollback on failure (transactional).
+
+        This method preserves the current working model if the new model fails to load,
+        ensuring the system remains in a consistent, functional state.
+
+        Args:
+            model_id: The model to load
+            device: 'cpu', 'cuda', or 'auto'
+
+        Returns:
+            True if model loaded successfully
+
+        Raises:
+            ModelNotFoundError: If model is not downloaded
+            ModelLoadError: If model fails to load (old state preserved)
+            ValueError: If backend is not available
+        """
+        # Save current state for rollback
+        old_backend = self._current_backend
+        old_model_id = self._current_model_id
+
+        # Get model info
+        model_info = ModelRegistry.get_model(model_id)
+        if not model_info:
+            raise ValueError(f"Unknown model: {model_id}")
+
+        backend_name = model_info.backend
+
+        # Check if backend is available
+        if backend_name not in self._backends:
+            raise ValueError(
+                f"Backend '{backend_name}' is not available. "
+                f"Please install the required dependencies."
+            )
+
+        # Determine if backend switch is needed
+        current_backend_name = None
+        needs_backend_switch = False
+
+        if old_backend is not None:
+            for name, backend_class in self._backends.items():
+                if isinstance(old_backend, backend_class):
+                    current_backend_name = name
+                    break
+            needs_backend_switch = (current_backend_name != backend_name)
+
+        try:
+            # Create and load NEW backend instance (don't touch old one yet)
+            backend_class = self._backends[backend_name]
+            new_backend = backend_class()
+
+            logger.info(
+                f"Atomic load: {model_id} on {device} "
+                f"(backend: {backend_name}, switch: {needs_backend_switch})"
+            )
+
+            # Load the new model
+            new_backend.load(model_id, device)
+
+            # Success! Now safe to unload old backend and commit new state
+            if old_backend is not None and needs_backend_switch:
+                try:
+                    old_device = getattr(old_backend, '_device', 'unknown')
+                    logger.info(
+                        f"Unloading old backend: {current_backend_name} "
+                        f"(was on {old_device})"
+                    )
+                    old_backend.unload()
+                except Exception as e:
+                    logger.warning(f"Error unloading old backend: {e}")
+
+            # Commit new state
+            self._current_backend = new_backend
+            self._current_model_id = model_id
+
+            logger.info(f"✓ Atomic load successful: {model_id}")
+            return True
+
+        except Exception as e:
+            # Failure: restore old state (old_backend and old_model_id unchanged)
+            logger.error(
+                f"✗ Atomic load failed for {model_id}, preserving old state "
+                f"(old model: {old_model_id})"
+            )
+
+            # Make sure coordinator state is consistent
+            self._current_backend = old_backend
+            self._current_model_id = old_model_id
+
+            # Re-raise with enhanced context
+            raise ModelLoadError(
+                f"Failed to load model {model_id}: {e}. "
+                f"Previous model ({old_model_id}) preserved."
+            )
+
     def unload_model(self) -> None:
         """Unload the current model to free memory"""
         if self._current_backend is not None:
-            logger.info(f"Unloading model: {self._current_model_id}")
+            backend_name = self.get_current_backend_name()
+            device = getattr(self._current_backend, '_device', 'unknown')
+
+            logger.info(
+                f"Unloading model: {self._current_model_id} | "
+                f"Backend: {backend_name} | Device: {device}"
+            )
+
             self._current_backend.unload()
             self._current_backend = None
             self._current_model_id = None
+
+            logger.debug("Model unloaded, coordinator state cleared")
 
     def transcribe(
         self, audio_data: bytes, language: Optional[str] = None
@@ -272,6 +377,29 @@ class BackendCoordinator:
             if model_info:
                 return model_info.backend
         return None
+
+    def _validate_state(self) -> None:
+        """
+        Validate coordinator state consistency.
+
+        Raises:
+            AssertionError: If state is inconsistent
+        """
+        # Backend and model_id must both be set or both be None
+        assert (self._current_backend is None) == (
+            self._current_model_id is None
+        ), (
+            f"State inconsistency: backend={'set' if self._current_backend else 'None'}, "
+            f"model_id={self._current_model_id}"
+        )
+
+        # If both are set, backend's loaded model must match coordinator's model
+        if self._current_backend and self._current_model_id:
+            backend_model = self._current_backend.loaded_model_id
+            assert backend_model == self._current_model_id, (
+                f"Backend model mismatch: "
+                f"backend has '{backend_model}', coordinator has '{self._current_model_id}'"
+            )
 
 
 # Singleton instance for application-wide use

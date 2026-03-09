@@ -12,7 +12,7 @@ on the active model's backend type.
 import logging
 import gc
 import numpy as np
-from typing import Optional
+from typing import Optional, List
 from PyQt6.QtCore import QObject, pyqtSignal, QThread
 
 from blaze.backends.coordinator import get_coordinator, BackendCoordinator
@@ -20,6 +20,9 @@ from blaze.backends.base import TranscriptionResult
 from blaze.transcriber_base import BaseTranscriber
 
 logger = logging.getLogger(__name__)
+
+# Fallback models to try if primary model fails (in order of preference)
+FALLBACK_MODELS = ['whisper-tiny', 'whisper-base']
 
 
 class CoordinatorTranscriptionWorker(QThread):
@@ -143,6 +146,64 @@ class CoordinatorTranscriber(BaseTranscriber):
 
         self._load_model(model_name)
 
+    def load_model_with_fallback(self, preferred_model: Optional[str] = None) -> bool:
+        """
+        Load a model with automatic fallback to known-good models.
+
+        Attempts to load the preferred model first. If that fails, tries fallback
+        models in order (whisper-tiny, whisper-base) to keep the system operational.
+
+        Args:
+            preferred_model: Model to try first (uses settings if None)
+
+        Returns:
+            True if any model loaded successfully, False if all failed
+        """
+        if preferred_model is None:
+            preferred_model = self.settings.get("model")
+
+        if not preferred_model:
+            logger.error("No model specified for loading")
+            return False
+
+        # Build attempt list: preferred model + fallbacks
+        attempt_models = [preferred_model]
+
+        # Only add fallbacks if they're different from preferred
+        for fallback in FALLBACK_MODELS:
+            if fallback != preferred_model:
+                attempt_models.append(fallback)
+
+        logger.info(f"Attempting to load models: {attempt_models}")
+
+        # Try each model in order
+        for attempt_model in attempt_models:
+            try:
+                logger.info(f"Trying to load: {attempt_model}")
+                self._load_model(attempt_model)
+
+                # Success!
+                if attempt_model != preferred_model:
+                    logger.warning(
+                        f"Primary model '{preferred_model}' failed, "
+                        f"using fallback: {attempt_model}"
+                    )
+                    self.transcription_error.emit(
+                        f"Could not load {preferred_model}. Using {attempt_model} instead."
+                    )
+
+                return True
+
+            except Exception as e:
+                logger.error(f"Failed to load {attempt_model}: {e}")
+                continue
+
+        # All attempts failed
+        logger.error(
+            f"All model loading attempts failed. Tried: {attempt_models}"
+        )
+        return False
+
     def _load_current_model(self):
         """Load the current model based on settings"""
         model_name = self.settings.get("model")
@@ -157,7 +218,7 @@ class CoordinatorTranscriber(BaseTranscriber):
             # Don't raise - allow lazy loading on first transcription
 
     def _load_model(self, model_name: str):
-        """Load a specific model through the coordinator"""
+        """Load a specific model through the coordinator with atomic rollback"""
         logger.info(f"Loading model via coordinator: {model_name}")
 
         # Check if model is already loaded
@@ -165,28 +226,51 @@ class CoordinatorTranscriber(BaseTranscriber):
             logger.info(f"Model {model_name} already loaded")
             return
 
-        # Unload current model if different
-        if self._current_model_name:
-            try:
-                self.coordinator.unload_model()
-                logger.info(f"Unloaded previous model: {self._current_model_name}")
-            except Exception as e:
-                logger.warning(f"Error unloading previous model: {e}")
+        # Save old state for logging
+        old_model = self._current_model_name
 
-        # Load new model with device from settings
+        # Load new model with device from settings (uses atomic loading with rollback)
         try:
             device = self.settings.get("device", "auto")
-            
+
             compute_type = self.settings.get("compute_type", "float32")
             logger.info(
                 f"CoordinatorTranscriber: Loading model {model_name} with device={device}, compute_type={compute_type}"
             )
-            self.coordinator.load_model(model_name, device)
+
+            # Use atomic loading - preserves old state on failure
+            self.coordinator.load_model_atomic(model_name, device)
+
+            # Only update transcriber state after successful load
             self._current_model_name = model_name
-            logger.info(f"Successfully loaded model: {model_name} on device: {device}")
+
+            # Log comprehensive device state for debugging
+            backend_name = self.coordinator.get_current_backend_name()
+            actual_device = getattr(self.coordinator._current_backend, '_device', 'unknown')
+
+            logger.info(
+                f"✓ Model loaded: {model_name} | "
+                f"Backend: {backend_name} | "
+                f"Requested device: {device} | "
+                f"Actual device: {actual_device} | "
+                f"Previous model: {old_model}"
+            )
+
+            # Warn if device mismatch detected
+            if device != "auto" and actual_device != device:
+                logger.warning(
+                    f"⚠ Device mismatch detected! "
+                    f"Requested: {device}, Actual: {actual_device}"
+                )
+
             self.model_changed.emit(model_name)
+
         except Exception as e:
-            logger.error(f"Failed to load model {model_name}: {e}")
+            logger.error(
+                f"Failed to load model {model_name}: {e}. "
+                f"Kept previous model: {old_model}"
+            )
+            # State is preserved - old model still loaded
             raise
 
     def update_model(self, model_name: Optional[str] = None) -> bool:
