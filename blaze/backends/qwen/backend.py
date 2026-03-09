@@ -38,22 +38,31 @@ from blaze.backends.registry import ModelRegistry
 
 logger = logging.getLogger(__name__)
 
-# Model definitions - GGUF quantized versions from NexaAI
+# Model definitions - GGUF quantized versions from mradermacher
 QWEN_MODELS = {
     "qwen2-audio-7b-q4": {
-        "repo_id": "NexaAI/Qwen2-Audio-7B-GGUF",
-        "gguf_filename": "qwen2-audio-7b-q4_K_M.gguf",
+        "repo_id": "mradermacher/Qwen2-Audio-7B-GGUF",
+        "gguf_filename": "Qwen2-Audio-7B.Q4_K_M.gguf",
         "base_repo": "Qwen/Qwen2-Audio-7B",  # For tokenizer/processor
+        "mmproj_filename": "Qwen2-Audio-7B.mmproj-Q8_0.gguf",  # Multimodal projector
+    },
+    "qwen2-audio-7b-q5": {
+        "repo_id": "mradermacher/Qwen2-Audio-7B-GGUF",
+        "gguf_filename": "Qwen2-Audio-7B.Q5_K_S.gguf",
+        "base_repo": "Qwen/Qwen2-Audio-7B",
+        "mmproj_filename": "Qwen2-Audio-7B.mmproj-Q8_0.gguf",
     },
     "qwen2-audio-7b-q6": {
-        "repo_id": "NexaAI/Qwen2-Audio-7B-GGUF",
-        "gguf_filename": "qwen2-audio-7b-Q6_K.gguf",
+        "repo_id": "mradermacher/Qwen2-Audio-7B-GGUF",
+        "gguf_filename": "Qwen2-Audio-7B.Q6_K.gguf",
         "base_repo": "Qwen/Qwen2-Audio-7B",
+        "mmproj_filename": "Qwen2-Audio-7B.mmproj-Q8_0.gguf",
     },
     "qwen2-audio-7b-q8": {
-        "repo_id": "NexaAI/Qwen2-Audio-7B-GGUF",
-        "gguf_filename": "qwen2-audio-7b-Q8_0.gguf",
+        "repo_id": "mradermacher/Qwen2-Audio-7B-GGUF",
+        "gguf_filename": "Qwen2-Audio-7B.Q8_0.gguf",
         "base_repo": "Qwen/Qwen2-Audio-7B",
+        "mmproj_filename": "Qwen2-Audio-7B.mmproj-Q8_0.gguf",
     },
 }
 
@@ -270,13 +279,24 @@ class QwenBackend(BaseModelBackend):
         model_info = QWEN_MODELS[model_id]
         repo_id = model_info["repo_id"]
         gguf_filename = model_info["gguf_filename"]
+        base_repo = model_info["base_repo"]
+        mmproj_filename = model_info.get("mmproj_filename")
 
         # Check if GGUF file exists in cache
         try:
             from huggingface_hub import try_to_load_from_cache
 
+            # Check main model file
             model_path = try_to_load_from_cache(repo_id, gguf_filename)
             if model_path is not None:
+                # Also check for mmproj file if specified
+                if mmproj_filename:
+                    mmproj_path = try_to_load_from_cache(repo_id, mmproj_filename)
+                    if mmproj_path is not None:
+                        logger.debug(f"Found {gguf_filename} and {mmproj_filename} for {model_id}")
+                        return True
+                    logger.debug(f"Missing mmproj file {mmproj_filename} for {model_id}")
+                    return False
                 logger.debug(f"Found {gguf_filename} for {model_id}")
                 return True
 
@@ -309,10 +329,13 @@ class QwenBackend(BaseModelBackend):
         repo_id = model_info["repo_id"]
         gguf_filename = model_info["gguf_filename"]
         base_repo = model_info["base_repo"]
+        mmproj_filename = model_info.get("mmproj_filename")
 
         try:
             logger.info(f"Downloading Qwen model: {model_id}")
             logger.info(f"GGUF file: {gguf_filename}")
+            if mmproj_filename:
+                logger.info(f"MMProj file: {mmproj_filename}")
             if progress_callback:
                 progress_callback(0)
 
@@ -323,6 +346,15 @@ class QwenBackend(BaseModelBackend):
                 filename=gguf_filename,
                 local_files_only=False,
             )
+
+            # Download multimodal projector if specified
+            if mmproj_filename:
+                logger.info(f"Downloading multimodal projector {mmproj_filename}")
+                hf_hub_download(
+                    repo_id=repo_id,
+                    filename=mmproj_filename,
+                    local_files_only=False,
+                )
 
             # Also download tokenizer files from base repo (needed for processor)
             logger.info(f"Downloading tokenizer from {base_repo}")
@@ -376,18 +408,28 @@ class QwenBackend(BaseModelBackend):
             repo_id = model_info["repo_id"]
             gguf_filename = model_info["gguf_filename"]
             base_repo = model_info["base_repo"]
+            mmproj_filename = model_info.get("mmproj_filename")
 
             # Find and delete GGUF file cache
             try:
-                from huggingface_hub import try_to_load_from_cache, scan_cache_dir
+                from huggingface_hub import try_to_load_from_cache
 
-                # Delete GGUF file
+                # Delete main GGUF file
                 gguf_path = try_to_load_from_cache(repo_id, gguf_filename)
                 if gguf_path:
                     cache_dir = Path(gguf_path).parent
                     if cache_dir.exists():
                         logger.info(f"Deleting GGUF cache: {cache_dir}")
                         shutil.rmtree(cache_dir)
+
+                # Delete mmproj file if exists
+                if mmproj_filename:
+                    mmproj_path = try_to_load_from_cache(repo_id, mmproj_filename)
+                    if mmproj_path:
+                        mmproj_dir = Path(mmproj_path).parent
+                        if mmproj_dir.exists() and mmproj_dir != cache_dir:
+                            logger.info(f"Deleting mmproj cache: {mmproj_dir}")
+                            shutil.rmtree(mmproj_dir)
 
                 # Delete base repo files (tokenizer, config)
                 for file in ["config.json", "tokenizer.json", "preprocessor_config.json"]:
