@@ -30,12 +30,12 @@ BACKEND_DEPENDENCIES = {
         "install_command": "pip install transformers>=4.40.0 torchaudio peft soundfile",
     },
     "qwen": {
-        "packages": ["torchaudio", "librosa", "bitsandbytes"],
+        "packages": ["torchaudio", "librosa"],
         "git_packages": ["git+https://github.com/huggingface/transformers"],
-        "optional": ["accelerate"],
-        "description": "Qwen2-Audio ASR (requires latest transformers from git)",
-        "size_estimate": "~7GB download",
-        "install_command": "pip install git+https://github.com/huggingface/transformers torchaudio librosa bitsandbytes accelerate",
+        "optional": [],
+        "description": "Qwen2-Audio ASR with GGUF quantization (4-8GB models)",
+        "size_estimate": "~4-8GB download (quantized)",
+        "install_command": "pip install git+https://github.com/huggingface/transformers torchaudio librosa",
     },
 }
 
@@ -68,7 +68,6 @@ class DependencyManager:
                 import transformers
                 import torchaudio
                 import librosa
-                import bitsandbytes
 
                 return True
         except ImportError:

@@ -1,15 +1,19 @@
 """
-Qwen2-Audio Backend Implementation
+Qwen2-Audio Backend Implementation (GGUF Quantized)
 
-Speech-to-text using Alibaba's Qwen2-Audio models via transformers.
+Speech-to-text using Alibaba's Qwen2-Audio models via transformers with GGUF quantization.
+Uses NexaAI's quantized GGUF models for dramatically lower memory usage.
 
 Dependencies:
     pip install git+https://github.com/huggingface/transformers
-    pip install torchaudio librosa accelerate bitsandbytes
+    pip install torchaudio librosa
+    pip install huggingface-hub
 
 Models:
-    - Qwen2-Audio-7B: 7B parameters, multilingual ASR (base model)
-    - Supports Chinese, English, Japanese, Korean, Arabic, and more
+    - Qwen2-Audio-7B-Q4_K_M: 4-bit quantized (~4.2GB) - Good balance
+    - Qwen2-Audio-7B-Q6_K: 6-bit quantized (~6.5GB) - Very good quality
+    - Qwen2-Audio-7B-Q8_0: 8-bit quantized (~8.3GB) - Best quality
+    - All support Chinese, English, Japanese, Korean, Arabic, and more
     - Input: 16kHz audio (processor handles resampling)
     - License: Apache-2.0
 """
@@ -34,9 +38,23 @@ from blaze.backends.registry import ModelRegistry
 
 logger = logging.getLogger(__name__)
 
-# Model repo IDs
+# Model definitions - GGUF quantized versions from NexaAI
 QWEN_MODELS = {
-    "qwen2-audio-7b": "Qwen/Qwen2-Audio-7B",
+    "qwen2-audio-7b-q4": {
+        "repo_id": "NexaAI/Qwen2-Audio-7B-GGUF",
+        "gguf_filename": "qwen2-audio-7b-q4_K_M.gguf",
+        "base_repo": "Qwen/Qwen2-Audio-7B",  # For tokenizer/processor
+    },
+    "qwen2-audio-7b-q6": {
+        "repo_id": "NexaAI/Qwen2-Audio-7B-GGUF",
+        "gguf_filename": "qwen2-audio-7b-Q6_K.gguf",
+        "base_repo": "Qwen/Qwen2-Audio-7B",
+    },
+    "qwen2-audio-7b-q8": {
+        "repo_id": "NexaAI/Qwen2-Audio-7B-GGUF",
+        "gguf_filename": "qwen2-audio-7b-Q8_0.gguf",
+        "base_repo": "Qwen/Qwen2-Audio-7B",
+    },
 }
 
 
@@ -57,10 +75,10 @@ class QwenBackend(BaseModelBackend):
 
     def load(self, model_id: str, device: str = "auto") -> None:
         """
-        Load a Qwen Audio model.
+        Load a Qwen Audio model (GGUF quantized version).
 
         Args:
-            model_id: Model ID (e.g., 'qwen2-audio-7b')
+            model_id: Model ID (e.g., 'qwen2-audio-7b-q4', 'qwen2-audio-7b-q6', 'qwen2-audio-7b-q8')
             device: 'cpu', 'cuda', or 'auto'
         """
         from transformers import AutoProcessor, Qwen2AudioForConditionalGeneration
@@ -69,7 +87,10 @@ class QwenBackend(BaseModelBackend):
         if model_id not in QWEN_MODELS:
             raise ModelNotFoundError(f"Unknown Qwen model: {model_id}")
 
-        repo_id = QWEN_MODELS[model_id]
+        model_info = QWEN_MODELS[model_id]
+        repo_id = model_info["repo_id"]
+        gguf_filename = model_info["gguf_filename"]
+        base_repo = model_info["base_repo"]
 
         # Determine device
         if device == "auto":
@@ -78,64 +99,43 @@ class QwenBackend(BaseModelBackend):
         self._device = device
 
         try:
-            logger.info(f"Loading Qwen model: {model_id} from {repo_id}")
+            logger.info(f"Loading Qwen model: {model_id}")
+            logger.info(f"GGUF file: {gguf_filename}")
             logger.info(f"Device: {device}")
 
-            # Load processor and model
-            self._processor = AutoProcessor.from_pretrained(repo_id)
+            # Load processor from base repo (tokenizer is same for all quantizations)
+            logger.info(f"Loading processor from {base_repo}")
+            self._processor = AutoProcessor.from_pretrained(base_repo)
 
+            # Load model with GGUF file
+            logger.info(f"Loading GGUF model from {repo_id}/{gguf_filename}")
+            
+            # For GGUF models, transformers handles device automatically
+            # but we can specify torch_dtype based on device
             if device == "cuda":
-                # Clear any existing GPU memory before loading
-                import gc
-                gc.collect()
-                torch.cuda.empty_cache()
-                torch.cuda.synchronize()
-                logger.info("Cleared GPU cache before model loading")
-
-                # Use 4-bit quantization to fit in 12GB VRAM
-                try:
-                    from transformers import BitsAndBytesConfig
-
-                    quantization_config = BitsAndBytesConfig(
-                        load_in_4bit=True,
-                        bnb_4bit_compute_dtype=torch.float16,
-                        bnb_4bit_use_double_quant=True,
-                        bnb_4bit_quant_type="nf4",
-                    )
-                    logger.info("Using 4-bit quantization for GPU loading")
-
-                    self._model = Qwen2AudioForConditionalGeneration.from_pretrained(
-                        repo_id,
-                        device_map="cuda:0",  # Load directly to GPU, not auto
-                        quantization_config=quantization_config,
-                        low_cpu_mem_usage=True,  # Don't load full weights on CPU first
-                    )
-                except Exception as e:
-                    logger.warning(f"4-bit quantization failed: {e}")
-                    logger.warning(f"4-bit error type: {type(e).__name__}")
-                    import traceback
-                    logger.warning(f"4-bit traceback: {traceback.format_exc()}")
-                    logger.info("Falling back to standard FP16 loading")
-                    self._model = Qwen2AudioForConditionalGeneration.from_pretrained(
-                        repo_id,
-                        device_map="auto",
-                        torch_dtype=torch.float16,
-                    )
+                torch_dtype = torch.float16
             else:
-                # CPU loading - use FP32
-                self._model = Qwen2AudioForConditionalGeneration.from_pretrained(
-                    repo_id,
-                    device_map=None,
-                    torch_dtype=torch.float32,
-                )
-                self._model = self._model.to("cpu")
+                torch_dtype = torch.float32
+
+            self._model = Qwen2AudioForConditionalGeneration.from_pretrained(
+                repo_id,
+                gguf_file=gguf_filename,
+                torch_dtype=torch_dtype,
+            )
+            
+            # Move to device if needed (GGUF loading may handle this)
+            if hasattr(self._model, 'device') and str(self._model.device) != device:
+                self._model = self._model.to(device)
 
             self._model.eval()
 
             self._loaded_model_id = model_id
-            logger.info(f"Successfully loaded {model_id}")
+            logger.info(f"Successfully loaded {model_id} on {device}")
 
         except Exception as e:
+            logger.error(f"Failed to load model {model_id}: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             raise ModelLoadError(f"Failed to load model {model_id}: {e}")
 
     def unload(self) -> None:
@@ -259,48 +259,26 @@ class QwenBackend(BaseModelBackend):
             raise TranscriptionError(f"Transcription failed: {e}")
 
     def is_model_downloaded(self, model_id: str) -> bool:
-        """Check if model is downloaded in HuggingFace cache"""
-        if model_id in QWEN_MODELS:
-            repo_id = QWEN_MODELS[model_id]
-        elif model_id == "qwen2-audio-7b":
-            repo_id = "Qwen/Qwen2-Audio-7B"
-        else:
-            return False
+        """Check if GGUF model file is downloaded in HuggingFace cache"""
+        if model_id not in QWEN_MODELS:
+            # Support legacy model ID
+            if model_id == "qwen2-audio-7b":
+                model_id = "qwen2-audio-7b-q4"  # Default to Q4
+            else:
+                return False
 
-        # Check HuggingFace cache with multiple methods
+        model_info = QWEN_MODELS[model_id]
+        repo_id = model_info["repo_id"]
+        gguf_filename = model_info["gguf_filename"]
+
+        # Check if GGUF file exists in cache
         try:
-            from huggingface_hub import try_to_load_from_cache, scan_cache_dir
+            from huggingface_hub import try_to_load_from_cache
 
-            # Method 1: Check individual files
-            for filename in [
-                "model.safetensors",
-                "pytorch_model.bin",
-                "model.fp16.safetensors",
-            ]:
-                model_path = try_to_load_from_cache(repo_id, filename)
-                if model_path is not None:
-                    logger.debug(f"Found {filename} for {model_id}")
-                    return True
-
-            # Method 2: Check for config.json and verify model files in same dir
-            config_path = try_to_load_from_cache(repo_id, "config.json")
-            if config_path is not None:
-                cache_dir = Path(config_path).parent
-                # Look for any model weight files
-                for pattern in ["*.safetensors", "*.bin", "*.pt"]:
-                    if any(cache_dir.glob(pattern)):
-                        logger.debug(f"Found model files in cache dir for {model_id}")
-                        return True
-
-            # Method 3: Scan entire cache for this repo
-            try:
-                cache_info = scan_cache_dir()
-                for repo in cache_info.repos:
-                    if repo.repo_id == repo_id:
-                        logger.debug(f"Found repo in cache scan for {model_id}")
-                        return True
-            except Exception:
-                pass
+            model_path = try_to_load_from_cache(repo_id, gguf_filename)
+            if model_path is not None:
+                logger.debug(f"Found {gguf_filename} for {model_id}")
+                return True
 
         except Exception as e:
             logger.debug(f"Error checking model cache: {e}")
@@ -312,33 +290,52 @@ class QwenBackend(BaseModelBackend):
         self, model_id: str, progress_callback: Optional[Callable[[int], None]] = None
     ) -> bool:
         """
-        Download a Qwen model from HuggingFace.
+        Download a Qwen GGUF model from HuggingFace.
 
         Args:
-            model_id: Model to download
+            model_id: Model to download (e.g., 'qwen2-audio-7b-q4')
             progress_callback: Optional callback(progress_percent: int)
 
         Returns:
             True if download succeeded
         """
-        from huggingface_hub import snapshot_download
+        from huggingface_hub import hf_hub_download
 
         if model_id not in QWEN_MODELS:
             logger.error(f"Unknown Qwen model: {model_id}")
             return False
 
-        repo_id = QWEN_MODELS[model_id]
+        model_info = QWEN_MODELS[model_id]
+        repo_id = model_info["repo_id"]
+        gguf_filename = model_info["gguf_filename"]
+        base_repo = model_info["base_repo"]
 
         try:
-            logger.info(f"Downloading Qwen model: {repo_id}")
+            logger.info(f"Downloading Qwen model: {model_id}")
+            logger.info(f"GGUF file: {gguf_filename}")
             if progress_callback:
                 progress_callback(0)
 
-            # Download with snapshot_download (uses default HF cache)
-            snapshot_download(
+            # Download the GGUF file specifically
+            logger.info(f"Downloading from {repo_id}")
+            hf_hub_download(
                 repo_id=repo_id,
+                filename=gguf_filename,
                 local_files_only=False,
             )
+
+            # Also download tokenizer files from base repo (needed for processor)
+            logger.info(f"Downloading tokenizer from {base_repo}")
+            for tokenizer_file in ["config.json", "tokenizer.json", "tokenizer_config.json", "preprocessor_config.json"]:
+                try:
+                    hf_hub_download(
+                        repo_id=base_repo,
+                        filename=tokenizer_file,
+                        local_files_only=False,
+                    )
+                    logger.info(f"Downloaded {tokenizer_file}")
+                except Exception as e:
+                    logger.warning(f"Could not download {tokenizer_file}: {e}")
 
             logger.info(f"Successfully downloaded {model_id}")
             if progress_callback:
@@ -347,6 +344,8 @@ class QwenBackend(BaseModelBackend):
 
         except Exception as e:
             logger.error(f"Failed to download {model_id}: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             return False
 
     def delete_model(self, model_id: str) -> bool:
@@ -362,35 +361,46 @@ class QwenBackend(BaseModelBackend):
         import shutil
 
         if model_id not in QWEN_MODELS:
-            return False
+            # Support legacy model ID
+            if model_id == "qwen2-audio-7b":
+                model_id = "qwen2-audio-7b-q4"
+            else:
+                return False
 
         try:
             # Unload if currently loaded
             if self._loaded_model_id == model_id:
                 self.unload()
 
-            repo_id = QWEN_MODELS[model_id]
+            model_info = QWEN_MODELS[model_id]
+            repo_id = model_info["repo_id"]
+            gguf_filename = model_info["gguf_filename"]
+            base_repo = model_info["base_repo"]
 
-            # Find cache directory using HF's standard cache
+            # Find and delete GGUF file cache
             try:
                 from huggingface_hub import try_to_load_from_cache, scan_cache_dir
 
-                # First try: find config.json location
-                config_path = try_to_load_from_cache(repo_id, "config.json")
-                if config_path:
-                    cache_dir = Path(config_path).parent
+                # Delete GGUF file
+                gguf_path = try_to_load_from_cache(repo_id, gguf_filename)
+                if gguf_path:
+                    cache_dir = Path(gguf_path).parent
                     if cache_dir.exists():
-                        logger.info(f"Deleting model cache: {cache_dir}")
+                        logger.info(f"Deleting GGUF cache: {cache_dir}")
                         shutil.rmtree(cache_dir)
-                        return True
 
-                # Second try: scan cache for this repo
-                cache_info = scan_cache_dir()
-                for repo in cache_info.repos:
-                    if repo.repo_id == repo_id:
-                        logger.info(f"Deleting repo from cache: {repo.repo_id}")
-                        shutil.rmtree(repo.repo_path)
-                        return True
+                # Delete base repo files (tokenizer, config)
+                for file in ["config.json", "tokenizer.json", "preprocessor_config.json"]:
+                    file_path = try_to_load_from_cache(base_repo, file)
+                    if file_path:
+                        # Delete parent directory for this repo
+                        base_cache_dir = Path(file_path).parent.parent  # Go up to repo level
+                        if base_cache_dir.exists() and "Qwen" in str(base_cache_dir):
+                            logger.info(f"Deleting base repo cache: {base_cache_dir}")
+                            shutil.rmtree(base_cache_dir)
+                            break  # Only delete once
+
+                return True
 
             except Exception as e:
                 logger.warning(f"Could not find cache dir for deletion: {e}")

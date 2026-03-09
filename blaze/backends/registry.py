@@ -312,22 +312,73 @@ UNIFIED_MODEL_REGISTRY: Dict[str, ModelCapability] = {
         gpu_preference="gpu_agnostic",
     ),
     # =========================================================================
-    # QWEN MODELS
+    # QWEN MODELS (GGUF Quantized versions from NexaAI)
     # =========================================================================
-    "qwen2-audio-7b": ModelCapability(
-        model_id="qwen2-audio-7b",
+    "qwen2-audio-7b-q4": ModelCapability(
+        model_id="qwen2-audio-7b-q4",
         backend="qwen",
-        name="Qwen2-Audio 7B",
-        description="Alibaba's multilingual audio-language model for pure ASR/transcription (7GB)",
-        size_mb=7000,
-        min_ram_gb=16.0,
-        recommended_ram_gb=24.0,
-        min_vram_gb=14.0,  # Actually needs 14GB+ VRAM even with 4-bit quantization
+        name="Qwen2-Audio 7B (Q4_K_M)",
+        description="Alibaba's multilingual audio model - 4-bit quantized (4.2GB). Good balance of quality and memory usage.",
+        size_mb=4200,
+        min_ram_gb=6.0,
+        recommended_ram_gb=8.0,
+        min_vram_gb=None,  # Works on CPU
+        languages=["zh", "en", "ja", "ko", "ar", "fr", "de", "es", "it", "pt", "ru", "all"],
+        tier=ModelTier.MEDIUM,
+        license="Apache-2.0",
+        supports_word_timestamps=False,
+        repo_id="NexaAI/Qwen2-Audio-7B-GGUF",
+        gguf_filename="qwen2-audio-7b-q4_K_M.gguf",
+        language_performance={
+            "zh": 0.90,
+            "en": 0.88,
+            "ja": 0.83,
+            "ko": 0.81,
+            "ar": 0.78,
+        },
+        gpu_preference="cpu_preferred",  # GGUF runs well on CPU
+        is_streaming=False,
+    ),
+    "qwen2-audio-7b-q6": ModelCapability(
+        model_id="qwen2-audio-7b-q6",
+        backend="qwen",
+        name="Qwen2-Audio 7B (Q6_K)",
+        description="Alibaba's multilingual audio model - 6-bit quantized (6.5GB). Very good quality with moderate memory.",
+        size_mb=6500,
+        min_ram_gb=8.0,
+        recommended_ram_gb=10.0,
+        min_vram_gb=None,  # Works on CPU
+        languages=["zh", "en", "ja", "ko", "ar", "fr", "de", "es", "it", "pt", "ru", "all"],
+        tier=ModelTier.MEDIUM,
+        license="Apache-2.0",
+        supports_word_timestamps=False,
+        repo_id="NexaAI/Qwen2-Audio-7B-GGUF",
+        gguf_filename="qwen2-audio-7b-Q6_K.gguf",
+        language_performance={
+            "zh": 0.91,
+            "en": 0.89,
+            "ja": 0.84,
+            "ko": 0.82,
+            "ar": 0.79,
+        },
+        gpu_preference="cpu_preferred",  # GGUF runs well on CPU
+        is_streaming=False,
+    ),
+    "qwen2-audio-7b-q8": ModelCapability(
+        model_id="qwen2-audio-7b-q8",
+        backend="qwen",
+        name="Qwen2-Audio 7B (Q8_0)",
+        description="Alibaba's multilingual audio model - 8-bit quantized (8.3GB). Best quality quantized version.",
+        size_mb=8300,
+        min_ram_gb=10.0,
+        recommended_ram_gb=12.0,
+        min_vram_gb=None,  # Works on CPU
         languages=["zh", "en", "ja", "ko", "ar", "fr", "de", "es", "it", "pt", "ru", "all"],
         tier=ModelTier.HEAVY,
         license="Apache-2.0",
         supports_word_timestamps=False,
-        repo_id="Qwen/Qwen2-Audio-7B",
+        repo_id="NexaAI/Qwen2-Audio-7B-GGUF",
+        gguf_filename="qwen2-audio-7b-Q8_0.gguf",
         language_performance={
             "zh": 0.92,
             "en": 0.90,
@@ -335,7 +386,7 @@ UNIFIED_MODEL_REGISTRY: Dict[str, ModelCapability] = {
             "ko": 0.83,
             "ar": 0.80,
         },
-        gpu_preference="gpu_preferred",
+        gpu_preference="cpu_preferred",  # GGUF runs well on CPU
         is_streaming=False,
     ),
 }
