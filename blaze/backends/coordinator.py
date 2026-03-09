@@ -156,10 +156,11 @@ class BackendCoordinator:
 
     def load_model_atomic(self, model_id: str, device: str = "auto") -> bool:
         """
-        Load a model with automatic rollback on failure (transactional).
+        Load a model with GPU memory cleanup and error handling.
 
-        This method preserves the current working model if the new model fails to load,
-        ensuring the system remains in a consistent, functional state.
+        Unloads the current model first to free GPU memory, then loads the new model.
+        If the new model fails to load, the system will attempt to fallback to a
+        known-good model (handled by the transcriber layer).
 
         Args:
             model_id: The model to load
@@ -170,10 +171,10 @@ class BackendCoordinator:
 
         Raises:
             ModelNotFoundError: If model is not downloaded
-            ModelLoadError: If model fails to load (old state preserved)
+            ModelLoadError: If model fails to load
             ValueError: If backend is not available
         """
-        # Save current state for rollback
+        # Save current state for logging
         old_backend = self._current_backend
         old_model_id = self._current_model_id
 
@@ -191,26 +192,43 @@ class BackendCoordinator:
                 f"Please install the required dependencies."
             )
 
-        # Determine if backend switch is needed
+        # Determine current backend type
         current_backend_name = None
-        needs_backend_switch = False
-
         if old_backend is not None:
             for name, backend_class in self._backends.items():
                 if isinstance(old_backend, backend_class):
                     current_backend_name = name
                     break
-            needs_backend_switch = (current_backend_name != backend_name)
+
+        needs_backend_switch = (current_backend_name != backend_name)
+
+        logger.info(
+            f"Loading model: {model_id} on {device} "
+            f"(backend: {backend_name}, switch: {needs_backend_switch})"
+        )
+
+        # CRITICAL: Unload old model FIRST to free GPU memory
+        if old_backend is not None:
+            try:
+                old_device = getattr(old_backend, '_device', 'unknown')
+                logger.info(
+                    f"Unloading old model: {old_model_id} "
+                    f"(backend: {current_backend_name}, device: {old_device})"
+                )
+                old_backend.unload()
+
+                # Clear coordinator state immediately
+                self._current_backend = None
+                self._current_model_id = None
+
+                logger.debug("Old model unloaded successfully")
+            except Exception as e:
+                logger.warning(f"Error unloading old model (continuing anyway): {e}")
 
         try:
-            # Create and load NEW backend instance (don't touch old one yet)
+            # Create new backend instance
             backend_class = self._backends[backend_name]
             new_backend = backend_class()
-
-            logger.info(
-                f"Atomic load: {model_id} on {device} "
-                f"(backend: {backend_name}, switch: {needs_backend_switch})"
-            )
 
             # Force GPU memory cleanup before loading new model
             # This ensures maximum available memory for the new model load
@@ -246,40 +264,31 @@ class BackendCoordinator:
             # Load the new model
             new_backend.load(model_id, device)
 
-            # Success! Now safe to unload old backend and commit new state
-            if old_backend is not None and needs_backend_switch:
-                try:
-                    old_device = getattr(old_backend, '_device', 'unknown')
-                    logger.info(
-                        f"Unloading old backend: {current_backend_name} "
-                        f"(was on {old_device})"
-                    )
-                    old_backend.unload()
-                except Exception as e:
-                    logger.warning(f"Error unloading old backend: {e}")
-
-            # Commit new state
+            # Success! Commit new state
             self._current_backend = new_backend
             self._current_model_id = model_id
 
-            logger.info(f"✓ Atomic load successful: {model_id}")
+            logger.info(f"✓ Model loaded successfully: {model_id}")
             return True
 
         except Exception as e:
-            # Failure: restore old state (old_backend and old_model_id unchanged)
+            # Failure: Old model already unloaded, new model failed
+            # System is now in "no model loaded" state
+            # The fallback mechanism at the transcriber layer will handle recovery
             logger.error(
-                f"✗ Atomic load failed for {model_id}, preserving old state "
-                f"(old model: {old_model_id})"
+                f"✗ Model load failed for {model_id} "
+                f"(previous model {old_model_id} was unloaded): {e}"
             )
 
-            # Make sure coordinator state is consistent
-            self._current_backend = old_backend
-            self._current_model_id = old_model_id
+            # Ensure coordinator state is cleared
+            self._current_backend = None
+            self._current_model_id = None
 
-            # Re-raise with enhanced context
+            # Re-raise with clear context
             raise ModelLoadError(
                 f"Failed to load model {model_id}: {e}. "
-                f"Previous model ({old_model_id}) preserved."
+                f"Previous model ({old_model_id}) was unloaded. "
+                f"System will attempt to load a fallback model."
             )
 
     def unload_model(self) -> None:
