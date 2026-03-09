@@ -153,13 +153,6 @@ ColumnLayout {
             }
         }
         QQC2.TabButton {
-            text: "Granite"
-            onClicked: {
-                currentBackendFilter = "granite"
-                refreshModels()
-            }
-        }
-        QQC2.TabButton {
             text: "Qwen"
             onClicked: {
                 currentBackendFilter = "qwen"
@@ -359,7 +352,23 @@ ColumnLayout {
         Layout.fillWidth: true
         visible: models.length === 0 && !inlineMessage.visible
         type: Kirigami.MessageType.Warning
-        text: "No models found. This may indicate an issue with the model registry. Try restarting the application."
+        text: {
+            if (models.length === 0) {
+                if (multilingualMode) {
+                    if (currentBackendFilter !== "all") {
+                        return "No multilingual " + currentBackendFilter + " models available at this time."
+                    } else {
+                        return "No multilingual models found. Try selecting a specific language."
+                    }
+                } else if (currentBackendFilter !== "all") {
+                    var backendName = currentBackendFilter.charAt(0).toUpperCase() + currentBackendFilter.slice(1)
+                    return "No " + backendName + " models available for the selected language."
+                } else {
+                    return "No models found for the selected language (" + specificLanguage + "). Try multilingual mode."
+                }
+            }
+            return ""
+        }
         showCloseButton: false
     }
 
@@ -601,9 +610,9 @@ ColumnLayout {
             // Description
             QQC2.Label {
                 Layout.fillWidth: true
-                text: details.description || ""
+                text: (modelDetailsDialog.details && modelDetailsDialog.details.description) || ""
                 wrapMode: Text.WordWrap
-                visible: details.description !== undefined
+                visible: modelDetailsDialog.details && modelDetailsDialog.details.description !== undefined
             }
 
             // Hardware Requirements
@@ -625,7 +634,7 @@ ColumnLayout {
                     font.bold: true
                 }
                 QQC2.Label {
-                    text: details.size || "Unknown"
+                    text: (modelDetailsDialog.details && modelDetailsDialog.details.size) || "Unknown"
                 }
 
                 QQC2.Label {
@@ -633,7 +642,7 @@ ColumnLayout {
                     font.bold: true
                 }
                 QQC2.Label {
-                    text: (details.min_ram_gb || "?") + " GB"
+                    text: ((modelDetailsDialog.details && modelDetailsDialog.details.min_ram_gb) || "?") + " GB"
                 }
 
                 QQC2.Label {
@@ -641,7 +650,7 @@ ColumnLayout {
                     font.bold: true
                 }
                 QQC2.Label {
-                    text: (details.recommended_ram_gb || "?") + " GB"
+                    text: ((modelDetailsDialog.details && modelDetailsDialog.details.recommended_ram_gb) || "?") + " GB"
                 }
 
                 QQC2.Label {
@@ -649,7 +658,7 @@ ColumnLayout {
                     font.bold: true
                 }
                 QQC2.Label {
-                    text: details.min_vram_gb ? details.min_vram_gb + " GB" : "None (CPU compatible)"
+                    text: (modelDetailsDialog.details && modelDetailsDialog.details.min_vram_gb) ? details.min_vram_gb + " GB" : "None (CPU compatible)"
                 }
 
                 QQC2.Label {
@@ -657,29 +666,29 @@ ColumnLayout {
                     font.bold: true
                 }
                 QQC2.Label {
-                    text: details.gpu_preference || "Unknown"
-                    color: details.gpu_preference_raw === "gpu_agnostic" ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.neutralTextColor
+                    text: (modelDetailsDialog.details && modelDetailsDialog.details.gpu_preference) || "Unknown"
+                    color: (modelDetailsDialog.details && modelDetailsDialog.details.gpu_preference_raw === "gpu_agnostic") ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.neutralTextColor
                 }
             }
 
             // Language Performance
             Kirigami.Separator {
                 Layout.fillWidth: true
-                visible: Object.keys(details.language_performance || {}).length > 0
+                visible: modelDetailsDialog.details && Object.keys(modelDetailsDialog.details.language_performance || {}).length > 0
             }
 
             Kirigami.Heading {
                 text: "Language Performance"
                 level: 4
-                visible: Object.keys(details.language_performance || {}).length > 0
+                visible: modelDetailsDialog.details && Object.keys(modelDetailsDialog.details.language_performance || {}).length > 0
             }
 
             ColumnLayout {
-                visible: Object.keys(details.language_performance || {}).length > 0
+                visible: modelDetailsDialog.details && Object.keys(modelDetailsDialog.details.language_performance || {}).length > 0
                 spacing: Kirigami.Units.smallSpacing
 
                 Repeater {
-                    model: Object.keys(details.language_performance || {})
+                    model: modelDetailsDialog.details ? Object.keys(modelDetailsDialog.details.language_performance || {}) : []
                     delegate: RowLayout {
                         QQC2.Label {
                             text: modelData + ":"
@@ -688,11 +697,11 @@ ColumnLayout {
                         QQC2.ProgressBar {
                             from: 0
                             to: 100
-                            value: parseInt(details.language_performance[modelData])
+                            value: modelDetailsDialog.details ? parseInt(modelDetailsDialog.details.language_performance[modelData]) : 0
                             Layout.fillWidth: true
                         }
                         QQC2.Label {
-                            text: details.language_performance[modelData]
+                            text: modelDetailsDialog.details ? modelDetailsDialog.details.language_performance[modelData] : ""
                             Layout.preferredWidth: 40
                         }
                     }
@@ -711,7 +720,7 @@ ColumnLayout {
 
             QQC2.Label {
                 Layout.fillWidth: true
-                text: (details.languages || []).join(", ")
+                text: (modelDetailsDialog.details && modelDetailsDialog.details.languages || []).join(", ")
                 wrapMode: Text.WordWrap
             }
 
@@ -729,17 +738,17 @@ ColumnLayout {
                 spacing: Kirigami.Units.smallSpacing
 
                 QQC2.Label {
-                    text: details.supports_word_timestamps ? "✓ Word timestamps" : "✗ Word timestamps"
-                    color: details.supports_word_timestamps ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.disabledTextColor
+                    text: (modelDetailsDialog.details && modelDetailsDialog.details.supports_word_timestamps) ? "✓ Word timestamps" : "✗ Word timestamps"
+                    color: (modelDetailsDialog.details && modelDetailsDialog.details.supports_word_timestamps) ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.disabledTextColor
                 }
 
                 QQC2.Label {
-                    text: details.is_streaming ? "✓ Streaming support" : "✗ Streaming support"
-                    color: details.is_streaming ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.disabledTextColor
+                    text: (modelDetailsDialog.details && modelDetailsDialog.details.is_streaming) ? "✓ Streaming support" : "✗ Streaming support"
+                    color: (modelDetailsDialog.details && modelDetailsDialog.details.is_streaming) ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.disabledTextColor
                 }
 
                 QQC2.Label {
-                    text: "License: " + (details.license || "Unknown")
+                    text: "License: " + ((modelDetailsDialog.details && modelDetailsDialog.details.license) || "Unknown")
                 }
             }
 
@@ -750,13 +759,13 @@ ColumnLayout {
 
             Kirigami.InlineMessage {
                 Layout.fillWidth: true
-                text: details.compatible !== false ? "Compatible with your system" : (details.compatibility_reason || "Not compatible")
-                type: details.compatible !== false ? Kirigami.MessageType.Positive : Kirigami.MessageType.Warning
+                text: (modelDetailsDialog.details && modelDetailsDialog.details.compatible !== false) ? "Compatible with your system" : ((modelDetailsDialog.details && modelDetailsDialog.details.compatibility_reason) || "Not compatible")
+                type: (modelDetailsDialog.details && modelDetailsDialog.details.compatible !== false) ? Kirigami.MessageType.Positive : Kirigami.MessageType.Warning
                 visible: true
             }
 
             QQC2.Label {
-                visible: details.recommended
+                visible: modelDetailsDialog.details && modelDetailsDialog.details.recommended
                 text: "⭐ Recommended for your system"
                 font.bold: true
                 color: Kirigami.Theme.positiveTextColor
@@ -772,8 +781,8 @@ ColumnLayout {
             QQC2.Button {
                 text: "Download"
                 icon.name: "download"
-                visible: details.downloaded === false && !downloadingModels[modelDetailsDialog.modelId]
-                enabled: details.compatible !== false
+                visible: modelDetailsDialog.details.downloaded === false && !downloadingModels[modelDetailsDialog.modelId]
+                enabled: modelDetailsDialog.details.compatible !== false
                 onClicked: {
                     settingsBridge.downloadModel(modelDetailsDialog.modelId)
                     modelDetailsDialog.close()
@@ -783,7 +792,7 @@ ColumnLayout {
             QQC2.Button {
                 text: "Activate"
                 icon.name: "run-build"
-                visible: details.downloaded === true && details.active !== true
+                visible: modelDetailsDialog.details.downloaded === true && modelDetailsDialog.details.active !== true
                 onClicked: {
                     settingsBridge.setActiveModel(modelDetailsDialog.modelId)
                     refreshModels()
@@ -837,6 +846,7 @@ ColumnLayout {
             QQC2.Label {
                 Layout.fillWidth: true
                 text: {
+                    if (!settingsBridge || !dependencyInstallDialog.backend) return "Unknown"
                     var info = settingsBridge.getBackendDependencyInfo(dependencyInstallDialog.backend)
                     return info.packages ? info.packages.join(", ") : "Unknown"
                 }
@@ -847,6 +857,7 @@ ColumnLayout {
             QQC2.Label {
                 Layout.fillWidth: true
                 text: {
+                    if (!settingsBridge || !dependencyInstallDialog.backend) return "Estimated download size: Unknown"
                     var info = settingsBridge.getBackendDependencyInfo(dependencyInstallDialog.backend)
                     return "Estimated download size: " + (info.size_estimate || "Unknown")
                 }
@@ -897,6 +908,7 @@ ColumnLayout {
                 visible: !dependencyInstallDialog.installing
                 icon.name: "download"
                 onClicked: {
+                    if (!settingsBridge) return
                     dependencyInstallDialog.installing = true
                     dependencyInstallDialog.statusMessage = "Starting installation..."
                     settingsBridge.installBackendDependencies(dependencyInstallDialog.backend)

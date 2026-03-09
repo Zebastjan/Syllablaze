@@ -23,18 +23,19 @@ BACKEND_DEPENDENCIES = {
         "install_command": "pip install liquid-audio torchaudio",
     },
     "granite": {
-        "packages": ["transformers>=4.30.0", "torchaudio", "peft", "soundfile"],
+        "packages": ["transformers>=4.40.0", "torchaudio", "peft", "soundfile"],
         "optional": [],
         "description": "IBM Granite Speech",
         "size_estimate": "~4GB download",
-        "install_command": "pip install transformers>=4.30.0 torchaudio peft soundfile",
+        "install_command": "pip install transformers>=4.40.0 torchaudio peft soundfile",
     },
     "qwen": {
-        "packages": ["transformers>=4.30.0", "torchaudio"],
-        "optional": [],
-        "description": "Qwen ASR",
+        "packages": ["torchaudio", "librosa"],
+        "git_packages": ["git+https://github.com/huggingface/transformers"],
+        "optional": ["accelerate"],
+        "description": "Qwen2-Audio ASR (requires latest transformers from git)",
         "size_estimate": "~7GB download",
-        "install_command": "pip install transformers>=4.30.0 torchaudio",
+        "install_command": "pip install git+https://github.com/huggingface/transformers torchaudio librosa accelerate",
     },
 }
 
@@ -66,6 +67,7 @@ class DependencyManager:
             elif backend == "qwen":
                 import transformers
                 import torchaudio
+                import librosa
 
                 return True
         except ImportError:

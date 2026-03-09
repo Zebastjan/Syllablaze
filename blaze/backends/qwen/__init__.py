@@ -1,50 +1,33 @@
 """
-Qwen Backend (Placeholder)
+Qwen Backend
 
-This backend will be implemented when Qwen ASR dependencies are installed.
-For now, it raises ImportError to indicate the backend is not available.
+Speech-to-text using Alibaba's Qwen2-Audio models via transformers.
+
+Dependencies:
+    pip install git+https://github.com/huggingface/transformers
+    pip install torchaudio librosa accelerate
+
+Models:
+    - qwen2-audio-7b-instruct: 7B parameters, multilingual ASR
+
+Supported languages:
+    - Chinese (zh), English (en), Japanese (ja), Korean (ko)
+    - Arabic (ar), French (fr), German (de), Spanish (es)
+    - Italian (it), Portuguese (pt), Russian (ru), and more
 """
 
-# This module will fail to import if transformers and torchaudio are not installed
-# The BackendCoordinator will catch this and mark the backend as unavailable
-
+# Check dependencies
 try:
     import transformers
     import torchaudio
+    import librosa
 except ImportError as e:
-    raise ImportError(f"Qwen backend requires transformers and torchaudio: {e}")
+    raise ImportError(
+        f"Qwen backend requires transformers, torchaudio, and librosa: {e}. "
+        "Install with: pip install git+https://github.com/huggingface/transformers "
+        "torchaudio librosa accelerate"
+    )
 
-# If we get here, dependencies are available
-from blaze.backends.base import (
-    BaseModelBackend,
-    TranscriptionResult,
-    ModelNotFoundError,
-)
+from blaze.backends.qwen.backend import QwenBackend
 
-
-class QwenBackend(BaseModelBackend):
-    """
-    Qwen ASR backend.
-
-    Requires: transformers, torchaudio
-    """
-
-    def load(self, model_id: str, device: str = "auto") -> None:
-        raise NotImplementedError("Qwen backend not yet implemented")
-
-    def unload(self) -> None:
-        pass
-
-    def transcribe(
-        self, audio_data: bytes, language: str = None
-    ) -> TranscriptionResult:
-        raise NotImplementedError("Qwen backend not yet implemented")
-
-    def is_model_downloaded(self, model_id: str) -> bool:
-        return False
-
-    def download_model(self, model_id: str, progress_callback: callable = None) -> bool:
-        raise NotImplementedError("Qwen backend not yet implemented")
-
-    def delete_model(self, model_id: str) -> bool:
-        return False
+__all__ = ["QwenBackend"]

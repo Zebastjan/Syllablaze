@@ -258,37 +258,38 @@ UNIFIED_MODEL_REGISTRY: Dict[str, ModelCapability] = {
         gpu_preference="gpu_preferred",
     ),
     # =========================================================================
-    # IBM GRANITE SPEECH MODELS
+    # IBM GRANITE SPEECH MODELS - DISABLED (requires GraniteSpeechModel which
+    # is not available in current transformers version)
     # =========================================================================
-    "granite-speech-3.3-2b": ModelCapability(
-        model_id="granite-speech-3.3-2b",
-        backend="granite",
-        name="Granite Speech 3.3-2B",
-        description="IBM's enterprise ASR. Excellent for EN, FR, DE, ES, PT. Supports translation to JA, ZH (4GB)",
-        size_mb=4000,
-        min_ram_gb=4.0,
-        recommended_ram_gb=6.0,
-        min_vram_gb=None,  # CPU-friendly
-        languages=["en", "fr", "de", "es", "pt"],
-        tier=ModelTier.LIGHT,
-        license="Apache-2.0",
-        supports_word_timestamps=False,
-        repo_id="ibm-granite/granite-speech-3.3-2b",
-        language_performance={
-            "en": 0.95,
-            "fr": 0.95,
-            "de": 0.95,
-            "es": 0.90,
-            "pt": 0.90,
-            "it": 0.75,
-            "nl": 0.75,
-            "pl": 0.70,
-            "ja": 0.65,
-            "zh": 0.65,
-            "ru": 0.70,
-        },
-        gpu_preference="gpu_agnostic",
-    ),
+    # "granite-speech-3.3-2b": ModelCapability(
+    #     model_id="granite-speech-3.3-2b",
+    #     backend="granite",
+    #     name="Granite Speech 3.3-2B",
+    #     description="IBM's enterprise ASR. Excellent for EN, FR, DE, ES, PT. Supports translation to JA, ZH (4GB)",
+    #     size_mb=4000,
+    #     min_ram_gb=4.0,
+    #     recommended_ram_gb=6.0,
+    #     min_vram_gb=None,  # CPU-friendly
+    #     languages=["en", "fr", "de", "es", "pt"],
+    #     tier=ModelTier.LIGHT,
+    #     license="Apache-2.0",
+    #     supports_word_timestamps=False,
+    #     repo_id="ibm-granite/granite-speech-3.3-2b",
+    #     language_performance={
+    #         "en": 0.95,
+    #         "fr": 0.95,
+    #         "de": 0.95,
+    #         "es": 0.90,
+    #         "pt": 0.90,
+    #         "it": 0.75,
+    #         "nl": 0.75,
+    #         "pl": 0.70,
+    #         "ja": 0.65,
+    #         "zh": 0.65,
+    #         "ru": 0.70,
+    #     },
+    #     gpu_preference="gpu_agnostic",
+    # ),
     # =========================================================================
     # LIQUID AI MODELS
     # =========================================================================
@@ -311,23 +312,32 @@ UNIFIED_MODEL_REGISTRY: Dict[str, ModelCapability] = {
         gpu_preference="gpu_agnostic",
     ),
     # =========================================================================
-    # QWEN MODELS (Future - placeholders for now)
+    # QWEN MODELS
     # =========================================================================
-    # "qwen3-asr-7b": ModelCapability(
-    #     model_id="qwen3-asr-7b",
-    #     backend="qwen",
-    #     name="Qwen3-ASR 7B",
-    #     description="Alibaba's multilingual ASR with strong Chinese support (7GB)",
-    #     size_mb=7000,
-    #     min_ram_gb=8.0,
-    #     recommended_ram_gb=12.0,
-    #     min_vram_gb=None,
-    #     languages=["zh", "en", "ja", "ko", "ar", "all"],
-    #     tier=ModelTier.HEAVY,
-    #     license="Apache-2.0",
-    #     supports_word_timestamps=True,
-    #     repo_id="Qwen/Qwen3-ASR-7B"
-    # ),
+    "qwen2-audio-7b-instruct": ModelCapability(
+        model_id="qwen2-audio-7b-instruct",
+        backend="qwen",
+        name="Qwen2-Audio 7B Instruct",
+        description="Alibaba's multilingual audio-language model with strong Chinese and English support (7GB)",
+        size_mb=7000,
+        min_ram_gb=8.0,
+        recommended_ram_gb=12.0,
+        min_vram_gb=None,  # CPU-friendly but GPU accelerated
+        languages=["zh", "en", "ja", "ko", "ar", "fr", "de", "es", "it", "pt", "ru", "all"],
+        tier=ModelTier.HEAVY,
+        license="Apache-2.0",
+        supports_word_timestamps=False,
+        repo_id="Qwen/Qwen2-Audio-7B-Instruct",
+        language_performance={
+            "zh": 0.92,
+            "en": 0.90,
+            "ja": 0.85,
+            "ko": 0.83,
+            "ar": 0.80,
+        },
+        gpu_preference="gpu_preferred",
+        is_streaming=False,
+    ),
 }
 
 
@@ -382,6 +392,19 @@ class ModelRegistry:
         """Get list of all backend names"""
         backends = set(m.backend for m in UNIFIED_MODEL_REGISTRY.values())
         return sorted(list(backends))
+
+    @classmethod
+    def get_backend_for_model(cls, model_id: str) -> Optional[str]:
+        """Get the backend type for a specific model ID.
+
+        Args:
+            model_id: The model ID to look up
+
+        Returns:
+            Backend name (e.g., 'whisper', 'liquid', 'granite') or None if model not found
+        """
+        model = cls.get_model(model_id)
+        return model.backend if model else None
 
     @classmethod
     def get_compatibility_info(
