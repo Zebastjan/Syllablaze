@@ -179,10 +179,30 @@ class LiquidBackend(BaseModelBackend):
 
             chat.new_turn("assistant")
 
+            # Load generation parameters from settings
+            try:
+                from blaze.settings import Settings
+                settings = Settings()
+                max_new_tokens = int(settings.get("liquid_max_tokens", 200))
+                text_temperature = float(settings.get("liquid_temperature", 0.3))
+                text_top_k = int(settings.get("liquid_top_k", 50))
+            except Exception:
+                # Fallback to defaults if settings fail
+                max_new_tokens = 200
+                text_temperature = 0.3
+                text_top_k = 50
+
+            logger.debug(
+                f"Liquid generation params: temp={text_temperature}, top_k={text_top_k}, max_tokens={max_new_tokens}"
+            )
+
             # Generate text tokens only (sequential generation for ASR)
             text_tokens = []
             for t in self._model.generate_sequential(
-                **chat, max_new_tokens=200, text_temperature=0.7, text_top_k=50
+                **chat,
+                max_new_tokens=max_new_tokens,
+                text_temperature=text_temperature,
+                text_top_k=text_top_k,
             ):
                 if t.numel() == 1:
                     text_tokens.append(t)
@@ -344,14 +364,8 @@ class LiquidBackend(BaseModelBackend):
 
         try:
             logger.info(f"Downloading Liquid model: {repo_id}")
-
-            # Download with progress tracking
-            def hf_progress_callback(info):
-                if progress_callback and hasattr(info, "completed"):
-                    progress = (
-                        int((info.completed / info.total) * 100) if info.total else 0
-                    )
-                    progress_callback(progress)
+            if progress_callback:
+                progress_callback(0)
 
             snapshot_download(
                 repo_id=repo_id,
@@ -360,6 +374,8 @@ class LiquidBackend(BaseModelBackend):
             )
 
             logger.info(f"Successfully downloaded {model_id}")
+            if progress_callback:
+                progress_callback(100)
             return True
 
         except Exception as e:

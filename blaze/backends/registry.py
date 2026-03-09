@@ -314,11 +314,11 @@ UNIFIED_MODEL_REGISTRY: Dict[str, ModelCapability] = {
     # =========================================================================
     # QWEN MODELS
     # =========================================================================
-    "qwen2-audio-7b-instruct": ModelCapability(
-        model_id="qwen2-audio-7b-instruct",
+    "qwen2-audio-7b": ModelCapability(
+        model_id="qwen2-audio-7b",
         backend="qwen",
-        name="Qwen2-Audio 7B Instruct",
-        description="Alibaba's multilingual audio-language model with strong Chinese and English support (7GB)",
+        name="Qwen2-Audio 7B",
+        description="Alibaba's multilingual audio-language model for pure ASR/transcription (7GB)",
         size_mb=7000,
         min_ram_gb=8.0,
         recommended_ram_gb=12.0,
@@ -327,7 +327,7 @@ UNIFIED_MODEL_REGISTRY: Dict[str, ModelCapability] = {
         tier=ModelTier.HEAVY,
         license="Apache-2.0",
         supports_word_timestamps=False,
-        repo_id="Qwen/Qwen2-Audio-7B-Instruct",
+        repo_id="Qwen/Qwen2-Audio-7B",
         language_performance={
             "zh": 0.92,
             "en": 0.90,

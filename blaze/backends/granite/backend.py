@@ -76,7 +76,7 @@ class GraniteBackend(BaseModelBackend):
             model_id: Model ID (e.g., 'granite-speech-3.3-2b')
             device: 'cpu', 'cuda', or 'auto'
         """
-        from transformers import AutoModel, AutoProcessor
+        from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor
 
         # Validate model ID
         if model_id not in GRANITE_MODELS:
@@ -95,11 +95,11 @@ class GraniteBackend(BaseModelBackend):
             logger.info(f"Device: {device}")
 
             # Load processor and model
-            # Granite Speech uses AutoModel and AutoProcessor from transformers
+            # Granite Speech uses AutoModelForSpeechSeq2Seq
             self._processor = AutoProcessor.from_pretrained(
                 repo_id, cache_dir=self._cache_dir
             )
-            self._model = AutoModel.from_pretrained(
+            self._model = AutoModelForSpeechSeq2Seq.from_pretrained(
                 repo_id,
                 cache_dir=self._cache_dir,
                 trust_remote_code=True,  # Required for Granite models
@@ -157,28 +157,16 @@ class GraniteBackend(BaseModelBackend):
                 np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
             )
 
-            # Convert to torch tensor
-            wav = torch.from_numpy(audio_np)
-
-            # Ensure correct shape [samples]
-            if wav.dim() > 1:
-                wav = wav.squeeze()
-
-            # Granite expects 16kHz audio, so verify/resample if needed
-            # For now assume input is 16kHz
+            # Granite expects 16kHz audio
             sample_rate = 16000
-
-            # Move to device
-            if self._device == "cuda" and torch.cuda.is_available():
-                wav = wav.cuda()
 
             # Map language code
             lang_code = LANGUAGE_MAP.get(language, "en") if language else "en"
 
             # Prepare inputs for the model
-            # Granite Speech uses a specific input format
+            # Granite Speech uses AutoModelForSpeechSeq2Seq with raw audio
             inputs = self._processor(
-                audio=wav.cpu().numpy(),  # Processor expects numpy
+                audio_np,  # Pass numpy array directly
                 sampling_rate=sample_rate,
                 return_tensors="pt",
                 text=f"<|{lang_code}|>",  # Language token for ASR
@@ -186,7 +174,7 @@ class GraniteBackend(BaseModelBackend):
 
             # Move inputs to device
             if self._device == "cuda" and torch.cuda.is_available():
-                inputs = {k: v.cuda() for k, v in inputs.items()}
+                inputs = {k: v.cuda() if isinstance(v, torch.Tensor) else v for k, v in inputs.items()}
 
             # Generate transcription
             with torch.no_grad():
@@ -282,15 +270,10 @@ class GraniteBackend(BaseModelBackend):
 
         try:
             logger.info(f"Downloading Granite model: {repo_id}")
+            if progress_callback:
+                progress_callback(0)
 
-            # Download with progress tracking
-            def hf_progress_callback(info):
-                if progress_callback and hasattr(info, "completed"):
-                    progress = (
-                        int((info.completed / info.total) * 100) if info.total else 0
-                    )
-                    progress_callback(progress)
-
+            # Download the model
             snapshot_download(
                 repo_id=repo_id,
                 cache_dir=self._cache_dir,
@@ -298,6 +281,8 @@ class GraniteBackend(BaseModelBackend):
             )
 
             logger.info(f"Successfully downloaded {model_id}")
+            if progress_callback:
+                progress_callback(100)
             return True
 
         except Exception as e:

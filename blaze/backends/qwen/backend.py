@@ -5,10 +5,10 @@ Speech-to-text using Alibaba's Qwen2-Audio models via transformers.
 
 Dependencies:
     pip install git+https://github.com/huggingface/transformers
-    pip install torchaudio librosa accelerate
+    pip install torchaudio librosa accelerate bitsandbytes
 
-Model info:
-    - Qwen2-Audio-7B-Instruct: 7B parameters, multilingual ASR
+Models:
+    - Qwen2-Audio-7B: 7B parameters, multilingual ASR (base model)
     - Supports Chinese, English, Japanese, Korean, Arabic, and more
     - Input: 16kHz audio (processor handles resampling)
     - License: Apache-2.0
@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 # Model repo IDs
 QWEN_MODELS = {
-    "qwen2-audio-7b-instruct": "Qwen/Qwen2-Audio-7B-Instruct",
+    "qwen2-audio-7b": "Qwen/Qwen2-Audio-7B",
 }
 
 
@@ -60,7 +60,7 @@ class QwenBackend(BaseModelBackend):
         Load a Qwen Audio model.
 
         Args:
-            model_id: Model ID (e.g., 'qwen2-audio-7b-instruct')
+            model_id: Model ID (e.g., 'qwen2-audio-7b')
             device: 'cpu', 'cuda', or 'auto'
         """
         from transformers import AutoProcessor, Qwen2AudioForConditionalGeneration
@@ -83,13 +83,51 @@ class QwenBackend(BaseModelBackend):
 
             # Load processor and model
             self._processor = AutoProcessor.from_pretrained(repo_id)
-            self._model = Qwen2AudioForConditionalGeneration.from_pretrained(
-                repo_id,
-                device_map="auto" if device == "cuda" else None,
-                torch_dtype=torch.float16 if device == "cuda" else torch.float32,
-            )
 
-            if device == "cpu":
+            if device == "cuda":
+                # Clear any existing GPU memory before loading
+                import gc
+                gc.collect()
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+                logger.info("Cleared GPU cache before model loading")
+
+                # Use 4-bit quantization to fit in 12GB VRAM
+                try:
+                    from transformers import BitsAndBytesConfig
+
+                    quantization_config = BitsAndBytesConfig(
+                        load_in_4bit=True,
+                        bnb_4bit_compute_dtype=torch.float16,
+                        bnb_4bit_use_double_quant=True,
+                        bnb_4bit_quant_type="nf4",
+                    )
+                    logger.info("Using 4-bit quantization for GPU loading")
+
+                    self._model = Qwen2AudioForConditionalGeneration.from_pretrained(
+                        repo_id,
+                        device_map="cuda:0",  # Load directly to GPU, not auto
+                        quantization_config=quantization_config,
+                        low_cpu_mem_usage=True,  # Don't load full weights on CPU first
+                    )
+                except Exception as e:
+                    logger.warning(f"4-bit quantization failed: {e}")
+                    logger.warning(f"4-bit error type: {type(e).__name__}")
+                    import traceback
+                    logger.warning(f"4-bit traceback: {traceback.format_exc()}")
+                    logger.info("Falling back to standard FP16 loading")
+                    self._model = Qwen2AudioForConditionalGeneration.from_pretrained(
+                        repo_id,
+                        device_map="auto",
+                        torch_dtype=torch.float16,
+                    )
+            else:
+                # CPU loading - use FP32
+                self._model = Qwen2AudioForConditionalGeneration.from_pretrained(
+                    repo_id,
+                    device_map=None,
+                    torch_dtype=torch.float32,
+                )
                 self._model = self._model.to("cpu")
 
             self._model.eval()
@@ -139,31 +177,18 @@ class QwenBackend(BaseModelBackend):
                 np.frombuffer(audio_data, dtype=np.int16).astype(np.float32) / 32768.0
             )
 
-            # Build conversation for transcription
+            # Build transcription prompt with audio tokens
             # Use the language hint in the prompt if provided
             if language and language != "auto":
-                prompt_text = f"Transcribe the speech into text in {language}:"
+                prompt_text = f"<|audio_bos|><|AUDIO|><|audio_eos|>Transcribe the speech into text in {language}:"
             else:
-                prompt_text = "Transcribe the speech into text:"
-
-            conversation = [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "audio", "audio_url": "placeholder"},
-                    ],
-                },
-            ]
-
-            # Apply chat template
-            text = self._processor.apply_chat_template(
-                conversation, add_generation_prompt=True, tokenize=False
-            )
+                prompt_text = "<|audio_bos|><|AUDIO|><|audio_eos|>Transcribe the speech into text:"
 
             # Process audio and text
             inputs = self._processor(
-                text=text,
-                audios=[audio_np],
+                text=prompt_text,
+                audio=audio_np,
+                sampling_rate=16000,
                 return_tensors="pt",
                 padding=True,
             )
@@ -237,8 +262,8 @@ class QwenBackend(BaseModelBackend):
         """Check if model is downloaded in HuggingFace cache"""
         if model_id in QWEN_MODELS:
             repo_id = QWEN_MODELS[model_id]
-        elif model_id == "qwen2-audio-7b-instruct":
-            repo_id = "Qwen/Qwen2-Audio-7B-Instruct"
+        elif model_id == "qwen2-audio-7b":
+            repo_id = "Qwen/Qwen2-Audio-7B"
         else:
             return False
 

@@ -8,7 +8,7 @@ Dependencies:
     pip install torchaudio librosa accelerate
 
 Models:
-    - qwen2-audio-7b-instruct: 7B parameters, multilingual ASR
+    - qwen2-audio-7b: 7B parameters, multilingual ASR (base model, no chat filters)
 
 Supported languages:
     - Chinese (zh), English (en), Japanese (ja), Korean (ko)

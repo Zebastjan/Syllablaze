@@ -93,8 +93,27 @@ class ModelUtils:
         faster_distil_dir = ModelPaths.get_faster_distil_dir(model_name)
 
         if os.path.exists(faster_whisper_dir):
+            # Check for HF cache structure - need to return the snapshot subdir
+            snapshots_dir = os.path.join(faster_whisper_dir, "snapshots")
+            if os.path.isdir(snapshots_dir):
+                # Find the first (and usually only) snapshot
+                snapshot_subdirs = [
+                    d for d in os.listdir(snapshots_dir)
+                    if os.path.isdir(os.path.join(snapshots_dir, d))
+                ]
+                if snapshot_subdirs:
+                    return os.path.join(snapshots_dir, snapshot_subdirs[0])
             return faster_whisper_dir
         elif os.path.exists(faster_distil_dir):
+            # Same for distil models
+            snapshots_dir = os.path.join(faster_distil_dir, "snapshots")
+            if os.path.isdir(snapshots_dir):
+                snapshot_subdirs = [
+                    d for d in os.listdir(snapshots_dir)
+                    if os.path.isdir(os.path.join(snapshots_dir, d))
+                ]
+                if snapshot_subdirs:
+                    return os.path.join(snapshots_dir, snapshot_subdirs[0])
             return faster_distil_dir
         else:
             return whisper_file_path

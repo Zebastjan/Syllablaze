@@ -1,4 +1,5 @@
 """GPU/CUDA setup and configuration manager"""
+
 import os
 import sys
 import logging
@@ -146,7 +147,9 @@ class GPUSetupManager:
                     ) or any(glob.glob(os.path.join(path, "libcudart*.so*")))
                     if has_cuda_libs and path not in cuda_paths:
                         cuda_paths.append(path)
-                        logger.info(f"✓ Found CUDA library from LD_LIBRARY_PATH: {path}")
+                        logger.info(
+                            f"✓ Found CUDA library from LD_LIBRARY_PATH: {path}"
+                        )
 
         # 5. Check common system CUDA locations
         common_paths = [
@@ -212,11 +215,20 @@ class GPUSetupManager:
         if self.gpu_available:
             settings.set("device", "cuda")
             settings.set("compute_type", "float16")  # Better GPU performance
-            logger.info("Settings configured for GPU: device=cuda, compute_type=float16")
+            device_name = self.gpu_device_name or "CUDA Device"
+            logger.info("=" * 60)
+            logger.info(f"GPU CONFIGURED: {device_name}")
+            logger.info("Settings: device=cuda, compute_type=float16")
+            logger.info("=" * 60)
+            print(f"✓ GPU Ready: {device_name}")
         else:
             settings.set("device", "cpu")
             settings.set("compute_type", "float32")
-            logger.info("Settings configured for CPU: device=cpu, compute_type=float32")
+            logger.info("=" * 60)
+            logger.info("CPU MODE: No GPU detected")
+            logger.info("Settings: device=cpu, compute_type=float32")
+            logger.info("=" * 60)
+            print("⚠ Running in CPU mode (slower)")
 
     def is_gpu_available(self):
         """Return whether GPU is available and configured"""

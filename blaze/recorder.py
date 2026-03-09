@@ -4,9 +4,11 @@ import io
 import logging
 import warnings
 import ctypes
+import queue
+import threading
 import numpy as np
 import pyaudio
-from PyQt6.QtCore import QObject, pyqtSignal
+from PyQt6.QtCore import QObject, pyqtSignal, QTimer
 from blaze.settings import Settings
 from blaze.constants import (
     WHISPER_SAMPLE_RATE,
@@ -116,6 +118,14 @@ class AudioRecorder(QObject):
         # Keep a reference to self to prevent premature deletion
         self._instance = self
 
+        # Thread-safe queue for passing audio data from callback to main thread
+        self._audio_queue = queue.Queue()
+        self._frames_lock = threading.Lock()
+
+        # QTimer to process queued audio data in the main thread
+        self._audio_timer = QTimer(self)
+        self._audio_timer.timeout.connect(self._process_audio_queue)
+
     def update_sample_rate_mode(self, mode):
         """Update the sample rate mode setting"""
         settings = Settings()
@@ -216,6 +226,8 @@ class AudioRecorder(QObject):
                 self.current_sample_rate = default_sample_rate
 
             self.stream.start_stream()
+            # Start the timer to process queued audio data in the main thread
+            self._audio_timer.start(50)  # 50ms polling
             logger.info(f"Recording started at {self.current_sample_rate}Hz")
 
         except Exception as e:
@@ -223,20 +235,28 @@ class AudioRecorder(QObject):
             self.recording_failed.emit(f"Failed to start recording: {e}")
             self.is_recording_active = False
 
-    def _handle_audio_frame(self, in_data, frame_count, time_info, status):
-        if status:
-            # Status 2 = paInputOverflowed (minor buffer overflow, normal during recording)
-            # Don't log as warning - this happens during normal high-load recording
-            logger.debug(f"Recording status: {status}")
-        try:
-            if self.is_recording_active:
-                self.frames.append(in_data)
+    def _process_audio_queue(self):
+        """Process queued audio data in the main thread (safe to emit Qt signals)"""
+        processed_count = 0
+        max_per_cycle = 10  # Limit processing to avoid blocking main thread
+
+        while not self._audio_queue.empty() and processed_count < max_per_cycle:
+            try:
+                in_data = self._audio_queue.get_nowait()
+
+                # Safely append to frames with lock
+                with self._frames_lock:
+                    if self.is_recording_active:
+                        self.frames.append(in_data)
+
                 # Calculate and emit volume level using our unified AudioProcessor
                 try:
                     audio_data = np.frombuffer(in_data, dtype=np.int16)
                     volume = AudioProcessor.calculate_volume(audio_data)
                     self.volume_changing.emit(volume)
-                    logger.debug(f"AudioRecorder: emitted volume={volume:.4f} from {len(audio_data)} samples")
+                    logger.debug(
+                        f"AudioRecorder: emitted volume={volume:.4f} from {len(audio_data)} samples"
+                    )
 
                     # Emit audio samples for waveform visualization
                     # Downsample and normalize to -1.0 to 1.0 range
@@ -250,6 +270,21 @@ class AudioRecorder(QObject):
                     logger.error(f"Error calculating volume: {e}")
                     self.volume_changing.emit(0.0)
                     self.audio_samples_changing.emit([])
+
+                processed_count += 1
+            except queue.Empty:
+                break
+
+    def _handle_audio_frame(self, in_data, frame_count, time_info, status):
+        if status:
+            # Status 2 = paInputOverflowed (minor buffer overflow, normal during recording)
+            # Don't log as warning - this happens during normal high-load recording
+            logger.debug(f"Recording status: {status}")
+        try:
+            if self.is_recording_active:
+                # Queue the audio data instead of processing directly
+                # This is safe because queue.Queue is thread-safe
+                self._audio_queue.put(in_data)
                 return (in_data, pyaudio.paContinue)
         except RuntimeError:
             # Handle case where object is being deleted
@@ -264,6 +299,9 @@ class AudioRecorder(QObject):
 
         logger.info("Stopping audio recording")
         self.is_recording_active = False
+
+        # Stop the audio processing timer
+        self._audio_timer.stop()
 
         try:
             # Stop and close the stream first
@@ -313,8 +351,9 @@ class AudioRecorder(QObject):
             # Emit the processed audio data
             self.recording_completed.emit(audio_data)
 
-            # Clear frames to free memory
-            self.frames = []
+            # Clear frames to free memory (with lock for thread safety)
+            with self._frames_lock:
+                self.frames = []
         except Exception as e:
             logger.error(f"Failed to process recording: {str(e)}", exc_info=True)
             self.recording_failed.emit(f"Failed to process recording: {str(e)}")

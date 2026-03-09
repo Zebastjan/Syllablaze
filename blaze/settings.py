@@ -21,6 +21,9 @@ from blaze.constants import (
     POPUP_STYLE_APPLET,
     DEFAULT_POPUP_STYLE,
     DEFAULT_APPLET_AUTOHIDE,
+    DEFAULT_LIQUID_TEMPERATURE,
+    DEFAULT_LIQUID_TOP_K,
+    DEFAULT_LIQUID_MAX_TOKENS,
 )
 import logging
 
@@ -35,7 +38,7 @@ class Settings:
     # Valid compute types for Faster Whisper
     VALID_COMPUTE_TYPES = ["float32", "float16", "int8"]
     # Valid devices for Faster Whisper
-    VALID_DEVICES = ["cpu", "cuda"]
+    VALID_DEVICES = ["auto", "cpu", "cuda"]
     # Valid applet modes for recording dialog
     VALID_APPLET_MODES = [APPLET_MODE_OFF, APPLET_MODE_PERSISTENT, APPLET_MODE_POPUP]
     # Valid popup styles (high-level UI setting)
@@ -58,6 +61,14 @@ class Settings:
             self.settings.setValue("vad_filter", DEFAULT_VAD_FILTER)
         if self.settings.value("word_timestamps") is None:
             self.settings.setValue("word_timestamps", DEFAULT_WORD_TIMESTAMPS)
+
+        # Liquid backend settings
+        if self.settings.value("liquid_temperature") is None:
+            self.settings.setValue("liquid_temperature", DEFAULT_LIQUID_TEMPERATURE)
+        if self.settings.value("liquid_top_k") is None:
+            self.settings.setValue("liquid_top_k", DEFAULT_LIQUID_TOP_K)
+        if self.settings.value("liquid_max_tokens") is None:
+            self.settings.setValue("liquid_max_tokens", DEFAULT_LIQUID_MAX_TOKENS)
 
         # Diagnostics settings
         if self.settings.value("clipboard_diagnostics") is None:

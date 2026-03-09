@@ -297,7 +297,7 @@ ColumnLayout {
 
             QQC2.Label {
                 Layout.fillWidth: true
-                text: "Syllablaze supports multiple speech recognition backends. The Whisper backend is included by default. Optional backends like Granite, Liquid, and Qwen require additional Python packages to be installed."
+                text: "Syllablaze supports multiple speech recognition backends. The Whisper backend is included by default. Optional backends like Liquid require additional Python packages to be installed."
                 wrapMode: Text.WordWrap
             }
 

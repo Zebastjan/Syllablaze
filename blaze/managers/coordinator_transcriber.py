@@ -117,6 +117,11 @@ class CoordinatorTranscriber(BaseTranscriber):
         self._current_language: Optional[str] = None
         self._worker: Optional[CoordinatorTranscriptionWorker] = None
 
+    @property
+    def worker(self):
+        """Access the current transcription worker (for status checking)."""
+        return self._worker
+
     def is_model_loaded(self) -> bool:
         """Check if a model is loaded and ready.
 
@@ -124,6 +129,19 @@ class CoordinatorTranscriber(BaseTranscriber):
             True if a model is loaded, False otherwise.
         """
         return self._current_model_name is not None
+
+    def load_model(self):
+        """Load the current model based on settings.
+
+        This is the public interface called by TranscriptionManager.initialize()
+        to eagerly load the model at startup.
+        """
+        model_name = self.settings.get("model")
+        if not model_name:
+            logger.warning("No model configured in settings")
+            raise RuntimeError("No model configured in settings")
+
+        self._load_model(model_name)
 
     def _load_current_model(self):
         """Load the current model based on settings"""
@@ -158,6 +176,10 @@ class CoordinatorTranscriber(BaseTranscriber):
         # Load new model with device from settings
         try:
             device = self.settings.get("device", "auto")
+            compute_type = self.settings.get("compute_type", "float32")
+            logger.info(
+                f"CoordinatorTranscriber: Loading model {model_name} with device={device}, compute_type={compute_type}"
+            )
             self.coordinator.load_model(model_name, device)
             self._current_model_name = model_name
             logger.info(f"Successfully loaded model: {model_name} on device: {device}")

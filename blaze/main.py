@@ -20,6 +20,7 @@ from PyQt6.QtWidgets import QApplication, QMessageBox, QSystemTrayIcon  # noqa: 
 from PyQt6.QtCore import QCoreApplication  # noqa: E402
 from PyQt6.QtGui import QIcon  # noqa: E402
 import logging  # noqa: E402
+import traceback  # noqa: E402
 from blaze.kirigami_integration import KirigamiSettingsWindow as SettingsWindow  # noqa: E402
 from blaze.loading_window import LoadingWindow  # noqa: E402
 from blaze.recording_dialog_manager import RecordingDialogManager  # noqa: E402
@@ -120,6 +121,9 @@ class SyllablazeOrchestrator(QSystemTrayIcon):
         # Shutdown state
         self._is_shutting_down = False
         self._dbus_bus = None
+
+        # Model change state - prevents re-entrance and nested calls
+        self._is_changing_model = False
 
         # Window references
         self.settings_window = None
@@ -259,6 +263,12 @@ class SyllablazeOrchestrator(QSystemTrayIcon):
             self.settings_window.settings_bridge.settingChanged.connect(
                 self.settings_coordinator.on_setting_changed
             )
+
+            # Connect model change signal for hard reset
+            self.settings_window.settings_bridge.activeModelChanged.connect(
+                self._handle_model_change_hard_reset
+            )
+
             logger.info("Settings coordinator initialized and signals connected")
 
             # Initialize window visibility coordinator
@@ -771,6 +781,10 @@ class SyllablazeOrchestrator(QSystemTrayIcon):
 
         except Exception as e:
             logger.error(f"Failed to start transcription: {e}")
+
+            # CRITICAL: Reset transcribing state to prevent getting stuck
+            self.app_state.stop_transcription()
+
             # Phase 6: Use UIManager to close progress window
             self.ui_manager.close_progress_window("after transcription error")
 
@@ -847,6 +861,171 @@ class SyllablazeOrchestrator(QSystemTrayIcon):
 
         # Close progress window
         self._close_progress_window("after transcription error")
+
+    def _handle_model_change_hard_reset(self, model_name):
+        """Handle model change by performing a hard reset.
+
+        This is called when user selects a new model from the settings window.
+        It performs a hard reset: stopping any ongoing transcription and
+        reinitializing the transcriber.
+
+        CRITICAL: The transcriber reinitialization is deferred to the next
+        event loop iteration to avoid Qt object lifecycle issues and crashes
+        when switching backends.
+
+        Parameters:
+        -----------
+        model_name : str
+            The new model name that was selected
+        """
+        from PyQt6.QtCore import QTimer
+
+        # Prevent re-entrance - if we're already changing models, ignore this call
+        if self._is_changing_model:
+            logger.warning(
+                f"Ignoring model change to {model_name} - already processing a model change"
+            )
+            return
+
+        # Set flag to prevent nested calls
+        self._is_changing_model = True
+
+        try:
+            logger.info(
+                f"HARD RESET: Model changed to {model_name}, stopping any ongoing transcription"
+            )
+
+            # Check if we have a valid transcription manager and transcriber
+            has_valid_transcriber = (
+                hasattr(self, "transcription_manager")
+                and self.transcription_manager is not None
+                and self.transcription_manager._get_transcriber_type() != "dummy"
+            )
+
+            logger.debug(
+                f"Hard reset: has_valid_transcriber={has_valid_transcriber}, "
+                f"transcriber_type={self.transcription_manager._get_transcriber_type() if hasattr(self, 'transcription_manager') and self.transcription_manager else 'N/A'}"
+            )
+
+            # Stop any ongoing transcription/recording immediately (synchronous)
+            # Only try to stop if we have a valid transcriber
+            if has_valid_transcriber:
+                try:
+                    if self.app_state.is_transcribing():
+                        logger.info(
+                            "Stopping ongoing transcription due to model change"
+                        )
+                        self.app_state.stop_transcription()
+                except Exception as e:
+                    logger.warning(f"Error stopping transcription: {e}")
+
+                try:
+                    if getattr(self, "recording", False):
+                        logger.info("Stopping ongoing recording due to model change")
+                        self._stop_recording()
+                except Exception as e:
+                    logger.warning(f"Error stopping recording: {e}")
+            else:
+                logger.info(
+                    "Skipping transcription/recording stop - no valid transcriber (dummy or None)"
+                )
+
+            # Close any open windows
+            try:
+                self._close_progress_window("model change hard reset")
+            except Exception as e:
+                logger.warning(f"Error closing progress window: {e}")
+
+            # Defer transcriber reinitialization to avoid Qt lifecycle issues
+            # This prevents crashes when switching from dummy to working backend
+            logger.info("Deferring transcriber reinitialization to next event loop...")
+            QTimer.singleShot(0, lambda: self._deferred_backend_reinit(model_name))
+
+        except Exception as e:
+            logger.error(f"Error in _handle_model_change_hard_reset: {e}")
+            logger.debug(traceback.format_exc())
+            # Reset flag on error
+            self._is_changing_model = False
+
+    def _deferred_backend_reinit(self, model_name):
+        """Deferred backend reinitialization.
+
+        This is called via QTimer.singleShot to ensure we're not in the middle
+        of Qt signal handling when reinitializing the transcriber.
+
+        Parameters:
+        -----------
+        model_name : str
+            The new model name that was selected
+        """
+        logger.info(f"Deferred reinitialization starting for model: {model_name}")
+
+        # Force transcription manager to reinitialize for new backend
+        # This ensures proper GPU memory cleanup between backend switches
+        if hasattr(self, "transcription_manager") and self.transcription_manager:
+            try:
+                # This will trigger _check_backend_change which handles GPU cleanup
+                success = self.transcription_manager._check_backend_change()
+
+                if success:
+                    logger.info(f"Successfully reinitialized for model: {model_name}")
+                    # Update tooltip to reflect the change
+                    self.update_tooltip()
+
+                    # Show success notification to user
+                    self.ui_manager.show_notification(
+                        self,
+                        "Model Changed",
+                        f"Switched to {model_name}",
+                        self.ui_manager.normal_icon,
+                    )
+                else:
+                    logger.error(f"Failed to reinitialize for model: {model_name}")
+                    # Check if we have a dummy transcriber (backend not available)
+                    transcriber_type = (
+                        self.transcription_manager._get_transcriber_type()
+                    )
+                    if transcriber_type == "dummy":
+                        # Show error notification with helpful message
+                        error_msg = self.transcription_manager.get_model_status()
+                        self.ui_manager.show_notification(
+                            self,
+                            "Model Not Available",
+                            error_msg,
+                            None  # Use default tray icon,
+                        )
+                    else:
+                        # Generic error
+                        self.ui_manager.show_notification(
+                            self,
+                            "Model Change Failed",
+                            f"Could not switch to {model_name}. Please try again.",
+                            None  # Use default tray icon,
+                        )
+                    # Update tooltip even on failure
+                    self.update_tooltip()
+
+            except Exception as e:
+                logger.error(f"Error during deferred transcriber reinitialization: {e}")
+                logger.debug(traceback.format_exc())
+
+                # Show error notification
+                self.ui_manager.show_notification(
+                    self,
+                    "Model Change Error",
+                    f"An error occurred while switching to {model_name}. Please try again.",
+                    None  # Use default tray icon,
+                )
+                # Update tooltip even on error
+                self.update_tooltip()
+        else:
+            logger.warning("Transcription manager not available for reinitialization")
+
+        logger.info(f"Deferred reinitialization complete for model: {model_name}")
+
+        # CRITICAL: Always reset the flag to allow future model changes
+        # This must happen even if there was an error
+        self._is_changing_model = False
 
     def toggle_debug_window(self):
         """Toggle debug window visibility"""

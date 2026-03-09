@@ -30,10 +30,18 @@ DEFAULT_SAMPLE_RATE_MODE = SAMPLE_RATE_MODE_WHISPER  # Default to Whisper-optimi
 
 # Faster Whisper settings
 DEFAULT_COMPUTE_TYPE = "float32"  # or 'float16', 'int8'
-DEFAULT_DEVICE = "cpu"  # or 'cuda'
+DEFAULT_DEVICE = "auto"  # Auto-detect GPU, or 'cpu'/'cuda' to force
 DEFAULT_BEAM_SIZE = 5
 DEFAULT_VAD_FILTER = True
 DEFAULT_WORD_TIMESTAMPS = False
+
+# Liquid backend settings (lower temperature = less hallucination)
+DEFAULT_LIQUID_TEMPERATURE = 0.3  # Default 0.3 instead of 0.7 for less hallucination
+DEFAULT_LIQUID_TOP_K = 50
+DEFAULT_LIQUID_MAX_TOKENS = 200
+
+# Granite backend settings
+DEFAULT_GRANITE_MAX_NEW_TOKENS = 256
 
 # Clipboard diagnostics
 # Enable detailed logging and verification so we can catch Wayland ownership glitches.

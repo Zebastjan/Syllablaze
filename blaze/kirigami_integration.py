@@ -48,6 +48,9 @@ class SettingsBridge(QObject):
     )  # backend, message, progress_percent
     dependencyInstallComplete = pyqtSignal(str, bool)  # backend, success
     backendAvailabilityChanged = pyqtSignal(str, bool)  # backend, available
+    activeModelChanged = pyqtSignal(
+        str
+    )  # model_name - emitted when user selects new model
 
     def __init__(self, settings):
         super().__init__()
@@ -759,32 +762,36 @@ class SettingsBridge(QObject):
 
     @pyqtSlot(str)
     def setActiveModel(self, model_name):
-        """Set the active model"""
+        """Set the active model.
+
+        Note: Backend type is now derived from model_id at runtime
+        in TranscriptionManager, so we no longer store model_backend.
+        This prevents stale backend information when switching models.
+
+        Emits activeModelChanged signal to trigger hard reset in main app.
+        """
         logger.info(f"Setting active model: {model_name}")
 
-        # Store the model name
+        # Store the model name - backend will be derived from model_id
         self.set("model", model_name)
 
-        # Also store the backend type for proper routing
+        # Log the backend type for debugging (but don't store it)
         try:
             from blaze.backends.registry import ModelRegistry
 
             model_info = ModelRegistry.get_model(model_name)
             if model_info:
-                self.set("model_backend", model_info.backend)
-                logger.info(
-                    f"Stored backend '{model_info.backend}' for model {model_name}"
-                )
+                logger.info(f"Model {model_name} uses backend '{model_info.backend}'")
             else:
-                # Default to whisper if model not found in registry
-                self.set("model_backend", "whisper")
                 logger.warning(
-                    f"Model {model_name} not found in registry, defaulting to whisper backend"
+                    f"Model {model_name} not found in registry, will default to whisper"
                 )
         except Exception as e:
             logger.error(f"Failed to get model backend info: {e}")
-            # Default to whisper on error
-            self.set("model_backend", "whisper")
+
+        # Emit signal to notify main app that model changed
+        # This triggers a hard reset - stopping any ongoing transcription
+        self.activeModelChanged.emit(model_name)
 
     def _check_model_downloaded_safe(self, coordinator, model_id):
         """Safely check if model is downloaded, returning False on any error."""
@@ -885,6 +892,36 @@ class SettingsBridge(QObject):
             logger.error(f"Failed to get model details for {model_id}: {e}")
             return {"error": str(e)}
 
+    @pyqtSlot(result="QVariantMap")
+    def getLiquidSettings(self):
+        """Get Liquid backend generation settings."""
+        return {
+            "temperature": self.settings.get("liquid_temperature", 0.3),
+            "top_k": self.settings.get("liquid_top_k", 50),
+            "max_tokens": self.settings.get("liquid_max_tokens", 200),
+        }
+
+    @pyqtSlot(float)
+    def setLiquidTemperature(self, value):
+        """Set Liquid generation temperature (0.0-1.0)."""
+        if 0.0 <= value <= 1.0:
+            self.settings.set("liquid_temperature", value)
+            logger.info(f"Liquid temperature set to {value}")
+
+    @pyqtSlot(int)
+    def setLiquidTopK(self, value):
+        """Set Liquid top-k sampling value."""
+        if 1 <= value <= 100:
+            self.settings.set("liquid_top_k", value)
+            logger.info(f"Liquid top_k set to {value}")
+
+    @pyqtSlot(int)
+    def setLiquidMaxTokens(self, value):
+        """Set Liquid max tokens to generate."""
+        if 10 <= value <= 500:
+            self.settings.set("liquid_max_tokens", value)
+            logger.info(f"Liquid max_tokens set to {value}")
+
     # === Dependency Management Methods ===
 
     @pyqtSlot(str, result="QVariantMap")
@@ -956,7 +993,7 @@ class SettingsBridge(QObject):
         """Get all backends with their availability status."""
         try:
             result = []
-            all_backends = ["whisper", "granite", "liquid", "qwen"]
+            all_backends = ["whisper", "liquid", "qwen"]
 
             for backend in all_backends:
                 info = DependencyManager.get_backend_info(backend)

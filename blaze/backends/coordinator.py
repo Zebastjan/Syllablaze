@@ -123,11 +123,18 @@ class BackendCoordinator:
             )
 
         # Check if we need to switch backends
-        if self._current_backend is not None and self._current_model_id is not None:
-            current_info = ModelRegistry.get_model(self._current_model_id)
-            if current_info and current_info.backend != backend_name:
+        if self._current_backend is not None:
+            # Determine current backend type
+            current_backend_name = None
+            for name, backend_class in self._backends.items():
+                if isinstance(self._current_backend, backend_class):
+                    current_backend_name = name
+                    break
+            
+            # Unload if wrong backend type
+            if current_backend_name != backend_name:
                 logger.info(
-                    f"Switching from {current_info.backend} to {backend_name} backend"
+                    f"Switching from {current_backend_name or 'unknown'} to {backend_name} backend"
                 )
                 self.unload_model()
 
@@ -138,6 +145,7 @@ class BackendCoordinator:
 
         # Load the model
         try:
+            logger.info(f"Loading model {model_id} on device: {device}")
             self._current_backend.load(model_id, device)
             self._current_model_id = model_id
             logger.info(f"Successfully loaded model: {model_id}")

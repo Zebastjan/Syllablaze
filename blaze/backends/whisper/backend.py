@@ -85,13 +85,31 @@ class WhisperBackend(BaseModelBackend):
             logger.info(f"Loading Whisper model: {model_id} from {model_path}")
             logger.info(f"Device: {device_type}, Compute type: {compute_type}")
 
-            self._model = WhisperModel(
-                model_path,
-                device=device_type,
-                device_index=device_index if device == "cuda" else 0,
-                compute_type=compute_type,
-                cpu_threads=4 if device == "cpu" else 0,
-            )
+            # Check if we're loading from a local CTranslate2 directory or need to download
+            if os.path.isdir(model_path):
+                # Local CTranslate2 directory - use local_files_only to prevent HF Hub lookup
+                logger.info(f"Loading from local directory: {model_path}")
+                self._model = WhisperModel(
+                    model_path,
+                    device=device_type,
+                    device_index=device_index if device == "cuda" else 0,
+                    compute_type=compute_type,
+                    cpu_threads=4 if device == "cpu" else 0,
+                    local_files_only=True,
+                )
+            else:
+                # Either .pt file exists (which faster-whisper can't load) or nothing exists
+                # Pass the model name to let faster-whisper download CTranslate2 version
+                logger.info(f"Loading model from HuggingFace Hub: {old_model_name}")
+                self._model = WhisperModel(
+                    old_model_name,
+                    device=device_type,
+                    device_index=device_index if device == "cuda" else 0,
+                    compute_type=compute_type,
+                    cpu_threads=4 if device == "cpu" else 0,
+                    download_root=ModelPaths.get_models_dir(),
+                    local_files_only=False,
+                )
 
             self._loaded_model_id = model_id
             self._device = device
@@ -294,18 +312,8 @@ class WhisperBackend(BaseModelBackend):
 
     def _get_model_path(self, old_model_name: str) -> str:
         """Get the local path for a model in old naming format"""
-        from blaze.models.paths import ModelPaths
+        from blaze.models.paths import ModelPaths, ModelUtils
 
-        # Try faster-whisper path first
-        path = ModelPaths.get_faster_whisper_dir(old_model_name)
-        if os.path.exists(path):
-            return path
-
-        # Try distil-whisper path
-        path = ModelPaths.get_faster_distil_dir(old_model_name)
-        if os.path.exists(path):
-            return path
-
-        # Return the faster-whisper path even if it doesn't exist
-        # (will fail with a better error message later)
-        return ModelPaths.get_faster_whisper_dir(old_model_name)
+        # Use ModelUtils to get the best available path
+        # This checks: faster-whisper dir -> distil-whisper dir -> original .pt file
+        return ModelUtils.get_model_path(old_model_name)
