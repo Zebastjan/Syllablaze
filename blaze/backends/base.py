@@ -40,6 +40,7 @@ class ModelCapability:
     is_streaming: bool = False
     supports_word_timestamps: bool = False
     repo_id: Optional[str] = None  # HuggingFace repo ID for downloading
+    gguf_filename: Optional[str] = None  # GGUF filename for quantized models
     # Performance and hardware preferences
     language_performance: Optional[Dict[str, float]] = (
         None  # Language -> score (0.0-1.0)
