@@ -212,6 +212,37 @@ class BackendCoordinator:
                 f"(backend: {backend_name}, switch: {needs_backend_switch})"
             )
 
+            # Force GPU memory cleanup before loading new model
+            # This ensures maximum available memory for the new model load
+            if device in ("cuda", "auto"):
+                try:
+                    import gc
+                    import torch
+
+                    logger.debug("Forcing GPU memory cleanup before model load")
+
+                    # Force Python garbage collection
+                    gc.collect()
+
+                    # Clear PyTorch CUDA cache if available
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                        torch.cuda.synchronize()
+
+                        # Log memory stats for debugging
+                        if torch.cuda.device_count() > 0:
+                            allocated = torch.cuda.memory_allocated(0) / 1024**3
+                            reserved = torch.cuda.memory_reserved(0) / 1024**3
+                            logger.debug(
+                                f"GPU memory after cleanup: "
+                                f"{allocated:.2f}GB allocated, {reserved:.2f}GB reserved"
+                            )
+
+                except ImportError:
+                    logger.debug("PyTorch not available, skipping GPU cleanup")
+                except Exception as e:
+                    logger.warning(f"GPU cleanup failed (non-critical): {e}")
+
             # Load the new model
             new_backend.load(model_id, device)
 
