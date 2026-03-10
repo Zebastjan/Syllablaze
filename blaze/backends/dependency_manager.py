@@ -405,16 +405,20 @@ Qwen2.5-Omni requires llama-mtmd-cli:
 1. Clone llama.cpp:
    cd ~ && git clone https://github.com/ggml-org/llama.cpp.git
 
-2. Compile (with CUDA):
-   cd llama.cpp && make GGML_CUDA=1 llama-mtmd-cli
+2. Configure with CMake (CUDA enabled):
+   cd llama.cpp && mkdir -p build && cd build
+   cmake .. -DGGML_CUDA=ON -DLLAMA_BUILD_EXAMPLES=ON -DCMAKE_BUILD_TYPE=Release
 
-3. Install binary:
-   sudo cp llama-mtmd-cli /usr/local/bin/
-   # OR: mkdir -p ~/.local/bin && cp llama-mtmd-cli ~/.local/bin/
+3. Compile multimodal CLI:
+   cmake --build . --target llama-mtmd-cli -j$(nproc)
 
-4. Verify: llama-mtmd-cli --help
+4. Install binary:
+   sudo cp bin/llama-mtmd-cli /usr/local/bin/
+   # OR: mkdir -p ~/.local/bin && cp bin/llama-mtmd-cli ~/.local/bin/
 
-See: https://github.com/ggml-org/llama.cpp
+5. Verify: llama-mtmd-cli --help
+
+See: https://github.com/ggml-org/llama.cpp/blob/master/docs/build.md
 """
         progress_callback(instructions, 100)
 

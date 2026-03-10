@@ -500,8 +500,10 @@ import org.kde.kirigami as Kirigami
                 icon.name: "edit-copy"
                 onTriggered: {
                     var commands = "cd ~ && git clone https://github.com/ggml-org/llama.cpp.git\n" +
-                                 "cd llama.cpp && make GGML_CUDA=1 llama-mtmd-cli\n" +
-                                 "sudo cp llama-mtmd-cli /usr/local/bin/"
+                                 "cd llama.cpp && mkdir -p build && cd build\n" +
+                                 "cmake .. -DGGML_CUDA=ON -DLLAMA_BUILD_EXAMPLES=ON -DCMAKE_BUILD_TYPE=Release\n" +
+                                 "cmake --build . --target llama-mtmd-cli -j$(nproc)\n" +
+                                 "sudo cp bin/llama-mtmd-cli /usr/local/bin/"
                     // Copy to clipboard (if available)
                     console.log("Commands to copy:", commands)
                 }
@@ -514,11 +516,14 @@ import org.kde.kirigami as Kirigami
 
             QQC2.Label {
                 text: "1. Clone llama.cpp:\n   cd ~ && git clone https://github.com/ggml-org/llama.cpp.git\n\n" +
-                      "2. Compile with CUDA support:\n   cd llama.cpp && make GGML_CUDA=1 llama-mtmd-cli\n\n" +
-                      "3. Install binary:\n   sudo cp llama-mtmd-cli /usr/local/bin/\n   " +
-                      "# OR: mkdir -p ~/.local/bin && cp llama-mtmd-cli ~/.local/bin/\n\n" +
-                      "4. Verify installation:\n   llama-mtmd-cli --help\n\n" +
-                      "After installation, Qwen will show as \"✓ Ready\" and you can download Qwen models."
+                      "2. Configure with CMake:\n   cd llama.cpp && mkdir -p build && cd build\n" +
+                      "   cmake .. -DGGML_CUDA=ON -DLLAMA_BUILD_EXAMPLES=ON -DCMAKE_BUILD_TYPE=Release\n\n" +
+                      "3. Compile multimodal CLI:\n   cmake --build . --target llama-mtmd-cli -j$(nproc)\n\n" +
+                      "4. Install binary:\n   sudo cp bin/llama-mtmd-cli /usr/local/bin/\n   " +
+                      "# OR: mkdir -p ~/.local/bin && cp bin/llama-mtmd-cli ~/.local/bin/\n\n" +
+                      "5. Verify installation:\n   llama-mtmd-cli --help\n\n" +
+                      "After installation, Qwen will show as \"✓ Ready\" and you can download Qwen models.\n\n" +
+                      "Build docs: https://github.com/ggml-org/llama.cpp/blob/master/docs/build.md"
                 wrapMode: Text.WordWrap
                 font.family: "monospace"
             }
