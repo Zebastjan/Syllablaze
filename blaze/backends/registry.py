@@ -496,7 +496,10 @@ class ModelRegistry:
         """
         results = []
         for model in UNIFIED_MODEL_REGISTRY.values():
-            if language == "all":
+            # '*' means universal language support (10,000+ languages)
+            if "*" in model.languages:
+                results.append(model)
+            elif language == "all":
                 # Multilingual mode: include models that support "all" OR have 3+ languages
                 if "all" in model.languages or len(model.languages) >= 3:
                     results.append(model)
