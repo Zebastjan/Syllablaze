@@ -30,11 +30,13 @@ BACKEND_DEPENDENCIES = {
         "install_command": "pip install transformers>=4.40.0 torchaudio peft soundfile",
     },
     "qwen": {
-        "packages": ["llama-cpp-python>=0.3.0"],
+        "packages": ["huggingface-hub"],  # For model downloads
         "optional": [],
-        "description": "Qwen2-Audio ASR with llama.cpp GGUF inference",
-        "size_estimate": "~4-8GB download (quantized)",
-        "install_command": "pip install 'llama-cpp-python>=0.3.0'",
+        "description": "Qwen2.5-Omni Multimodal (10k+ languages)",
+        "size_estimate": "~2-8GB models + llama.cpp binary",
+        "install_command": "# Requires manual llama.cpp compilation - see instructions",
+        "requires_binary": "llama-mtmd-cli",
+        "binary_install_url": "https://github.com/ggml-org/llama.cpp",
     },
 }
 
@@ -62,8 +64,9 @@ class DependencyManager:
                 import soundfile
                 return True
             elif backend == "qwen":
-                import llama_cpp
-                return True
+                # Check for llama-mtmd-cli binary
+                import shutil
+                return shutil.which("llama-mtmd-cli") is not None
         except ImportError:
             pass
         return False
@@ -179,5 +182,52 @@ def install_granite_backend(
 def install_qwen_backend(
     progress_callback: Optional[Callable[[str, int], None]] = None,
 ) -> bool:
-    """Convenience function to install Qwen backend"""
-    return DependencyManager.install_backend("qwen", progress_callback)
+    """
+    Convenience function to install Qwen backend.
+
+    Note: Qwen requires llama-mtmd-cli binary which must be compiled manually.
+    This function installs Python dependencies and provides instructions.
+    """
+    import shutil
+
+    # Check if llama-mtmd-cli is already available
+    if shutil.which("llama-mtmd-cli"):
+        logger.info("llama-mtmd-cli already available")
+        if progress_callback:
+            progress_callback("llama-mtmd-cli found, installing Python deps...", 50)
+        # Just install Python dependencies
+        return DependencyManager.install_backend("qwen", progress_callback)
+
+    # llama-mtmd-cli not found - provide instructions
+    logger.warning("llama-mtmd-cli not found - manual installation required")
+
+    if progress_callback:
+        progress_callback(
+            "Qwen requires llama-mtmd-cli binary (manual install required)",
+            0
+        )
+
+    # Install Python dependencies anyway
+    success = DependencyManager.install_backend("qwen", progress_callback)
+
+    if success and progress_callback:
+        instructions = """
+Qwen2.5-Omni requires llama-mtmd-cli:
+
+1. Clone llama.cpp:
+   cd ~ && git clone https://github.com/ggml-org/llama.cpp.git
+
+2. Compile (with CUDA):
+   cd llama.cpp && make GGML_CUDA=1 llama-mtmd-cli
+
+3. Install binary:
+   sudo cp llama-mtmd-cli /usr/local/bin/
+   # OR: mkdir -p ~/.local/bin && cp llama-mtmd-cli ~/.local/bin/
+
+4. Verify: llama-mtmd-cli --help
+
+See: https://github.com/ggml-org/llama.cpp
+"""
+        progress_callback(instructions, 100)
+
+    return success
