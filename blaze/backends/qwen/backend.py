@@ -1,26 +1,32 @@
 """
-Qwen2-Audio Backend Implementation (GGUF via llama.cpp)
+Qwen2.5-Omni Backend Implementation (GGUF via llama.cpp CLI)
 
-Speech-to-text using Alibaba's Qwen2-Audio models via llama-cpp-python.
-Uses quantized GGUF models for efficient CPU inference with low memory usage.
+Speech-to-text using Alibaba's Qwen2.5-Omni multimodal models via llama-mtmd-cli.
+Uses quantized GGUF models for efficient inference with low memory usage.
 
 Dependencies:
-    pip install llama-cpp-python>=0.3.0
-    pip install numpy
-    pip install huggingface-hub
+    - llama.cpp compiled with llama-mtmd-cli binary
+    - huggingface-hub (for model downloads)
+    - numpy
 
 Models:
-    - Qwen2-Audio-7B-Q4_K_M: 4-bit quantized (~4.2GB) - Good balance
-    - Qwen2-Audio-7B-Q5_K_S: 5-bit quantized (~5.0GB) - Better quality
-    - Qwen2-Audio-7B-Q6_K: 6-bit quantized (~6.4GB) - Very good quality
-    - Qwen2-Audio-7B-Q8_0: 8-bit quantized (~8.3GB) - Best quality
-    - All support Chinese, English, Japanese, Korean, Arabic, and more
-    - Input: Raw audio bytes (16kHz PCM, mono)
+    - Qwen2.5-Omni-7B-Q4: 4-bit quantized (~4.6GB) - Fast, recommended
+    - Qwen2.5-Omni-7B-Q6: 6-bit quantized (~6.4GB) - Very good quality
+    - Qwen2.5-Omni-7B-Q8: 8-bit quantized (~8.2GB) - Best quality
+    - Qwen2.5-Omni-3B-Q4: 4-bit quantized (~3.5GB) - Smaller, faster
+    - All support 10,000+ languages (Chinese, Arabic, Japanese, Korean, etc.)
+    - Input: Audio files (WAV or MP3)
     - License: Apache-2.0
+
+Note: Qwen2.5-Omni is significantly better than Qwen2-Audio (which has
+hallucination issues in llama.cpp). This implementation uses llama-mtmd-cli
+via subprocess instead of llama-cpp-python's Python API.
 """
 
 import os
+import subprocess
 import logging
+import shutil
 from typing import Optional, Callable
 from pathlib import Path
 
@@ -39,55 +45,57 @@ logger = logging.getLogger(__name__)
 
 # Model definitions - GGUF quantized versions from mradermacher
 QWEN_MODELS = {
-    "qwen2-audio-7b-q4": {
-        "repo_id": "mradermacher/Qwen2-Audio-7B-GGUF",
-        "gguf_filename": "Qwen2-Audio-7B.Q4_K_M.gguf",
-        "mmproj_filename": "Qwen2-Audio-7B.mmproj-Q8_0.gguf",
+    "qwen2.5-omni-7b-q4": {
+        "repo_id": "mradermacher/Qwen2.5-Omni-7B-GGUF",
+        "gguf_filename": "Qwen2.5-Omni-7B.Q4_K_M.gguf",
+        "mmproj_filename": "Qwen2.5-Omni-7B.mmproj-Q8_0.gguf",
+        "size_gb": 4.8,
     },
-    "qwen2-audio-7b-q5": {
-        "repo_id": "mradermacher/Qwen2-Audio-7B-GGUF",
-        "gguf_filename": "Qwen2-Audio-7B.Q5_K_S.gguf",
-        "mmproj_filename": "Qwen2-Audio-7B.mmproj-Q8_0.gguf",
+    "qwen2.5-omni-7b-q6": {
+        "repo_id": "mradermacher/Qwen2.5-Omni-7B-GGUF",
+        "gguf_filename": "Qwen2.5-Omni-7B.Q6_K.gguf",
+        "mmproj_filename": "Qwen2.5-Omni-7B.mmproj-Q8_0.gguf",
+        "size_gb": 6.4,
     },
-    "qwen2-audio-7b-q6": {
-        "repo_id": "mradermacher/Qwen2-Audio-7B-GGUF",
-        "gguf_filename": "Qwen2-Audio-7B.Q6_K.gguf",
-        "mmproj_filename": "Qwen2-Audio-7B.mmproj-Q8_0.gguf",
+    "qwen2.5-omni-7b-q8": {
+        "repo_id": "mradermacher/Qwen2.5-Omni-7B-GGUF",
+        "gguf_filename": "Qwen2.5-Omni-7B.Q8_0.gguf",
+        "mmproj_filename": "Qwen2.5-Omni-7B.mmproj-Q8_0.gguf",
+        "size_gb": 8.2,
     },
-    "qwen2-audio-7b-q8": {
-        "repo_id": "mradermacher/Qwen2-Audio-7B-GGUF",
-        "gguf_filename": "Qwen2-Audio-7B.Q8_0.gguf",
-        "mmproj_filename": "Qwen2-Audio-7B.mmproj-Q8_0.gguf",
+    "qwen2.5-omni-3b-q4": {
+        "repo_id": "mradermacher/Qwen2.5-Omni-3B-GGUF",
+        "gguf_filename": "Qwen2.5-Omni-3B.Q4_K_M.gguf",
+        "mmproj_filename": "Qwen2.5-Omni-3B.mmproj-Q8_0.gguf",
+        "size_gb": 2.5,
     },
 }
 
 
 class QwenBackend(BaseModelBackend):
     """
-    Qwen2-Audio backend for speech-to-text using llama.cpp.
+    Qwen2.5-Omni backend for speech-to-text using llama.cpp CLI.
 
-    This backend uses llama-cpp-python to run quantized GGUF inference
-    on Qwen's audio-language models with minimal memory usage.
+    This backend uses llama-mtmd-cli (multimodal CLI) to run quantized GGUF
+    inference on Qwen's multimodal models via subprocess.
     """
 
     def __init__(self):
         super().__init__()
-        self._llm: Optional = None
         self._device: str = "cpu"
         self._loaded_model_id: Optional[str] = None
         self._gguf_path: Optional[Path] = None
         self._mmproj_path: Optional[Path] = None
+        self._llama_cli_path: Optional[Path] = None
 
     def load(self, model_id: str, device: str = "auto") -> None:
         """
-        Load a Qwen Audio model (GGUF quantized version via llama.cpp).
+        Load a Qwen2.5-Omni model (GGUF quantized version via llama.cpp CLI).
 
         Args:
-            model_id: Model ID (e.g., 'qwen2-audio-7b-q4', 'qwen2-audio-7b-q6', 'qwen2-audio-7b-q8')
-            device: 'cpu', 'cuda', or 'auto' (llama.cpp handles GPU automatically)
+            model_id: Model ID (e.g., 'qwen2.5-omni-7b-q4', 'qwen2.5-omni-7b-q6')
+            device: 'cpu', 'cuda', or 'auto'
         """
-        from llama_cpp import Llama
-
         # Validate model ID
         if model_id not in QWEN_MODELS:
             raise ModelNotFoundError(f"Unknown Qwen model: {model_id}")
@@ -97,7 +105,7 @@ class QwenBackend(BaseModelBackend):
         gguf_filename = model_info["gguf_filename"]
         mmproj_filename = model_info["mmproj_filename"]
 
-        # Determine device (llama.cpp handles GPU automatically via n_gpu_layers)
+        # Determine device
         if device == "auto":
             import torch
             device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -105,14 +113,24 @@ class QwenBackend(BaseModelBackend):
         self._device = device
 
         try:
-            logger.info(f"Loading Qwen model: {model_id}")
+            logger.info(f"Loading Qwen2.5-Omni model: {model_id}")
             logger.info(f"GGUF file: {gguf_filename}")
             logger.info(f"MMProj file: {mmproj_filename}")
             logger.info(f"Device: {device}")
 
-            # Get cached file paths
+            # Find llama-mtmd-cli binary
+            self._llama_cli_path = self._find_llama_cli()
+            if not self._llama_cli_path:
+                raise ModelLoadError(
+                    "llama-mtmd-cli not found. Please install llama.cpp and ensure "
+                    "llama-mtmd-cli is in your PATH or in ~/.local/bin/"
+                )
+
+            logger.info(f"Using llama-mtmd-cli: {self._llama_cli_path}")
+
+            # Get cached file paths from HuggingFace
             from huggingface_hub import try_to_load_from_cache
-            
+
             self._gguf_path = try_to_load_from_cache(repo_id, gguf_filename)
             self._mmproj_path = try_to_load_from_cache(repo_id, mmproj_filename)
 
@@ -121,33 +139,21 @@ class QwenBackend(BaseModelBackend):
                     f"GGUF file not downloaded: {gguf_filename}. "
                     f"Please download the model first."
                 )
-            
+
             if self._mmproj_path is None:
                 raise ModelNotFoundError(
                     f"MMProj file not downloaded: {mmproj_filename}. "
                     f"Please download the model first."
                 )
 
-            # Set GPU layers based on device
-            n_gpu_layers = -1 if device == "cuda" else 0  # -1 = all layers on GPU
-
-            # Load model with llama.cpp with multimodal projector
-            logger.info(f"Loading GGUF model with llama.cpp from {self._gguf_path}")
-            logger.info(f"Loading multimodal projector from {self._mmproj_path}")
-
-            # Initialize Llama with multimodal support
-            # The mmproj (multimodal projector) must be passed during initialization
-            self._llm = Llama(
-                model_path=str(self._gguf_path),
-                n_ctx=8192,
-                n_gpu_layers=n_gpu_layers,
-                chat_format="qwen2-audio",  # Enable Qwen2-Audio multimodal format
-                mmproj=str(self._mmproj_path),  # Multimodal projector for audio input
-                verbose=False,
-            )
+            # Verify files exist
+            if not Path(self._gguf_path).exists():
+                raise ModelLoadError(f"GGUF file not found: {self._gguf_path}")
+            if not Path(self._mmproj_path).exists():
+                raise ModelLoadError(f"MMProj file not found: {self._mmproj_path}")
 
             self._loaded_model_id = model_id
-            logger.info(f"Successfully loaded {model_id} on {device}")
+            logger.info(f"Successfully loaded {model_id} (files verified)")
 
         except Exception as e:
             logger.error(f"Failed to load model {model_id}: {e}")
@@ -155,12 +161,31 @@ class QwenBackend(BaseModelBackend):
             logger.error(f"Traceback: {traceback.format_exc()}")
             raise ModelLoadError(f"Failed to load model {model_id}: {e}")
 
+    def _find_llama_cli(self) -> Optional[Path]:
+        """Find llama-mtmd-cli binary in common locations"""
+        # Check PATH first
+        cli_path = shutil.which("llama-mtmd-cli")
+        if cli_path:
+            return Path(cli_path)
+
+        # Check common locations
+        common_paths = [
+            Path.home() / ".local" / "bin" / "llama-mtmd-cli",
+            Path("/usr/local/bin/llama-mtmd-cli"),
+            Path("/usr/bin/llama-mtmd-cli"),
+            Path.home() / "llama.cpp" / "bin" / "llama-mtmd-cli",
+        ]
+
+        for path in common_paths:
+            if path.exists() and path.is_file():
+                return path
+
+        return None
+
     def unload(self) -> None:
-        """Unload the model to free memory"""
-        if self._llm is not None:
+        """Unload the model (no-op for CLI-based backend)"""
+        if self._loaded_model_id is not None:
             logger.info(f"Unloading Qwen model: {self._loaded_model_id}")
-            del self._llm
-            self._llm = None
             self._loaded_model_id = None
             self._gguf_path = None
             self._mmproj_path = None
@@ -172,7 +197,7 @@ class QwenBackend(BaseModelBackend):
         self, audio_data: bytes, language: Optional[str] = None
     ) -> TranscriptionResult:
         """
-        Transcribe audio using Qwen2-Audio via llama.cpp.
+        Transcribe audio using Qwen2.5-Omni via llama-mtmd-cli.
 
         Args:
             audio_data: Raw audio bytes (16kHz PCM, mono)
@@ -181,22 +206,20 @@ class QwenBackend(BaseModelBackend):
         Returns:
             TranscriptionResult with text
         """
-        if self._llm is None:
+        if self._loaded_model_id is None:
             raise TranscriptionError("Model not loaded. Call load() first.")
 
         try:
             import tempfile
             import wave
-            import struct
 
-            # Convert raw PCM bytes to proper WAV file
-            # audio_data is 16-bit PCM, 16kHz, mono
+            # Convert raw PCM bytes to WAV file (llama-mtmd-cli needs WAV/MP3)
             with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
                 tmp_path = tmp.name
-                
+
                 # Convert bytes to int16 array
                 audio_array = np.frombuffer(audio_data, dtype=np.int16)
-                
+
                 # Write as proper WAV file
                 with wave.open(tmp_path, 'wb') as wav_file:
                     wav_file.setnchannels(1)  # Mono
@@ -215,43 +238,78 @@ class QwenBackend(BaseModelBackend):
                 try:
                     from blaze.settings import Settings
                     settings = Settings()
-                    temperature = float(settings.get("qwen_temperature", 0.7))
-                    top_p = float(settings.get("qwen_top_p", 0.9))
-                    top_k = int(settings.get("qwen_top_k", 50))
-                    max_tokens = int(settings.get("qwen_max_tokens", 256))
+                    temperature = float(settings.get("qwen_temperature", 0.1))
+                    top_p = float(settings.get("qwen_top_p", 0.8))
+                    top_k = int(settings.get("qwen_top_k", 100))
+                    max_tokens = int(settings.get("qwen_max_tokens", 512))
                 except Exception:
-                    temperature = 0.7
-                    top_p = 0.9
-                    top_k = 50
-                    max_tokens = 256
+                    temperature = 0.1
+                    top_p = 0.8
+                    top_k = 100
+                    max_tokens = 512
 
                 logger.debug(
                     f"Qwen generation params: temp={temperature}, top_p={top_p}, "
                     f"top_k={top_k}, max_tokens={max_tokens}"
                 )
 
-                # Generate with audio input via llama.cpp chat completion
-                response = self._llm.create_chat_completion(
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": [
-                                {"type": "audio", "audio_url": tmp_path},
-                                {"type": "text", "text": prompt},
-                            ],
-                        }
-                    ],
-                    temperature=temperature,
-                    top_p=top_p,
-                    top_k=top_k,
-                    max_tokens=max_tokens,
+                # Build llama-mtmd-cli command
+                n_gpu_layers = 999 if self._device == "cuda" else 0
+
+                cmd = [
+                    str(self._llama_cli_path),
+                    "-m", str(self._gguf_path),
+                    "--mmproj", str(self._mmproj_path),
+                    "--audio", tmp_path,
+                    "--prompt", prompt,
+                    "--ctx-size", "8192",
+                    "-ngl", str(n_gpu_layers),
+                    "--temp", str(temperature),
+                    "--top-p", str(top_p),
+                    "--top-k", str(top_k),
+                    "-n", str(max_tokens),
+                    "--repeat-penalty", "1.05",
+                    "--log-disable",  # Disable llama.cpp logging
+                ]
+
+                logger.debug(f"Running llama-mtmd-cli: {' '.join(cmd)}")
+
+                # Run llama-mtmd-cli and capture output
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=120,  # 2 minute timeout
                 )
 
-                # Extract transcription
-                transcription = response["choices"][0]["message"]["content"]
+                if result.returncode != 0:
+                    raise TranscriptionError(
+                        f"llama-mtmd-cli failed with code {result.returncode}: "
+                        f"{result.stderr}"
+                    )
+
+                # Extract transcription from stdout
+                transcription = result.stdout.strip()
+
+                # Remove common llama.cpp output artifacts
+                # The actual transcription usually starts after the prompt
+                if prompt in transcription:
+                    transcription = transcription.split(prompt, 1)[1].strip()
+
+                # Remove any llama.cpp metadata (lines starting with special chars)
+                lines = transcription.split('\n')
+                clean_lines = [
+                    line for line in lines
+                    if line and not line.startswith(('llama', 'ggml', 'system_info'))
+                ]
+                transcription = '\n'.join(clean_lines).strip()
+
+                if not transcription:
+                    logger.warning("Empty transcription from llama-mtmd-cli")
+                    transcription = ""
 
                 return TranscriptionResult(
-                    text=transcription.strip(),
+                    text=transcription,
                     language=language,
                     confidence=None,
                 )
@@ -261,6 +319,9 @@ class QwenBackend(BaseModelBackend):
                 if os.path.exists(tmp_path):
                     os.unlink(tmp_path)
 
+        except subprocess.TimeoutExpired:
+            logger.error("llama-mtmd-cli timed out after 120 seconds")
+            raise TranscriptionError("Transcription timed out")
         except Exception as e:
             logger.error(f"Qwen transcription failed: {e}")
             import traceback
@@ -270,11 +331,7 @@ class QwenBackend(BaseModelBackend):
     def is_model_downloaded(self, model_id: str) -> bool:
         """Check if GGUF model and mmproj files are downloaded"""
         if model_id not in QWEN_MODELS:
-            # Support legacy model ID
-            if model_id == "qwen2-audio-7b":
-                model_id = "qwen2-audio-7b-q4"
-            else:
-                return False
+            return False
 
         model_info = QWEN_MODELS[model_id]
         repo_id = model_info["repo_id"]
@@ -303,10 +360,10 @@ class QwenBackend(BaseModelBackend):
         self, model_id: str, progress_callback: Optional[Callable[[int], None]] = None
     ) -> bool:
         """
-        Download a Qwen GGUF model from HuggingFace.
+        Download a Qwen2.5-Omni GGUF model from HuggingFace.
 
         Args:
-            model_id: Model to download (e.g., 'qwen2-audio-7b-q4')
+            model_id: Model to download (e.g., 'qwen2.5-omni-7b-q4')
             progress_callback: Optional callback(progress_percent: int)
 
         Returns:
@@ -324,7 +381,7 @@ class QwenBackend(BaseModelBackend):
         mmproj_filename = model_info["mmproj_filename"]
 
         try:
-            logger.info(f"Downloading Qwen model: {model_id}")
+            logger.info(f"Downloading Qwen2.5-Omni model: {model_id}")
             logger.info(f"GGUF file: {gguf_filename}")
             logger.info(f"MMProj file: {mmproj_filename}")
             if progress_callback:
@@ -372,11 +429,7 @@ class QwenBackend(BaseModelBackend):
         import shutil
 
         if model_id not in QWEN_MODELS:
-            # Support legacy model ID
-            if model_id == "qwen2-audio-7b":
-                model_id = "qwen2-audio-7b-q4"
-            else:
-                return False
+            return False
 
         try:
             # Unload if currently loaded
