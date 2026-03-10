@@ -47,6 +47,12 @@ class SettingsBridge(QObject):
         str, str, int
     )  # backend, message, progress_percent
     dependencyInstallComplete = pyqtSignal(str, bool)  # backend, success
+    dependencyUninstallProgress = pyqtSignal(
+        str, str, int
+    )  # backend, message, progress_percent
+    dependencyUninstallComplete = pyqtSignal(
+        str, "QVariant"
+    )  # backend, result_dict (success, uninstalled, skipped, warnings)
     backendAvailabilityChanged = pyqtSignal(str, bool)  # backend, available
     activeModelChanged = pyqtSignal(
         str
@@ -988,22 +994,92 @@ class SettingsBridge(QObject):
         thread = threading.Thread(target=install_thread, daemon=True)
         thread.start()
 
+    @pyqtSlot(str, result="QVariant")
+    def getBackendDetailedStatus(self, backend):
+        """
+        Get detailed status of a backend's dependencies.
+
+        Returns dict with:
+            - available: bool - fully ready to use
+            - python_deps_installed: bool - Python packages installed
+            - binary_installed: bool - Required binary installed (if applicable)
+            - missing_binary: str - Name of missing binary (if applicable)
+        """
+        try:
+            status = DependencyManager.get_backend_status(backend)
+            return status
+        except Exception as e:
+            logger.error(f"Failed to get backend status: {e}")
+            return {
+                "available": False,
+                "python_deps_installed": False,
+                "binary_installed": False,
+                "missing_binary": None,
+            }
+
+    @pyqtSlot(str)
+    def uninstallBackendDependencies(self, backend):
+        """Uninstall dependencies for a backend."""
+        import threading
+
+        def progress_callback(message, progress):
+            self.dependencyUninstallProgress.emit(backend, message, progress)
+
+        def uninstall_thread():
+            try:
+                logger.info(f"Starting dependency uninstall for {backend}")
+                self.dependencyUninstallProgress.emit(
+                    backend, "Analyzing dependencies...", 0
+                )
+
+                result = DependencyManager.uninstall_backend(backend, progress_callback)
+
+                if result.get("success"):
+                    logger.info(f"Successfully uninstalled {backend} dependencies")
+                    # Emit detailed result
+                    self.dependencyUninstallComplete.emit(backend, result)
+                    # Check if backend is still available (may be partial uninstall)
+                    still_available = DependencyManager.is_backend_available(backend)
+                    self.backendAvailabilityChanged.emit(backend, still_available)
+                else:
+                    logger.error(f"Failed to uninstall {backend} dependencies")
+                    self.dependencyUninstallComplete.emit(backend, result)
+
+            except Exception as e:
+                logger.error(f"Uninstall error for {backend}: {e}")
+                error_result = {
+                    "success": False,
+                    "error": str(e),
+                    "uninstalled": [],
+                    "skipped": [],
+                    "warnings": [str(e)],
+                }
+                self.dependencyUninstallProgress.emit(backend, f"Error: {str(e)}", 0)
+                self.dependencyUninstallComplete.emit(backend, error_result)
+
+        thread = threading.Thread(target=uninstall_thread, daemon=True)
+        thread.start()
+
     @pyqtSlot(result="QVariantList")
     def getAllBackendsWithStatus(self):
         """Get all backends with their availability status."""
         try:
             result = []
-            all_backends = ["whisper", "liquid", "qwen"]
+            all_backends = ["whisper", "liquid", "granite", "qwen"]
 
             for backend in all_backends:
                 info = DependencyManager.get_backend_info(backend)
                 if info:
+                    # Get detailed status
+                    status = DependencyManager.get_backend_status(backend)
+
                     result.append(
                         {
                             "name": backend,
-                            "available": DependencyManager.is_backend_available(
-                                backend
-                            ),
+                            "available": status["available"],
+                            "python_deps_installed": status["python_deps_installed"],
+                            "binary_installed": status["binary_installed"],
+                            "missing_binary": status["missing_binary"],
                             "description": info["description"],
                             "packages": info["packages"],
                             "size_estimate": info["size_estimate"],
@@ -1019,6 +1095,9 @@ class SettingsBridge(QObject):
                         {
                             "name": "whisper",
                             "available": True,
+                            "python_deps_installed": True,
+                            "binary_installed": True,
+                            "missing_binary": None,
                             "description": "OpenAI Whisper via faster-whisper",
                             "packages": ["faster-whisper"],
                             "size_estimate": "~80MB",
