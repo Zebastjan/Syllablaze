@@ -64,12 +64,61 @@ class DependencyManager:
                 import soundfile
                 return True
             elif backend == "qwen":
-                # Check for llama-mtmd-cli binary
+                # Check for both Python deps AND binary
                 import shutil
-                return shutil.which("llama-mtmd-cli") is not None
+                import huggingface_hub
+                # Qwen requires llama-mtmd-cli binary to actually work
+                # But we check Python deps are installed too
+                has_binary = shutil.which("llama-mtmd-cli") is not None
+                # Return True if binary is present (Python deps checked by import above)
+                return has_binary
         except ImportError:
             pass
         return False
+
+    @classmethod
+    def get_backend_status(cls, backend: str) -> dict:
+        """
+        Get detailed status of a backend's dependencies.
+
+        Returns:
+            dict with keys:
+                - available: bool - fully ready to use
+                - python_deps_installed: bool - Python packages installed
+                - binary_installed: bool - Required binary installed (if applicable)
+                - missing_binary: str - Name of missing binary (if applicable)
+        """
+        status = {
+            "available": False,
+            "python_deps_installed": False,
+            "binary_installed": True,  # Default True for backends without binary
+            "missing_binary": None,
+        }
+
+        try:
+            if backend == "liquid":
+                import liquid_audio
+                import torchaudio
+                status["python_deps_installed"] = True
+                status["available"] = True
+            elif backend == "granite":
+                import transformers
+                import torchaudio
+                import peft
+                import soundfile
+                status["python_deps_installed"] = True
+                status["available"] = True
+            elif backend == "qwen":
+                import shutil
+                import huggingface_hub
+                status["python_deps_installed"] = True
+                status["binary_installed"] = shutil.which("llama-mtmd-cli") is not None
+                status["missing_binary"] = "llama-mtmd-cli" if not status["binary_installed"] else None
+                status["available"] = status["binary_installed"]
+        except ImportError:
+            pass
+
+        return status
 
     @classmethod
     def install_backend(
@@ -164,6 +213,145 @@ class DependencyManager:
         packages = " ".join(info["packages"])
         return f"pip install {packages}"
 
+    @classmethod
+    def get_shared_dependencies(cls, package: str) -> List[str]:
+        """
+        Get list of backends that depend on a specific package.
+
+        Args:
+            package: Package name (e.g., 'torchaudio')
+
+        Returns:
+            List of backend names that require this package
+        """
+        backends = []
+        for backend, info in BACKEND_DEPENDENCIES.items():
+            # Check both required and optional packages
+            all_packages = info["packages"] + info.get("optional", [])
+            # Handle version specifiers (e.g., 'transformers>=4.40.0')
+            package_base = package.split(">=")[0].split("==")[0].split("<")[0].split(">")[0]
+            for pkg in all_packages:
+                pkg_base = pkg.split(">=")[0].split("==")[0].split("<")[0].split(">")[0]
+                if pkg_base == package_base:
+                    backends.append(backend)
+                    break
+        return backends
+
+    @classmethod
+    def can_uninstall_package(cls, package: str, backend: str) -> tuple[bool, List[str]]:
+        """
+        Check if a package can be safely uninstalled.
+
+        Args:
+            package: Package name
+            backend: Backend requesting uninstall
+
+        Returns:
+            (can_uninstall, other_backends_using_it)
+            can_uninstall is False if other installed backends need it
+        """
+        dependent_backends = cls.get_shared_dependencies(package)
+        # Remove the requesting backend from the list
+        other_backends = [b for b in dependent_backends if b != backend]
+
+        # Check if any other backend is actually installed
+        installed_others = [b for b in other_backends if cls.is_backend_available(b)]
+
+        can_uninstall = len(installed_others) == 0
+        return can_uninstall, installed_others
+
+    @classmethod
+    def uninstall_backend(
+        cls,
+        backend: str,
+        progress_callback: Optional[Callable[[str, int], None]] = None,
+        force: bool = False,
+    ) -> dict:
+        """
+        Uninstall dependencies for a backend.
+
+        Args:
+            backend: Backend name (liquid, granite, qwen)
+            progress_callback: Optional callback(message, progress_percent)
+            force: If True, uninstall even shared dependencies (dangerous!)
+
+        Returns:
+            dict with:
+                - success: bool
+                - uninstalled: list of packages uninstalled
+                - skipped: list of packages skipped (shared with other backends)
+                - warnings: list of warning messages
+        """
+        info = BACKEND_DEPENDENCIES.get(backend)
+        if not info:
+            logger.error(f"Unknown backend: {backend}")
+            return {"success": False, "error": "Unknown backend"}
+
+        packages = info["packages"].copy()
+        if info.get("optional"):
+            packages.extend(info["optional"])
+
+        logger.info(f"Uninstalling dependencies for {backend}: {packages}")
+
+        if progress_callback:
+            progress_callback(f"Analyzing {info['description']} dependencies...", 10)
+
+        uninstalled = []
+        skipped = []
+        warnings = []
+
+        # Check each package for shared dependencies
+        for pkg in packages:
+            can_uninstall, other_backends = cls.can_uninstall_package(pkg, backend)
+
+            if not can_uninstall and not force:
+                skipped.append(pkg)
+                warning = f"Skipped {pkg} (needed by: {', '.join(other_backends)})"
+                warnings.append(warning)
+                logger.warning(warning)
+                continue
+
+            # Safe to uninstall (or forced)
+            try:
+                if progress_callback:
+                    progress_callback(f"Uninstalling {pkg}...", 30)
+
+                cmd = [sys.executable, "-m", "pip", "uninstall", "-y", pkg]
+                logger.info(f"Running: {' '.join(cmd)}")
+
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                )
+
+                if result.returncode == 0:
+                    uninstalled.append(pkg)
+                    logger.info(f"Successfully uninstalled {pkg}")
+                else:
+                    logger.warning(f"Failed to uninstall {pkg}: {result.stderr}")
+                    warnings.append(f"Failed to uninstall {pkg}")
+
+            except Exception as e:
+                logger.error(f"Error uninstalling {pkg}: {e}")
+                warnings.append(f"Error uninstalling {pkg}: {e}")
+
+        if progress_callback:
+            if uninstalled:
+                progress_callback(f"Uninstalled {len(uninstalled)} package(s)", 100)
+            elif skipped:
+                progress_callback("No packages uninstalled (all shared with other backends)", 100)
+            else:
+                progress_callback("Uninstall completed", 100)
+
+        return {
+            "success": len(uninstalled) > 0 or len(packages) == 0,
+            "uninstalled": uninstalled,
+            "skipped": skipped,
+            "warnings": warnings,
+        }
+
 
 def install_liquid_backend(
     progress_callback: Optional[Callable[[str, int], None]] = None,
@@ -231,3 +419,29 @@ See: https://github.com/ggml-org/llama.cpp
         progress_callback(instructions, 100)
 
     return success
+
+
+def uninstall_liquid_backend(
+    progress_callback: Optional[Callable[[str, int], None]] = None,
+) -> dict:
+    """Convenience function to uninstall Liquid backend"""
+    return DependencyManager.uninstall_backend("liquid", progress_callback)
+
+
+def uninstall_granite_backend(
+    progress_callback: Optional[Callable[[str, int], None]] = None,
+) -> dict:
+    """Convenience function to uninstall Granite backend"""
+    return DependencyManager.uninstall_backend("granite", progress_callback)
+
+
+def uninstall_qwen_backend(
+    progress_callback: Optional[Callable[[str, int], None]] = None,
+) -> dict:
+    """
+    Convenience function to uninstall Qwen backend.
+
+    Note: This only uninstalls Python dependencies (huggingface-hub).
+    The llama-mtmd-cli binary must be removed manually if desired.
+    """
+    return DependencyManager.uninstall_backend("qwen", progress_callback)
