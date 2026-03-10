@@ -10,10 +10,16 @@ Dependencies:
     - numpy
 
 Models:
-    - Qwen2.5-Omni-7B-Q4: 4-bit quantized (~4.6GB) - Fast, recommended
+    7B Series (Higher accuracy):
+    - Qwen2.5-Omni-7B-Q4: 4-bit quantized (~4.8GB) - Fast, recommended
     - Qwen2.5-Omni-7B-Q6: 6-bit quantized (~6.4GB) - Very good quality
     - Qwen2.5-Omni-7B-Q8: 8-bit quantized (~8.2GB) - Best quality
-    - Qwen2.5-Omni-3B-Q4: 4-bit quantized (~3.5GB) - Smaller, faster
+
+    3B Series (Lower hardware requirements):
+    - Qwen2.5-Omni-3B-Q4: 4-bit quantized (~2.5GB) - Fast on CPU
+    - Qwen2.5-Omni-3B-Q6: 6-bit quantized (~2.9GB) - Better quality
+    - Qwen2.5-Omni-3B-Q8: 8-bit quantized (~3.7GB) - Best quality for 3B
+
     - All support 10,000+ languages (Chinese, Arabic, Japanese, Korean, etc.)
     - Input: Audio files (WAV or MP3)
     - License: Apache-2.0
@@ -68,6 +74,18 @@ QWEN_MODELS = {
         "gguf_filename": "Qwen2.5-Omni-3B.Q4_K_M.gguf",
         "mmproj_filename": "Qwen2.5-Omni-3B.mmproj-Q8_0.gguf",
         "size_gb": 2.5,
+    },
+    "qwen2.5-omni-3b-q6": {
+        "repo_id": "mradermacher/Qwen2.5-Omni-3B-GGUF",
+        "gguf_filename": "Qwen2.5-Omni-3B.Q6_K.gguf",
+        "mmproj_filename": "Qwen2.5-Omni-3B.mmproj-Q8_0.gguf",
+        "size_gb": 2.9,
+    },
+    "qwen2.5-omni-3b-q8": {
+        "repo_id": "mradermacher/Qwen2.5-Omni-3B-GGUF",
+        "gguf_filename": "Qwen2.5-Omni-3B.Q8_0.gguf",
+        "mmproj_filename": "Qwen2.5-Omni-3B.mmproj-Q8_0.gguf",
+        "size_gb": 3.7,
     },
 }
 
