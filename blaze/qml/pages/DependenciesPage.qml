@@ -295,20 +295,43 @@ import org.kde.kirigami as Kirigami
                         // Install button (for unavailable backends)
                         QQC2.Button {
                             visible: !modelData.available && !isInstalling
-                            text: modelData.python_deps_installed ? "View Instructions" : "Install"
-                            icon.name: modelData.python_deps_installed ? "help-about" : "download"
+                            text: {
+                                if (modelData.name === "qwen" && modelData.python_deps_installed) {
+                                    return "Auto Install Binary"
+                                }
+                                return modelData.python_deps_installed ? "View Instructions" : "Install"
+                            }
+                            icon.name: {
+                                if (modelData.name === "qwen" && modelData.python_deps_installed) {
+                                    return "run-build"
+                                }
+                                return modelData.python_deps_installed ? "help-about" : "download"
+                            }
                             onClicked: {
                                 currentBackend = modelData.name
 
-                                // If Qwen and partial install, show instructions
+                                // If Qwen and partial install, auto-install binary
                                 if (modelData.name === "qwen" && modelData.python_deps_installed) {
-                                    qwenInstructionsDialog.open()
+                                    isInstalling = true
+                                    installProgress = 0
+                                    installStatusMessage = "Building llama-mtmd-cli (5-15 minutes)..."
+                                    settingsBridge.installQwenBinary(modelData.name)
                                 } else {
                                     isInstalling = true
                                     installProgress = 0
                                     installStatusMessage = "Starting installation..."
                                     settingsBridge.installBackendDependencies(modelData.name)
                                 }
+                            }
+                        }
+
+                        // Manual instructions button (for Qwen partial installs)
+                        QQC2.Button {
+                            visible: !modelData.available && !isInstalling && modelData.name === "qwen" && modelData.python_deps_installed
+                            text: "Manual Instructions"
+                            icon.name: "help-about"
+                            onClicked: {
+                                qwenInstructionsDialog.open()
                             }
                         }
 
@@ -489,8 +512,8 @@ import org.kde.kirigami as Kirigami
     Kirigami.PromptDialog {
         id: qwenInstructionsDialog
 
-        title: "Qwen Setup Instructions"
-        subtitle: "Python dependencies are installed, but you need to compile llama-mtmd-cli:"
+        title: "Qwen Setup Instructions (Manual/Advanced)"
+        subtitle: "Use 'Auto Install Binary' for automated setup, or follow these manual steps:"
 
         standardButtons: QQC2.Dialog.Close
 

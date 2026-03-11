@@ -8,6 +8,8 @@ optional backends like Liquid, Granite, or Qwen.
 import subprocess
 import sys
 import logging
+import shutil
+from pathlib import Path
 from typing import List, Optional, Callable
 
 logger = logging.getLogger(__name__)
@@ -367,38 +369,143 @@ def install_granite_backend(
     return DependencyManager.install_backend("granite", progress_callback)
 
 
-def install_qwen_backend(
+def install_qwen_binary(
     progress_callback: Optional[Callable[[str, int], None]] = None,
 ) -> bool:
     """
-    Convenience function to install Qwen backend.
+    Automated installation of llama-mtmd-cli binary.
 
-    Note: Qwen requires llama-mtmd-cli binary which must be compiled manually.
-    This function installs Python dependencies and provides instructions.
+    This function runs the shell script that:
+    - Clones llama.cpp repository
+    - Compiles llama-mtmd-cli binary (5-15 minutes)
+    - Installs to ~/.local/bin (no sudo required)
+    - Verifies binary works
+
+    Args:
+        progress_callback: Optional callback(message, progress_percent)
+
+    Returns:
+        True if installation succeeded
     """
-    import shutil
+    logger.info("Starting automated llama-mtmd-cli installation")
 
-    # Check if llama-mtmd-cli is already available
+    # Locate installation script
+    script_path = Path(__file__).parent.parent / "scripts" / "install_llama_mtmd_cli.sh"
+    if not script_path.exists():
+        logger.error(f"Installation script not found: {script_path}")
+        if progress_callback:
+            progress_callback(f"Installation script not found: {script_path}", 0)
+        return False
+
+    # Installation directory (no sudo needed)
+    install_dir = Path.home() / ".local" / "bin"
+
+    if progress_callback:
+        progress_callback("Starting binary compilation (5-15 minutes)...", 0)
+
+    try:
+        # Run installation script
+        process = subprocess.Popen(
+            [str(script_path), str(install_dir)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+
+        # Parse script output for progress/errors
+        for line in process.stdout:
+            line = line.strip()
+            if not line:
+                continue
+
+            logger.info(f"install_script: {line}")
+
+            if line.startswith("PROGRESS:"):
+                # Parse: PROGRESS:percent:message
+                try:
+                    _, percent_str, message = line.split(":", 2)
+                    percent = int(percent_str)
+                    if progress_callback:
+                        progress_callback(message, percent)
+                except ValueError as e:
+                    logger.warning(f"Failed to parse progress line: {line} ({e})")
+
+            elif line.startswith("ERROR:"):
+                # Parse: ERROR:message
+                error_msg = line.split(":", 1)[1] if ":" in line else line
+                logger.error(f"Build error: {error_msg}")
+                if progress_callback:
+                    progress_callback(f"Build failed: {error_msg}", 0)
+
+        # Wait for completion
+        process.wait()
+
+        if process.returncode == 0:
+            logger.info("llama-mtmd-cli installed successfully")
+            if progress_callback:
+                progress_callback("Binary installed successfully!", 100)
+            return True
+        else:
+            logger.error(f"Installation failed with return code {process.returncode}")
+            if progress_callback:
+                progress_callback(f"Installation failed (exit code {process.returncode})", 0)
+            return False
+
+    except Exception as e:
+        logger.error(f"Binary installation failed: {e}")
+        if progress_callback:
+            progress_callback(f"Installation error: {e}", 0)
+        return False
+
+
+def install_qwen_backend(
+    progress_callback: Optional[Callable[[str, int], None]] = None,
+    auto_install_binary: bool = False,
+) -> bool:
+    """
+    Install Qwen backend dependencies.
+
+    Args:
+        progress_callback: Optional callback(message, progress_percent)
+        auto_install_binary: If True, automatically compile/install llama-mtmd-cli
+
+    Returns:
+        True if installation succeeded
+    """
+    # Step 1: Install Python dependencies (0-10%)
+    if progress_callback:
+        progress_callback("Installing Python dependencies...", 0)
+
+    success = DependencyManager.install_backend("qwen", progress_callback)
+    if not success:
+        return False
+
+    # Step 2: Check if binary already exists
     if shutil.which("llama-mtmd-cli"):
         logger.info("llama-mtmd-cli already available")
         if progress_callback:
-            progress_callback("llama-mtmd-cli found, installing Python deps...", 50)
-        # Just install Python dependencies
-        return DependencyManager.install_backend("qwen", progress_callback)
+            progress_callback("Qwen ready! (llama-mtmd-cli found)", 100)
+        return True
 
-    # llama-mtmd-cli not found - provide instructions
+    # Step 3: Auto-install binary if requested
+    if auto_install_binary:
+        logger.info("Binary not found, starting automated installation")
+        if progress_callback:
+            progress_callback("Python dependencies installed, compiling binary...", 10)
+
+        # Map binary installation progress (0-100%) to overall (10-100%)
+        def binary_progress(message: str, percent: int):
+            overall_percent = 10 + int(percent * 0.9)
+            if progress_callback:
+                progress_callback(message, overall_percent)
+
+        return install_qwen_binary(binary_progress)
+
+    # Step 4: Binary not found, provide manual instructions
     logger.warning("llama-mtmd-cli not found - manual installation required")
 
     if progress_callback:
-        progress_callback(
-            "Qwen requires llama-mtmd-cli binary (manual install required)",
-            0
-        )
-
-    # Install Python dependencies anyway
-    success = DependencyManager.install_backend("qwen", progress_callback)
-
-    if success and progress_callback:
         instructions = """
 Qwen2.5-Omni requires llama-mtmd-cli:
 
@@ -422,7 +529,7 @@ See: https://github.com/ggml-org/llama.cpp/blob/master/docs/build.md
 """
         progress_callback(instructions, 100)
 
-    return success
+    return True
 
 
 def uninstall_liquid_backend(
@@ -439,13 +546,69 @@ def uninstall_granite_backend(
     return DependencyManager.uninstall_backend("granite", progress_callback)
 
 
+def uninstall_qwen_binary(
+    progress_callback: Optional[Callable[[str, int], None]] = None,
+) -> bool:
+    """
+    Remove llama-mtmd-cli binary if installed in ~/.local/bin.
+
+    Args:
+        progress_callback: Optional callback(message, progress_percent)
+
+    Returns:
+        True if binary was removed or didn't exist
+    """
+    binary_path = Path.home() / ".local" / "bin" / "llama-mtmd-cli"
+
+    if not binary_path.exists():
+        logger.info("llama-mtmd-cli not found in ~/.local/bin")
+        if progress_callback:
+            progress_callback("Binary not found (already removed or never installed)", 100)
+        return True
+
+    try:
+        if progress_callback:
+            progress_callback(f"Removing {binary_path}...", 50)
+
+        binary_path.unlink()
+        logger.info(f"Removed llama-mtmd-cli binary: {binary_path}")
+
+        if progress_callback:
+            progress_callback("Binary removed successfully", 100)
+        return True
+
+    except Exception as e:
+        logger.error(f"Failed to remove binary: {e}")
+        if progress_callback:
+            progress_callback(f"Failed to remove binary: {e}", 0)
+        return False
+
+
 def uninstall_qwen_backend(
     progress_callback: Optional[Callable[[str, int], None]] = None,
 ) -> dict:
     """
-    Convenience function to uninstall Qwen backend.
+    Uninstall Qwen backend.
 
-    Note: This only uninstalls Python dependencies (huggingface-hub).
-    The llama-mtmd-cli binary must be removed manually if desired.
+    This removes both Python dependencies and the llama-mtmd-cli binary
+    (if installed in ~/.local/bin).
+
+    Args:
+        progress_callback: Optional callback(message, progress_percent)
+
+    Returns:
+        dict with uninstall results
     """
-    return DependencyManager.uninstall_backend("qwen", progress_callback)
+    # Uninstall Python dependencies first
+    result = DependencyManager.uninstall_backend("qwen", progress_callback)
+
+    # Also remove binary if present
+    binary_removed = uninstall_qwen_binary(progress_callback)
+
+    # Update result to include binary removal
+    if binary_removed:
+        if "uninstalled" not in result:
+            result["uninstalled"] = []
+        result["uninstalled"].append("llama-mtmd-cli (binary)")
+
+    return result

@@ -368,6 +368,43 @@ class ModelSettingsBridge(QObject):
         thread = threading.Thread(target=install_thread, daemon=True)
         thread.start()
 
+    @pyqtSlot(str)
+    def installQwenBinary(self, backend: str = "qwen"):
+        """
+        Automated installation of llama-mtmd-cli binary for Qwen backend.
+        This compiles the binary from source (takes 5-15 minutes).
+        Emits dependencyInstallProgress and dependencyInstallComplete signals.
+        """
+        from blaze.backends.dependency_manager import install_qwen_binary
+
+        def progress_callback(message: str, progress: int):
+            self.dependencyInstallProgress.emit(backend, message, progress)
+
+        def install_thread():
+            try:
+                logger.info("Starting automated llama-mtmd-cli installation")
+                self.dependencyInstallProgress.emit(
+                    backend, "Starting binary compilation (5-15 minutes)...", 0
+                )
+
+                success = install_qwen_binary(progress_callback)
+
+                if success:
+                    logger.info("Successfully installed llama-mtmd-cli binary")
+                    self.dependencyInstallComplete.emit(backend, True)
+                    self.backendAvailabilityChanged.emit(backend, True)
+                else:
+                    logger.error("Failed to install llama-mtmd-cli binary")
+                    self.dependencyInstallComplete.emit(backend, False)
+
+            except Exception as e:
+                logger.error(f"Binary installation error: {e}")
+                self.dependencyInstallProgress.emit(backend, f"Error: {str(e)}", 0)
+                self.dependencyInstallComplete.emit(backend, False)
+
+        thread = threading.Thread(target=install_thread, daemon=True)
+        thread.start()
+
     @pyqtSlot(str, result="QVariantList")
     def getAllBackendsWithStatus(self) -> List[Dict[str, Any]]:
         """
