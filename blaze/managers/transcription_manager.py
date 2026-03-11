@@ -516,7 +516,46 @@ class TranscriptionManager(QObject):
 
                     return False
 
-            # No change needed - current backend is correct
+            # Types match, but check if model changed within coordinator transcriber
+            # For coordinator transcribers (Liquid, Qwen, Granite), we need to check
+            # if the specific model changed, not just the transcriber type
+            if current_type == "coordinator" and isinstance(
+                self._transcriber, CoordinatorTranscriber
+            ):
+                # Check if the coordinator has the correct model loaded
+                coordinator_model = getattr(
+                    self._transcriber, "_current_model_name", None
+                )
+                logger.info(
+                    f"[CHECK_BACKEND_CHANGE] Coordinator model check: "
+                    f"loaded={coordinator_model}, expected={current_model}"
+                )
+
+                if coordinator_model != current_model:
+                    # Model changed within coordinator - need to reload
+                    logger.info(
+                        f"[CHECK_BACKEND_CHANGE] Model mismatch in coordinator: "
+                        f"have {coordinator_model}, need {current_model}. Triggering reload."
+                    )
+                    # Just return True - the transcriber will lazy-load on next transcription
+                    # But we should eagerly load here to match user expectations
+                    try:
+                        # Tell coordinator to load the new model
+                        self._transcriber.load_model_with_fallback(current_model)
+                        logger.info(
+                            f"[CHECK_BACKEND_CHANGE] Successfully loaded {current_model} in coordinator"
+                        )
+                    except Exception as e:
+                        logger.error(
+                            f"[CHECK_BACKEND_CHANGE] Failed to load {current_model}: {e}"
+                        )
+                        # Don't fail - let it lazy-load on transcription
+                    return True
+
+            # No change needed - current backend and model are correct
+            logger.info(
+                f"[CHECK_BACKEND_CHANGE] No change needed - backend and model are correct"
+            )
             return True
 
         except Exception as e:
