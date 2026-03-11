@@ -1075,13 +1075,14 @@ class SettingsBridge(QObject):
 
                 result = DependencyManager.uninstall_backend(backend, progress_callback)
 
+                # Always check and emit availability change after uninstall attempt
+                # (even if "success" is False, availability may have changed)
+                still_available = DependencyManager.is_backend_available(backend)
+                self.backendAvailabilityChanged.emit(backend, still_available)
+
                 if result.get("success"):
                     logger.info(f"Successfully uninstalled {backend} dependencies")
-                    # Emit detailed result
                     self.dependencyUninstallComplete.emit(backend, result)
-                    # Check if backend is still available (may be partial uninstall)
-                    still_available = DependencyManager.is_backend_available(backend)
-                    self.backendAvailabilityChanged.emit(backend, still_available)
                 else:
                     logger.error(f"Failed to uninstall {backend} dependencies")
                     self.dependencyUninstallComplete.emit(backend, result)

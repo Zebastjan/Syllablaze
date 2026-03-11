@@ -85,7 +85,9 @@ class SyllaDBusService(ServiceInterface):
 
 
 def check_dependencies():
-    required_packages = ["faster_whisper", "pyaudio", "keyboard"]
+    # Only truly REQUIRED packages for app startup (not backends)
+    # faster_whisper is now optional - user can install any backend via Settings
+    required_packages = ["pyaudio", "keyboard"]
     missing_packages = []
 
     for package in required_packages:
@@ -104,6 +106,19 @@ def check_dependencies():
         )
         QMessageBox.critical(None, "Missing Dependencies", error_msg)
         return False
+
+    # Check for optional backends (warn but don't block)
+    optional_backends = ["faster_whisper"]
+    missing_optional = []
+    for package in optional_backends:
+        try:
+            __import__(package)
+        except ImportError:
+            missing_optional.append(package)
+            logger.warning(f"Optional backend not available: {package}")
+
+    if missing_optional:
+        logger.warning("No backends installed. App will start but recording disabled until a backend is installed.")
 
     return True
 
@@ -1302,11 +1317,16 @@ def _initialize_transcription_manager(tray, loading_window, app, ui_manager):
     # Initialize transcription manager
     if not tray.transcription_manager.initialize():
         ui_manager.show_warning_message(
-            "No Models Downloaded",
-            "No Whisper models are downloaded. The application will start, "
-            "but you will need to download a model before you can use "
-            "transcription.\n\nPlease go to Settings to download a model.",
+            "No Models Available",
+            "No transcription backends are installed. The application will start, "
+            "but you will need to install a backend before you can use "
+            "transcription.\n\nOpening Settings to install dependencies...",
         )
+
+        # Auto-open Settings/Dependencies page after a short delay
+        # (let loading window close first)
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(500, tray.toggle_settings)
 
     return True
 

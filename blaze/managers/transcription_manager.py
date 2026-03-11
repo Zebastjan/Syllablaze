@@ -296,6 +296,9 @@ class TranscriptionManager(QObject):
             # DO NOT auto-fallback. Instead, create dummy transcriber and return False.
             # The user will see an error and can select a different model.
             self._create_dummy_transcriber(backend_type, str(e))
+
+            # Don't raise - allow app to continue without a model
+            # UI will show warnings and user can install backends via Settings
             return False
 
     def _create_dummy_transcriber(self, failed_backend: str, error_message: str):

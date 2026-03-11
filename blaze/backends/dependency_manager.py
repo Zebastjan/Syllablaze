@@ -240,21 +240,33 @@ class DependencyManager:
         return backends
 
     @classmethod
-    def can_uninstall_package(cls, package: str, backend: str) -> tuple[bool, List[str]]:
+    def can_uninstall_package(
+        cls,
+        package: str,
+        backend: str,
+        backends_being_uninstalled: Optional[List[str]] = None,
+    ) -> tuple[bool, List[str]]:
         """
         Check if a package can be safely uninstalled.
 
         Args:
             package: Package name
             backend: Backend requesting uninstall
+            backends_being_uninstalled: List of backends currently being uninstalled
 
         Returns:
             (can_uninstall, other_backends_using_it)
             can_uninstall is False if other installed backends need it
         """
+        if backends_being_uninstalled is None:
+            backends_being_uninstalled = []
+
         dependent_backends = cls.get_shared_dependencies(package)
-        # Remove the requesting backend from the list
-        other_backends = [b for b in dependent_backends if b != backend]
+        # Remove the requesting backend AND any being uninstalled
+        other_backends = [
+            b for b in dependent_backends
+            if b != backend and b not in backends_being_uninstalled
+        ]
 
         # Check if any other backend is actually installed
         installed_others = [b for b in other_backends if cls.is_backend_available(b)]
@@ -303,8 +315,11 @@ class DependencyManager:
         warnings = []
 
         # Check each package for shared dependencies
+        # Pass current backend as being uninstalled to prevent circular dependency bug
         for pkg in packages:
-            can_uninstall, other_backends = cls.can_uninstall_package(pkg, backend)
+            can_uninstall, other_backends = cls.can_uninstall_package(
+                pkg, backend, backends_being_uninstalled=[backend]
+            )
 
             if not can_uninstall and not force:
                 skipped.append(pkg)
@@ -347,8 +362,19 @@ class DependencyManager:
             else:
                 progress_callback("Uninstall completed", 100)
 
+        # Consider successful if:
+        # 1. At least one package was uninstalled, OR
+        # 2. No packages to uninstall (backend had no deps), OR
+        # 3. All packages were skipped (shared deps = partial success)
+        # Only fail if there were packages but none were uninstalled and none were skipped
+        success = (
+            len(uninstalled) > 0
+            or len(packages) == 0
+            or (len(skipped) > 0 and len(packages) == len(skipped) + len(uninstalled))
+        )
+
         return {
-            "success": len(uninstalled) > 0 or len(packages) == 0,
+            "success": success,
             "uninstalled": uninstalled,
             "skipped": skipped,
             "warnings": warnings,
