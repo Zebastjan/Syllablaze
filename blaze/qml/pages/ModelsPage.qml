@@ -241,15 +241,15 @@ ColumnLayout {
 
     function refreshModels() {
         console.log("[ModelsPage] refreshModels called")
-        
+
         var languageFilter = multilingualMode ? "all" : (specificLanguage || "en")
         console.log("[ModelsPage] languageFilter:", languageFilter, "backendFilter:", currentBackendFilter)
-        
+
         try {
             var result = settingsBridge.getAvailableModels(languageFilter, currentBackendFilter)
             console.log("[ModelsPage] getAvailableModels returned type:", typeof result)
             console.log("[ModelsPage] Result:", JSON.stringify(result))
-            
+
             // Handle both array and object-with-length cases
             // PyQt6 might return QVariant which QML sees as object
             if (result && (Array.isArray(result) || (result.length !== undefined && typeof result === 'object'))) {
@@ -261,6 +261,24 @@ ColumnLayout {
                     for (var i = 0; i < count; i++) {
                         modelArray.push(result[i])
                     }
+
+                    // Validate: Check for multiple active models
+                    var activeModels = []
+                    for (var j = 0; j < modelArray.length; j++) {
+                        if (modelArray[j].active) {
+                            activeModels.push(modelArray[j].id)
+                        }
+                    }
+                    console.log("[ModelsPage] Active models:", JSON.stringify(activeModels))
+
+                    if (activeModels.length > 1) {
+                        console.error("[ModelsPage] CRITICAL: Multiple active models detected:", activeModels)
+                    } else if (activeModels.length === 1) {
+                        console.log("[ModelsPage] Single active model (correct):", activeModels[0])
+                    } else {
+                        console.warn("[ModelsPage] No active models (may be filtered out)")
+                    }
+
                     models = modelArray
                 } else {
                     models = []

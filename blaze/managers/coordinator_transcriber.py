@@ -219,15 +219,16 @@ class CoordinatorTranscriber(BaseTranscriber):
 
     def _load_model(self, model_name: str):
         """Load a specific model through the coordinator with atomic rollback"""
-        logger.info(f"Loading model via coordinator: {model_name}")
+        logger.info(f"[LOAD_MODEL] Loading model via coordinator: {model_name}")
 
         # Check if model is already loaded
         if self._current_model_name == model_name:
-            logger.info(f"Model {model_name} already loaded")
+            logger.info(f"[LOAD_MODEL] Model {model_name} already loaded")
             return
 
         # Save old state for logging
         old_model = self._current_model_name
+        logger.info(f"[LOAD_MODEL] Previous model: {old_model}")
 
         # Load new model with device from settings (uses atomic loading with rollback)
         try:
@@ -235,7 +236,7 @@ class CoordinatorTranscriber(BaseTranscriber):
 
             compute_type = self.settings.get("compute_type", "float32")
             logger.info(
-                f"CoordinatorTranscriber: Loading model {model_name} with device={device}, compute_type={compute_type}"
+                f"[LOAD_MODEL] CoordinatorTranscriber: Loading model {model_name} with device={device}, compute_type={compute_type}"
             )
 
             # Use atomic loading - preserves old state on failure
@@ -243,6 +244,9 @@ class CoordinatorTranscriber(BaseTranscriber):
 
             # Only update transcriber state after successful load
             self._current_model_name = model_name
+            logger.info(
+                f"[LOAD_MODEL] Successfully loaded {model_name}, updated _current_model_name"
+            )
 
             # Log comprehensive device state for debugging
             backend_name = self.coordinator.get_current_backend_name()

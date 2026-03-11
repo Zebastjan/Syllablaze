@@ -200,11 +200,12 @@ class BackendCoordinator:
                     current_backend_name = name
                     break
 
-        needs_backend_switch = (current_backend_name != backend_name)
+        needs_backend_switch = current_backend_name != backend_name
 
         logger.info(
-            f"Loading model: {model_id} on {device} "
-            f"(backend: {backend_name}, switch: {needs_backend_switch})"
+            f"[COORDINATOR_LOAD] Loading model: {model_id} on {device} "
+            f"(backend: {backend_name}, switch: {needs_backend_switch}, "
+            f"old_backend: {current_backend_name}, old_model: {old_model_id})"
         )
 
         # CRITICAL: Unload old model FIRST to free GPU memory
@@ -262,13 +263,17 @@ class BackendCoordinator:
                     logger.warning(f"GPU cleanup failed (non-critical): {e}")
 
             # Load the new model
+            logger.info(f"[COORDINATOR_LOAD] Calling backend.load() for {backend_name}")
             new_backend.load(model_id, device)
 
             # Success! Commit new state
             self._current_backend = new_backend
             self._current_model_id = model_id
 
-            logger.info(f"✓ Model loaded successfully: {model_id}")
+            logger.info(
+                f"[COORDINATOR_LOAD] ✓ Model loaded successfully: {model_id} "
+                f"(backend: {backend_name}, device: {device})"
+            )
             return True
 
         except Exception as e:

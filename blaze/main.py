@@ -958,17 +958,33 @@ class SyllablazeOrchestrator(QSystemTrayIcon):
         model_name : str
             The new model name that was selected
         """
-        logger.info(f"Deferred reinitialization starting for model: {model_name}")
+        logger.info(
+            f"[BACKEND_REINIT] Deferred reinitialization starting for model: {model_name}"
+        )
 
         # Force transcription manager to reinitialize for new backend
         # This ensures proper GPU memory cleanup between backend switches
         if hasattr(self, "transcription_manager") and self.transcription_manager:
             try:
+                # Log current state before reinitialization
+                current_type = self.transcription_manager._get_transcriber_type()
+                logger.info(
+                    f"[BACKEND_REINIT] Current transcriber type: {current_type}"
+                )
+
                 # This will trigger _check_backend_change which handles GPU cleanup
                 success = self.transcription_manager._check_backend_change()
 
+                # Log result
+                new_type = self.transcription_manager._get_transcriber_type()
+                logger.info(
+                    f"[BACKEND_REINIT] After reinitialization: transcriber type={new_type}, success={success}"
+                )
+
                 if success:
-                    logger.info(f"Successfully reinitialized for model: {model_name}")
+                    logger.info(
+                        f"[BACKEND_REINIT] Successfully reinitialized for model: {model_name}"
+                    )
                     # Update tooltip to reflect the change
                     self.update_tooltip()
 

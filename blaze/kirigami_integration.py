@@ -286,7 +286,7 @@ class SettingsBridge(QObject):
 
             # Get current active model from settings
             current_model = self.settings.get("model", "whisper-tiny")
-            logger.info(f"Current active model: {current_model}")
+            logger.info(f"[GET_MODELS] Current active model from settings: {current_model}")
 
             # Determine which language to filter by
             # language_filter="all" means multilingual mode - show models that support all languages
@@ -383,6 +383,12 @@ class SettingsBridge(QObject):
                         size_str = f"{model.size_mb} MB"
 
                     # Ensure all values are basic Python types for QML compatibility
+                    active_status = bool(model.model_id == current_model)
+                    if active_status:
+                        logger.info(
+                            f"[GET_MODELS] Marking model as ACTIVE: {model.model_id}"
+                        )
+
                     model_dict = {
                         "id": str(model.model_id),
                         "name": str(model.name),
@@ -393,7 +399,7 @@ class SettingsBridge(QObject):
                         "size": str(size_str),
                         "sizeMB": int(model.size_mb),
                         "downloaded": bool(is_downloaded),
-                        "active": bool(model.model_id == current_model),
+                        "active": active_status,
                         "compatible": bool(compat["compatible"]),
                         "compatibility_reason": str(compat["reason"])
                         if compat["reason"]
@@ -411,6 +417,24 @@ class SettingsBridge(QObject):
                     logger.error(f"Error processing model {model.model_id}: {e}")
                     # Skip this model but continue with others
                     continue
+
+            # Validate: Only ONE model should be active
+            active_count = sum(1 for m in models if m.get("active", False))
+            if active_count > 1:
+                active_models = [m["id"] for m in models if m.get("active", False)]
+                logger.error(
+                    f"[GET_MODELS] CRITICAL: Multiple models marked as active! "
+                    f"Active models: {active_models}, current_model setting: {current_model}"
+                )
+                # This is a bug - force clear all active flags and re-set correctly
+                for m in models:
+                    m["active"] = m["id"] == current_model
+                logger.warning("[GET_MODELS] Forced correction of active flags")
+            elif active_count == 0:
+                logger.warning(
+                    f"[GET_MODELS] No models marked as active. "
+                    f"current_model setting: {current_model} (may not be in filtered list)"
+                )
 
             # Sort models: recommended first, then by performance (high to low), then by size (small to large)
             def get_model_performance(model_dict):
@@ -776,10 +800,23 @@ class SettingsBridge(QObject):
 
         Emits activeModelChanged signal to trigger hard reset in main app.
         """
-        logger.info(f"Setting active model: {model_name}")
+        logger.info(f"[MODEL_ACTIVATION] START: Setting active model to {model_name}")
+
+        # Log current state before change
+        old_model = self.settings.get("model", None)
+        logger.info(f"[MODEL_ACTIVATION] Previous active model: {old_model}")
 
         # Store the model name - backend will be derived from model_id
         self.set("model", model_name)
+
+        # Verify the write
+        verify_model = self.settings.get("model", None)
+        logger.info(f"[MODEL_ACTIVATION] Settings updated. Verification: {verify_model}")
+
+        if verify_model != model_name:
+            logger.error(
+                f"[MODEL_ACTIVATION] SETTINGS WRITE FAILED! Expected {model_name}, got {verify_model}"
+            )
 
         # Log the backend type for debugging (but don't store it)
         try:
@@ -787,17 +824,21 @@ class SettingsBridge(QObject):
 
             model_info = ModelRegistry.get_model(model_name)
             if model_info:
-                logger.info(f"Model {model_name} uses backend '{model_info.backend}'")
+                logger.info(
+                    f"[MODEL_ACTIVATION] Model {model_name} uses backend '{model_info.backend}'"
+                )
             else:
                 logger.warning(
-                    f"Model {model_name} not found in registry, will default to whisper"
+                    f"[MODEL_ACTIVATION] Model {model_name} not found in registry, will default to whisper"
                 )
         except Exception as e:
-            logger.error(f"Failed to get model backend info: {e}")
+            logger.error(f"[MODEL_ACTIVATION] Failed to get model backend info: {e}")
 
         # Emit signal to notify main app that model changed
         # This triggers a hard reset - stopping any ongoing transcription
+        logger.info(f"[MODEL_ACTIVATION] Emitting activeModelChanged signal")
         self.activeModelChanged.emit(model_name)
+        logger.info(f"[MODEL_ACTIVATION] COMPLETE")
 
     def _check_model_downloaded_safe(self, coordinator, model_id):
         """Safely check if model is downloaded, returning False on any error."""

@@ -412,18 +412,30 @@ class TranscriptionManager(QObject):
         try:
             # Get current model from settings
             current_model = self.settings.get("model", DEFAULT_WHISPER_MODEL)
+            logger.info(
+                f"[CHECK_BACKEND_CHANGE] Current model from settings: {current_model}"
+            )
 
             # ALWAYS derive backend from model_id
             expected_backend = (
                 ModelRegistry.get_backend_for_model(current_model) or "whisper"
             )
+            logger.info(
+                f"[CHECK_BACKEND_CHANGE] Expected backend for {current_model}: {expected_backend}"
+            )
 
             # Get current transcriber type using proper type checking
             current_type = self._get_transcriber_type()
+            logger.info(
+                f"[CHECK_BACKEND_CHANGE] Current transcriber type: {current_type}"
+            )
 
             # Map expected backend to transcriber type
             expected_type = (
                 "whisper" if expected_backend == "whisper" else "coordinator"
+            )
+            logger.info(
+                f"[CHECK_BACKEND_CHANGE] Expected transcriber type: {expected_type}"
             )
 
             # Check if reinitialization is needed
