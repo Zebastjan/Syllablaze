@@ -17,6 +17,7 @@ from blaze.constants import (
 )
 from blaze.backends.registry import ModelRegistry
 from blaze.backends.backend_health import BackendHealthRegistry, BackendHealthStatus
+from blaze.managers.coordinator_transcriber import CoordinatorTranscriber
 
 logger = logging.getLogger(__name__)
 
@@ -523,11 +524,11 @@ class TranscriptionManager(QObject):
             # For coordinator transcribers (Liquid, Qwen, Granite), we need to check
             # if the specific model changed, not just the transcriber type
             if current_type == "coordinator" and isinstance(
-                self._transcriber, CoordinatorTranscriber
+                self.transcriber, CoordinatorTranscriber
             ):
                 # Check if the coordinator has the correct model loaded
                 coordinator_model = getattr(
-                    self._transcriber, "_current_model_name", None
+                    self.transcriber, "_current_model_name", None
                 )
                 logger.info(
                     f"[CHECK_BACKEND_CHANGE] Coordinator model check: "

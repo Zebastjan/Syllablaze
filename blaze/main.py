@@ -107,19 +107,9 @@ def check_dependencies():
         QMessageBox.critical(None, "Missing Dependencies", error_msg)
         return False
 
-    # Check for optional backends (warn but don't block)
-    optional_backends = ["faster_whisper"]
-    missing_optional = []
-    for package in optional_backends:
-        try:
-            __import__(package)
-        except ImportError:
-            missing_optional.append(package)
-            logger.warning(f"Optional backend not available: {package}")
-
-    if missing_optional:
-        logger.warning("No backends installed. App will start but recording disabled until a backend is installed.")
-
+    # Note: We don't check for optional backends (faster_whisper, liquid, etc.) here
+    # because they may not be imported yet. The transcription manager will handle
+    # missing backends gracefully and show appropriate warnings/errors.
     return True
 
 
